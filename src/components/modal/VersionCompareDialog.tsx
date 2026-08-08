@@ -14,13 +14,13 @@ const FactorAnalysisReport = lazy(() => import("@/components/panel/FactorAnalysi
 const BacktestReport = lazy(() => import("@/components/panel/BacktestReport"));
 const ignoreMetrics = () => undefined;
 
-type Version = FactorVersion | BacktestVersion;
+export type CompareVersion = FactorVersion | BacktestVersion;
 type VersionListItem = FactorVersionListItem | BacktestVersionListItem;
 
 type VersionCompareDialogProps = {
-  currentVersion: Version | null;
+  currentVersion: CompareVersion | null;
   kind: "factor" | "backtest";
-  loadVersion: (version: number) => Promise<Version>;
+  loadVersion: (version: number) => Promise<CompareVersion>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   projectTitle: string;
@@ -39,7 +39,7 @@ export default function VersionCompareDialog({ currentVersion, kind, loadVersion
   const ordered = useMemo(() => [...versions].sort((left, right) => left.version - right.version), [versions]);
   const selectable = ordered.filter((version) => version.version !== currentVersion?.version);
   const [compareVersion, setCompareVersion] = useState<number | null>(null);
-  const [result, setResult] = useState<{ left: Version; right: Version } | null>(null);
+  const [result, setResult] = useState<{ left: CompareVersion; right: CompareVersion } | null>(null);
   const [comparing, setComparing] = useState(false);
   const [error, setError] = useState("");
 
@@ -73,7 +73,7 @@ export default function VersionCompareDialog({ currentVersion, kind, loadVersion
         <div className="space-y-2">
           <Label>对比版本</Label>
           <Select value={compareVersion === null ? undefined : String(compareVersion)} onValueChange={(value) => setCompareVersion(Number(value))}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="选择一个历史版本" /></SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>{selectable.map((version) => <SelectItem key={version.id} value={String(version.version)}>v{version.version}</SelectItem>)}</SelectContent>
           </Select>
           {selected?.remark ? <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-3 py-2 text-sm leading-5 text-muted-foreground">{selected.remark}</div> : null}
@@ -87,13 +87,13 @@ export default function VersionCompareDialog({ currentVersion, kind, loadVersion
     <Dialog open={result !== null} onOpenChange={(nextOpen) => { if (!nextOpen) setResult(null); }}>
       <LargeDialogContent className="flex flex-col overflow-hidden">
         <DialogHeader><DialogTitle>版本对比</DialogTitle><DialogDescription>左侧为当前版本，右侧为选择的对比版本。</DialogDescription></DialogHeader>
-        {result ? <CompareResult kind={kind} left={result.left} projectTitle={projectTitle} right={result.right} /> : null}
+        {result ? <VersionCompareResult kind={kind} left={result.left} leftProjectTitle={projectTitle} right={result.right} rightProjectTitle={projectTitle} /> : null}
       </LargeDialogContent>
     </Dialog>
   </>;
 }
 
-function CompareResult({ kind, left, projectTitle, right }: { kind: "factor" | "backtest"; left: Version; projectTitle: string; right: Version }) {
+export function VersionCompareResult({ kind, left, leftProjectTitle, right, rightProjectTitle }: { kind: "factor" | "backtest"; left: CompareVersion; leftProjectTitle: string; right: CompareVersion; rightProjectTitle: string }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [leftFactorRanges, setLeftFactorRanges] = useState<FactorChartRanges>();
   const [rightFactorRanges, setRightFactorRanges] = useState<FactorChartRanges>();
@@ -101,16 +101,20 @@ function CompareResult({ kind, left, projectTitle, right }: { kind: "factor" | "
   const [rightBacktestRanges, setRightBacktestRanges] = useState<BacktestChartRanges>();
   const leftFactors = kind === "factor" ? (left.parameters as FactorAnalysisParameters).factor_columns : [];
   const rightFactors = kind === "factor" ? (right.parameters as FactorAnalysisParameters).factor_columns : [];
-  const factorPairs = Array.from({ length: Math.max(leftFactors.length, rightFactors.length) }, (_, index) => ({ left: leftFactors[index] ?? "", right: rightFactors[index] ?? "" }));
-  const [factorIndex, setFactorIndex] = useState("0");
-  const pair = factorPairs[Number(factorIndex)] ?? factorPairs[0];
+  const [leftFactor, setLeftFactor] = useState(leftFactors[0] ?? "");
+  const [rightFactor, setRightFactor] = useState(rightFactors[0] ?? "");
   const factorRanges = useMemo(() => mergeFactorRanges(leftFactorRanges, rightFactorRanges), [leftFactorRanges, rightFactorRanges]);
   const backtestRanges = useMemo(() => mergeBacktestRanges(leftBacktestRanges, rightBacktestRanges), [leftBacktestRanges, rightBacktestRanges]);
 
   useEffect(() => {
+    if (!leftFactors.includes(leftFactor)) setLeftFactor(leftFactors[0] ?? "");
+    if (!rightFactors.includes(rightFactor)) setRightFactor(rightFactors[0] ?? "");
+  }, [leftFactor, leftFactors, rightFactor, rightFactors]);
+
+  useEffect(() => {
     setLeftFactorRanges(undefined);
     setRightFactorRanges(undefined);
-  }, [factorIndex, left.id, right.id]);
+  }, [left.id, leftFactor, right.id, rightFactor]);
 
   useEffect(() => {
     setLeftBacktestRanges(undefined);
@@ -118,15 +122,18 @@ function CompareResult({ kind, left, projectTitle, right }: { kind: "factor" | "
   }, [left.id, right.id]);
 
   return <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2"><VersionSummary accent="border-l-sky-500" kind={kind} projectTitle={projectTitle} version={left} /><VersionSummary accent="border-l-amber-500" kind={kind} projectTitle={projectTitle} version={right} /></div>
-    {kind === "factor" && pair
-      ? <>
-      <Tabs value={factorIndex} onValueChange={setFactorIndex}><TabsList>{factorPairs.map((item, index) => <TabsTrigger key={`${item.left}-${item.right}-${index}`} value={String(index)}>{factorPairLabel(item)}</TabsTrigger>)}</TabsList></Tabs>
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <ResultColumn accent="border-l-sky-500">{pair.left ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={pair.left} key={`${left.workflow_instance_id}:${pair.left}`} parameters={left.parameters as FactorAnalysisParameters} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} onMetrics={ignoreMetrics} /></Suspense> : <MissingFactor />}</ResultColumn>
-        <ResultColumn accent="border-l-amber-500">{pair.right ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={pair.right} key={`${right.workflow_instance_id}:${pair.right}`} parameters={right.parameters as FactorAnalysisParameters} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} onMetrics={ignoreMetrics} /></Suspense> : <MissingFactor />}</ResultColumn>
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2"><VersionSummary accent="border-l-sky-500" kind={kind} projectTitle={leftProjectTitle} version={left} /><VersionSummary accent="border-l-amber-500" kind={kind} projectTitle={rightProjectTitle} version={right} /></div>
+    {kind === "factor"
+      ? <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <ResultColumn accent="border-l-sky-500">
+          <FactorTabs factor={leftFactor} factors={leftFactors} onChange={setLeftFactor} />
+          {leftFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={left.parameters as FactorAnalysisParameters} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} onMetrics={ignoreMetrics} /></Suspense> : <MissingFactor />}
+        </ResultColumn>
+        <ResultColumn accent="border-l-amber-500">
+          <FactorTabs factor={rightFactor} factors={rightFactors} onChange={setRightFactor} />
+          {rightFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={right.parameters as FactorAnalysisParameters} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} onMetrics={ignoreMetrics} /></Suspense> : <MissingFactor />}
+        </ResultColumn>
       </div>
-      </>
       : null}
     {kind === "backtest"
       ? <>
@@ -154,7 +161,7 @@ function mergeBacktestRanges(left?: BacktestChartRanges, right?: BacktestChartRa
   return { netValue: mergeChartRanges(left?.netValue, right?.netValue), totalEquity: mergeChartRanges(left?.totalEquity, right?.totalEquity), drawdown: mergeChartRanges(left?.drawdown, right?.drawdown), rollingSharpe: mergeChartRanges(left?.rollingSharpe, right?.rollingSharpe) };
 }
 
-function VersionSummary({ accent, kind, projectTitle, version }: { accent: string; kind: "factor" | "backtest"; projectTitle: string; version: Version }) {
+function VersionSummary({ accent, kind, projectTitle, version }: { accent: string; kind: "factor" | "backtest"; projectTitle: string; version: CompareVersion }) {
   const fields = kind === "factor" ? factorSummary(version.parameters as FactorAnalysisParameters) : backtestSummary(version.parameters as BacktestParameters);
   return <div className={`min-w-0 space-y-3 rounded-md border border-l-4 bg-card p-3 ${accent}`}>
     <div><div className="truncate text-sm font-medium">{projectTitle}</div><div className="mt-0.5 text-xs text-muted-foreground">v{version.version}</div></div>
@@ -166,7 +173,10 @@ function VersionSummary({ accent, kind, projectTitle, version }: { accent: strin
 function ResultColumn({ accent, children }: { accent: string; children: React.ReactNode }) { return <div className={`min-w-0 rounded-md border border-l-4 bg-card p-3 ${accent}`}>{children}</div>; }
 function ReportLoading() { return <div className="grid min-h-72 place-items-center text-sm text-muted-foreground">正在加载报告</div>; }
 function MissingFactor() { return <div className="grid min-h-72 place-items-center text-sm text-muted-foreground">该版本没有对应因子</div>; }
-function factorPairLabel(pair: { left: string; right: string }) { return pair.left === pair.right ? pair.left : `${pair.left || "—"} / ${pair.right || "—"}`; }
+function FactorTabs({ factor, factors, onChange }: { factor: string; factors: string[]; onChange: (value: string) => void }) {
+  if (!factors.length) return null;
+  return <Tabs className="mb-4" value={factor} onValueChange={onChange}><TabsList>{factors.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}</TabsList></Tabs>;
+}
 
 function factorSummary(parameters: FactorAnalysisParameters): string[][] {
   const pool = stockPools.find((item) => item.value === stockPoolCode(parameters))?.label ?? stockPoolCode(parameters);

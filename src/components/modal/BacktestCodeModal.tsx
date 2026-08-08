@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 
 export type BacktestCodePanel = "callbacks" | "codes" | "dataset" | "utils";
+const GET_PARAMS_COMPLETION = { label: "getParams", detail: "getParams()", documentation: "获取当前回测上传的策略参数字典。", insertText: "getParams()" };
 
 type BacktestCodeModalProps = {
   catalog: DslCatalog;
@@ -34,7 +35,7 @@ export default function BacktestCodeModal({ catalog, onChange, onPanelChange, on
   const hasCodesQuery = parameters.codes_query !== null;
   const codesDsl = backtestCodesDsl(parameters);
   const datasetDsl = backtestDatasetDsl(parameters);
-  const callbackCompletions = useMemo(() => utilsCompletions(parameters.utils), [parameters.utils]);
+  const callbackCompletions = useMemo(() => [GET_PARAMS_COMPLETION, ...utilsCompletions(parameters.utils)], [parameters.utils]);
   useEffect(() => { setCodesDslValid(true); setDatasetDslValid(true); }, [parameters.codes_query, parameters.dataset_query]);
   useEffect(() => onValidityChange((!hasCodesQuery || codesDslValid) && datasetDslValid), [codesDslValid, datasetDslValid, hasCodesQuery, onValidityChange]);
 
@@ -48,7 +49,7 @@ export default function BacktestCodeModal({ catalog, onChange, onPanelChange, on
         <div className="px-3 pt-3 pr-10"><TabsList>{hasCodesQuery && <TabsTrigger value="codes"><Braces />股票池查询 DSL</TabsTrigger>}<TabsTrigger value="dataset"><Braces />回测数据查询 DSL</TabsTrigger><TabsTrigger value="utils"><Wrench />工具函数</TabsTrigger><TabsTrigger value="callbacks"><FunctionSquare />回调函数</TabsTrigger></TabsList></div>
         {parameters.codes_query !== null && <TabsContent className="min-h-0 flex-1 overflow-hidden p-3 pt-2" value="codes"><div className="flex h-full min-h-0 flex-col gap-2"><QueryRange query={parameters.codes_query} readOnly={readOnly} onChange={updateCodesQuery} /><div className="min-h-0 flex-1"><DslEditor catalog={catalog} modelPath={`factor-dsl://backtest/${projectId}/codes.json`} onChange={(nextDsl) => onChange(updateBacktestCodesDsl(parameters, nextDsl))} onValidityChange={setCodesDslValid} readOnly={readOnly} value={codesDsl} /></div></div></TabsContent>}
         <TabsContent className="min-h-0 flex-1 overflow-hidden p-3 pt-2" value="dataset"><div className="flex h-full min-h-0 flex-col gap-2"><QueryRange codesDisabled={hasCodesQuery} query={parameters.dataset_query} readOnly={readOnly} onChange={updateDatasetQuery} /><div className="min-h-0 flex-1"><DslEditor catalog={catalog} modelPath={`factor-dsl://backtest/${projectId}/dataset.json`} onChange={(nextDsl) => onChange(updateBacktestDatasetDsl(parameters, nextDsl))} onValidityChange={setDatasetDslValid} readOnly={readOnly} value={datasetDsl} /></div></div></TabsContent>
-        <TabsContent className="min-h-0 flex-1 overflow-hidden p-3 pt-2" value="utils"><DolphinDbEditor modelPath={`dolphindb://backtest/${projectId}/utils.dos`} onChange={(utils) => onChange({ ...parameters, utils })} readOnly={readOnly} value={parameters.utils} /></TabsContent>
+        <TabsContent className="min-h-0 flex-1 overflow-hidden p-3 pt-2" value="utils"><DolphinDbEditor completions={[GET_PARAMS_COMPLETION]} modelPath={`dolphindb://backtest/${projectId}/utils.dos`} onChange={(utils) => onChange({ ...parameters, utils })} readOnly={readOnly} value={parameters.utils} /></TabsContent>
         <TabsContent className="min-h-0 flex-1 overflow-hidden p-3 pt-2" value="callbacks">
           <div className="flex h-full min-h-0 flex-col"><div className="mb-2 flex items-end justify-between gap-2"><div className="space-y-1"><Label>生命周期回调</Label><Select value={callback} onValueChange={(value) => setCallback(value as CallbackName)}><SelectTrigger className="w-56 font-mono"><SelectValue /></SelectTrigger><SelectContent>{callbackNames.map((name) => <SelectItem className="font-mono" key={name} value={name}>{name}</SelectItem>)}</SelectContent></Select></div><Badge variant={validCallback(callback, parameters.callbacks[callback]) ? "secondary" : "destructive"}>{validCallback(callback, parameters.callbacks[callback]) ? "签名正确" : "签名错误"}</Badge></div>
           <div className="min-h-0 flex-1"><DolphinDbEditor completions={callbackCompletions} modelPath={`dolphindb://backtest/${projectId}/callbacks/${callback}.dos`} onChange={updateCallback} readOnly={readOnly} value={parameters.callbacks[callback]} /></div></div>

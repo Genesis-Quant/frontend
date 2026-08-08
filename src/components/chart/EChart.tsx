@@ -1,12 +1,12 @@
-import { BarChart, LineChart } from "echarts/charts";
-import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
+import { BarChart, HeatmapChart, LineChart } from "echarts/charts";
+import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
 import { getInstanceByDom, init, use, type EChartsCoreOption } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
 
 import { formatChartTooltipValue } from "@/assets/lib/chart";
 
-use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
+use([BarChart, HeatmapChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
 const RESIZE_SETTLE_MS = 100;
 

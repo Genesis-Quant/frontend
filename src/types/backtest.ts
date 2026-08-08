@@ -2,6 +2,8 @@ import type { DslDocument, FactorQuery } from "@/types/factor";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
+export type StrategyParameterValue = string | number | boolean | null;
+export type StrategyParameters = Record<string, StrategyParameterValue>;
 export const callbackParameters: Record<CallbackName, string> = {
   initialize: "mutable context",
   beforeTrading: "mutable context",
@@ -16,6 +18,7 @@ export type BacktestSummary = Record<string, number | null>;
 
 export type BacktestParameters = {
   config: Record<string, unknown>;
+  params: StrategyParameters;
   codes_query: FactorQuery | null;
   dataset_query: FactorQuery;
   adj: "hfq" | "qfq" | null;
@@ -76,6 +79,53 @@ export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "
 export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "return_summary" | "daily_trading_statistics" | "engine_stat";
 export type BacktestOutput = { name: BacktestOutputName; filename: string; size: number; modified_at: string };
 
+export type BatchResearchItemRequest = {
+  parameters: Record<string, unknown>;
+};
+
+export type BatchResearchRequest = {
+  analysis_type: string;
+  project_id: number;
+  version: number;
+  description: string;
+  items: BatchResearchItemRequest[];
+};
+
+export type BatchResearchItem = {
+  id: number;
+  workflow_run_id: number;
+  workflow_instance_id: number | null;
+  state: string;
+  parameters: Record<string, unknown>;
+  error: string | null;
+};
+
+export type BatchResearchListItem = {
+  id: number;
+  analysis_type: string;
+  analysis_type_label: string;
+  project_id: number;
+  version: number;
+  description: string;
+  state: string;
+  requested_count: number;
+  completed_count: number;
+  failed_count: number;
+  created_at: string;
+};
+
+export type BatchResearchResponse = BatchResearchListItem & {
+  error: string | null;
+  items: BatchResearchItem[];
+};
+
+export type BatchResearchPage = {
+  items: BatchResearchListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
 export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "start_date" | "end_date">): FactorQuery {
   return {
     start_date: datasetQuery?.start_date ?? "2020-01-01",
@@ -97,7 +147,14 @@ export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "star
 
 export const defaultBacktestParameters = (): BacktestParameters => ({
   config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, matchingMode: 2, enableMinimumPerTransactionFee: true },
-  codes_query: null,
+  params: {
+    riskParityCapitalRatio: 0.98,
+    riskParityLotSize: 100,
+    riskParityMomentumThreshold: 0,
+    riskParityAssetCount: 20,
+    riskParityCovarianceWindow: 60
+  },
+  codes_query: defaultBacktestCodesQuery(),
   dataset_query: {
     start_date: "2020-01-01",
     end_date: "2026-01-01",
@@ -176,13 +233,14 @@ def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
 }`,
   callbacks: {
     initialize: `def initialize(mutable context) {
+    strategyParams = getParams()
     context["barCount"] = 0l
     context["rebalanceCount"] = 0l
-    context["riskParityCapitalRatio"] = 0.98
-    context["riskParityLotSize"] = 100l
-    context["riskParityMomentumThreshold"] = 0.0
-    context["riskParityAssetCount"] = 20l
-    context["riskParityCovarianceWindow"] = 60l
+    context["riskParityCapitalRatio"] = double(strategyParams["riskParityCapitalRatio"])
+    context["riskParityLotSize"] = long(strategyParams["riskParityLotSize"])
+    context["riskParityMomentumThreshold"] = double(strategyParams["riskParityMomentumThreshold"])
+    context["riskParityAssetCount"] = long(strategyParams["riskParityAssetCount"])
+    context["riskParityCovarianceWindow"] = long(strategyParams["riskParityCovarianceWindow"])
 }`,
     beforeTrading: `def beforeTrading(mutable context) {
     return NULL

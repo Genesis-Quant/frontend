@@ -105,7 +105,6 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               className="h-10 bg-[color:var(--field-bg)] pl-10 dark:bg-[color:var(--field-bg)]"
               id="username"
               maxLength={64}
-              placeholder="quant_researcher"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
             />
@@ -121,7 +120,6 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               className="h-10 bg-[color:var(--field-bg)] pr-11 pl-10 dark:bg-[color:var(--field-bg)]"
               id="password"
               maxLength={72}
-              placeholder="输入密码"
               type={passwordVisible ? "text" : "password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -143,7 +141,6 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                 className="h-10 bg-[color:var(--field-bg)] pl-10 dark:bg-[color:var(--field-bg)]"
                 id="confirm-password"
                 maxLength={72}
-                placeholder="再次输入密码"
                 type={passwordVisible ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}

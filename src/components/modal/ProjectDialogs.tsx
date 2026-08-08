@@ -10,7 +10,6 @@ type CreateProjectDialogProps = {
   description: string;
   inputId: string;
   open: boolean;
-  placeholder?: string;
   submitting: boolean;
   title: string;
   value: string;
@@ -19,8 +18,8 @@ type CreateProjectDialogProps = {
   onValue: (value: string) => void;
 };
 
-export function CreateProjectDialog({ description, inputId, open, placeholder, submitting, title, value, onCreate, onOpenChange, onValue }: CreateProjectDialogProps) {
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader><div className="space-y-2"><Label htmlFor={inputId}>项目名称</Label><Input id={inputId} autoFocus placeholder={placeholder} value={value} onChange={(event) => onValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !isInputMethodComposing(event)) onCreate(); }} /></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button><Button disabled={submitting || !value.trim()} onClick={onCreate}>{submitting ? <Loader2 className="animate-spin" /> : <Plus />}创建</Button></DialogFooter></DialogContent></Dialog>;
+export function CreateProjectDialog({ description, inputId, open, submitting, title, value, onCreate, onOpenChange, onValue }: CreateProjectDialogProps) {
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader><div className="space-y-2"><Label htmlFor={inputId}>项目名称</Label><Input id={inputId} autoFocus value={value} onChange={(event) => onValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !isInputMethodComposing(event)) onCreate(); }} /></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button><Button disabled={submitting || !value.trim()} onClick={onCreate}>{submitting ? <Loader2 className="animate-spin" /> : <Plus />}创建</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 type DeleteProjectDialogProps = {

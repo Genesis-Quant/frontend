@@ -1,6 +1,6 @@
 import { client } from "@/assets/lib/request";
 import { isFactorQuery, type DslCatalog } from "@/types/factor";
-import { callbackNames, callbackParameters, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestSummary, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type CallbackName } from "@/types/backtest";
+import { callbackNames, callbackParameters, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestSummary, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName } from "@/types/backtest";
 
 export function validCallback(callback: CallbackName, source: string) {
   const match = new RegExp(`\\bdef\\s+${callback}\\s*\\(([^)]*)\\)\\s*\\{`).exec(source);
@@ -126,6 +126,7 @@ export function validBacktestParameters(parameters: BacktestParameters) {
 
 const BACKTEST_PARAMETER_NAMES = new Set([
   "config",
+  "params",
   "codes_query",
   "dataset_query",
   "adj",
@@ -142,6 +143,7 @@ export function isBacktestParameters(value: unknown): value is BacktestParameter
   if (!isRecord(callbacks)) return false;
   return [
     isRecord(value.config),
+    isRecord(value.params),
     value.codes_query === null || isFactorQuery(value.codes_query),
     isFactorQuery(value.dataset_query),
     value.adj === null || value.adj === "hfq" || value.adj === "qfq",
@@ -164,7 +166,11 @@ export const backtestApi = {
   saveVersion: (projectId: number, workflowInstanceId: number, remark: string, summary: BacktestSummary) => client.post<BacktestVersion>(`/backtest/projects/${projectId}/versions`, { workflow_instance_id: workflowInstanceId, remark, summary }),
   catalog: () => client.get<DslCatalog>("/backtest/dsl/catalog", { timeout: 30000 }),
   outputs: (workflowInstanceId: number) => client.get<BacktestOutput[]>(`/backtest/workflows/${workflowInstanceId}/outputs`),
-  output: (workflowInstanceId: number, name: BacktestOutputName) => client.getBinary(`/backtest/workflows/${workflowInstanceId}/outputs/${name}`)
+  output: (workflowInstanceId: number, name: BacktestOutputName) => client.getBinary(`/backtest/workflows/${workflowInstanceId}/outputs/${name}`),
+  listBatchResearch: (projectId: number, version: number, analysisType: "fee_analysis" | "sensitivity", page = 1, pageSize = 20) => client.get<BatchResearchPage>("/backtest/batch-research", { params: { project_id: projectId, version, analysis_type: analysisType, page, page_size: pageSize } }),
+  createBatchResearch: (request: BatchResearchRequest) => client.post<BatchResearchResponse>("/backtest/batch-research", request, { timeout: 120000 }),
+  getBatchResearch: (researchId: number) => client.get<BatchResearchResponse>(`/backtest/batch-research/${researchId}`),
+  createFeeAnalysis: (projectId: number, version: number, rates: number[]) => client.post<BatchResearchResponse>(`/backtest/projects/${projectId}/versions/${version}/fee-analysis`, { rates }, { timeout: 120000 })
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }

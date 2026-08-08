@@ -8,6 +8,7 @@ import { workflowsApi } from "@/assets/lib/workflows";
 import AnalysisWorkspace from "@/components/layout/AnalysisWorkspace";
 import RequestBodyDialog from "@/components/modal/RequestBodyDialog";
 import SaveVersionDialog from "@/components/modal/SaveVersionDialog";
+import FactorCandidateSelectionReport from "@/components/modal/FactorCandidateSelectionReport";
 import VersionCompareDialog from "@/components/modal/VersionCompareDialog";
 import TaskLogModal from "@/components/modal/TaskLogModal";
 import FactorAnalysisControlsPanel from "@/components/panel/FactorAnalysisControlsPanel";
@@ -37,6 +38,7 @@ export default function FactorAnalysisDetailPage() {
   const [stopping, setStopping] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [candidateReportOpen, setCandidateReportOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [remark, setRemark] = useState("");
   const [logsOpen, setLogsOpen] = useState(false);
@@ -233,6 +235,7 @@ export default function FactorAnalysisDetailPage() {
       versions={versions}
       projectId={projectId}
       onAnalyze={analyze}
+      onCandidateReport={() => setCandidateReportOpen(true)}
       onCompare={() => setCompareOpen(true)}
       onContinue={continueFromVersion}
       onLogs={openTaskLog}
@@ -264,6 +267,7 @@ export default function FactorAnalysisDetailPage() {
       onSave={saveVersion}
     />
     <VersionCompareDialog currentVersion={currentVersion} kind="factor" loadVersion={(version) => factorApi.getVersion(projectId, version)} open={compareOpen} projectTitle={project.title} versions={versions} onOpenChange={setCompareOpen} />
+    <FactorCandidateSelectionReport open={candidateReportOpen} onOpenChange={setCandidateReportOpen} projectId={projectId} projectTitle={project.title} versions={versions} />
     <RequestBodyDialog editable={!readOnly} endpoint={`/api/v1/factor/projects/${projectId}/analyses`} open={parametersOpen} value={displayedParameters} validate={(value) => canNormalizeFactorAnalysisParameters(value) ? null : "因子分析参数结构不完整。"} onApply={(value) => setParameters(normalizeAnalysisParameters(value))} onClose={() => setParametersOpen(false)} />
     <TaskLogModal open={logsOpen} workflowInstanceId={displayedWorkflowInstanceId} taskInstanceId={logTaskInstanceId} onOpenChange={setLogsOpen} />
   </>;

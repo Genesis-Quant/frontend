@@ -79,7 +79,7 @@ function TextFilter({ filter, onFilter }: { filter: ParquetTableBarFilter; onFil
     const timeout = window.setTimeout(() => onFilter(filter.id, value.trim() || undefined), 300);
     return () => window.clearTimeout(timeout);
   }, [filter.id, onFilter, value]);
-  return <Input aria-label={`筛选${filter.label}`} className={filter.type === "date" ? "h-6 w-24 rounded-sm px-2 py-0 text-xs" : "h-6 w-28 rounded-sm px-2 py-0 text-xs"} placeholder={`筛选${filter.label}`} value={value} onChange={(event) => setValue(event.target.value)} />;
+  return <Input aria-label={`筛选${filter.label}`} className={filter.type === "date" ? "h-6 w-24 rounded-sm px-2 py-0 text-xs" : "h-6 w-28 rounded-sm px-2 py-0 text-xs"} value={value} onChange={(event) => setValue(event.target.value)} />;
 }
 
 function EnumFilter({ filter, onFilter }: { filter: ParquetTableBarFilter; onFilter: ParquetTableBarProps["onFilter"] }) {

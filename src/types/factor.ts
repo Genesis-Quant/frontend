@@ -329,7 +329,9 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
   const inputCodesQuery = input.codes_query;
   const codesQuery = validAnalysisCodesQuery(inputCodesQuery)
     ? inputCodesQuery
-    : stockPoolQuery("000300.SH", datasetQuery.start_date, datasetQuery.end_date);
+    : isFactorQuery(inputCodesQuery)
+      ? inputCodesQuery
+      : stockPoolQuery("000300.SH", datasetQuery.start_date, datasetQuery.end_date);
   const parameters: FactorAnalysisParameters = {
     codes_query: codesQuery,
     dataset_query: datasetQuery,
@@ -402,7 +404,7 @@ function validAnalysisCodesQuery(value: unknown): value is FactorQuery {
   const fieldNames = Object.keys(member.fields);
   const factor = member.fields.left;
   return [
-    value.lookback === "P0D",
+    isZeroLookback(value.lookback),
     value.codes.length === 0,
     value.factors.length === 0,
     derivativeNames.length === 1,
@@ -418,6 +420,10 @@ function validAnalysisCodesQuery(value: unknown): value is FactorQuery {
     Object.keys(member.params).length === 0,
     stockPools.some((pool) => pool.factor === factor)
   ].every(Boolean);
+}
+
+function isZeroLookback(value: string) {
+  return value === "P0D" || value === "PT0S";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
