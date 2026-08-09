@@ -29,7 +29,10 @@ export type BacktestParameters = {
 };
 
 export type BacktestWorkflowSummary = {
-  record_id: number;
+  id: number;
+  version: number;
+  saved: boolean;
+  workspace_id: number;
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
@@ -41,7 +44,7 @@ export type BacktestProject = {
   id: number;
   title: string;
   latest_version: number | null;
-  draft: BacktestWorkflowSummary | null;
+  draft: BacktestWorkflowSummary;
   created_at: string;
   updated_at: string;
 };
@@ -61,20 +64,24 @@ export type BacktestProjectPage = {
   total: number;
 };
 
-export type BacktestWorkflowSubmitted = { record_id: number; workflow_instance_id: number };
+export type BacktestWorkflowSubmitted = { workspace_id: number; workflow_instance_id: number };
 
 export type BacktestVersion = {
   id: number;
   project_id: number;
-  workflow_instance_id: number;
+  workflow_workspace_id: number;
+  workflow_instance_id: number | null;
   version: number;
+  saved: boolean;
+  is_current: boolean;
   remark: string;
   parameters: BacktestParameters;
-  summary: BacktestSummary;
+  summary: BacktestSummary | null;
   created_at: string;
+  updated_at: string;
 };
 
-export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "remark" | "created_at">;
+export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "saved" | "is_current" | "remark" | "workflow_instance_id" | "created_at">;
 
 export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "return_summary" | "daily_trading_statistics" | "engine_stat";
 export type BacktestOutput = { name: BacktestOutputName; filename: string; size: number; modified_at: string };
@@ -93,11 +100,13 @@ export type BatchResearchRequest = {
 
 export type BatchResearchItem = {
   id: number;
-  workflow_run_id: number;
+  workflow_workspace_id: number;
   workflow_instance_id: number | null;
   state: string;
   parameters: Record<string, unknown>;
   error: string | null;
+  metrics: Record<string, number | null> | null;
+  result_error: string | null;
 };
 
 export type BatchResearchListItem = {

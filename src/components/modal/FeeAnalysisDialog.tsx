@@ -2,12 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Loader2, RefreshCw } from "lucide-react";
 
 import { backtestApi } from "@/assets/lib/backtest";
-import { BacktestAnalytics } from "@/assets/lib/backtestAnalysis";
 import { errorMessage } from "@/assets/lib/utils";
 import EChart from "@/components/chart/EChart";
 import SchedulerStateBadge from "@/components/badge/SchedulerStateBadge";
-import type { BacktestParameters, BatchResearchItem, BatchResearchListItem, BatchResearchResponse } from "@/types/backtest";
-import { quantStatsReport, type QuantStatsReport } from "@/assets/lib/quantstats";
+import type { BatchResearchItem, BatchResearchListItem, BatchResearchResponse } from "@/types/backtest";
 import { Button } from "@/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, LargeDialogContent } from "@/ui/dialog";
 import { Input } from "@/ui/input";
@@ -24,11 +22,10 @@ type FeeAnalysisDialogProps = {
 type FeeResult = {
   error: string | null;
   item: BatchResearchItem;
-  report: QuantStatsReport | null;
-  totalFee: number | null;
+  metrics: Record<string, number | null> | null;
 };
 
-const terminalBatchStates = new Set(["SUCCESS", "FAILURE", "PARTIAL_SUCCESS"]);
+const resultReadyBatchStates = new Set(["SUCCESS", "FAILURE", "PARTIAL_SUCCESS", "RESULT_PENDING"]);
 const defaultRateText = "0, 0.01, 0.03, 0.05, 0.1";
 
 export default function FeeAnalysisDialog({ onOpenChange, open, projectId, projectTitle, version }: FeeAnalysisDialogProps) {
@@ -63,7 +60,7 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
   }, [open, projectId, version]);
 
   useEffect(() => {
-    if (!open || !batch || terminalBatchStates.has(batch.state)) return undefined;
+    if (!open || !batch || resultReadyBatchStates.has(batch.state)) return undefined;
     let disposed = false;
     let polling = false;
     const timer = window.setInterval(async () => {
@@ -82,12 +79,18 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
   }, [batch, open]);
 
   useEffect(() => {
-    if (!open || !batch || !terminalBatchStates.has(batch.state)) return undefined;
+    if (!open || !batch || !resultReadyBatchStates.has(batch.state)) return undefined;
+    const pending = batch.items.some((item) => successful(item) && item.metrics === null && item.result_error === null);
+    if (!pending) {
+      setResults(feeResults(batch.items));
+      setLoadingResults(false);
+      return undefined;
+    }
     let disposed = false;
     setLoadingResults(true);
     setError("");
-    loadFeeResults(batch.items)
-      .then((next) => { if (!disposed) setResults(next); })
+    backtestApi.calculateBatchResearch(batch.id)
+      .then((next) => { if (!disposed) { setBatch(next); setResults(feeResults(next.items)); } })
       .catch((reason) => { if (!disposed) setError(errorMessage(reason)); })
       .finally(() => { if (!disposed) setLoadingResults(false); });
     return () => { disposed = true; };
@@ -124,7 +127,23 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
     }
   }
 
-  const reportRows = results.filter((item) => item.report !== null);
+  async function retryResults() {
+    if (!batch || loadingResults) return;
+    setLoadingResults(true);
+    setError("");
+    try {
+      const next = await backtestApi.calculateBatchResearch(batch.id);
+      setBatch(next);
+      setResults(feeResults(next.items));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setLoadingResults(false);
+    }
+  }
+
+  const reportRows = results.filter((item) => item.metrics !== null);
+  const retryableResults = batch?.items.some((item) => successful(item) && item.metrics === null) ?? false;
   const performanceOption = useMemo(() => feeChartOption(reportRows, "performance"), [reportRows]);
   const riskOption = useMemo(() => feeChartOption(reportRows, "risk"), [reportRows]);
 
@@ -145,9 +164,9 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
           <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>取消</Button><Button onClick={submit} disabled={submitting || version === null}>{submitting ? <Loader2 className="animate-spin" /> : <BarChart3 />}提交批量分析</Button></DialogFooter>
           </div>
           : <div className="space-y-5 pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex items-center gap-3"><SchedulerStateBadge state={batch.state} /><span className="text-sm text-muted-foreground">已完成 {batch.completed_count}/{batch.requested_count}，失败 {batch.failed_count}</span></div><Button size="sm" variant="outline" onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />重新提交</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex items-center gap-3"><SchedulerStateBadge state={batch.state} /><span className="text-sm text-muted-foreground">已完成 {batch.completed_count}/{batch.requested_count}，失败 {batch.failed_count}</span></div><div className="flex gap-2">{retryableResults ? <Button disabled={loadingResults} size="sm" variant="outline" onClick={retryResults}>{loadingResults ? <Loader2 className="animate-spin" /> : <RefreshCw />}重试生成结果</Button> : null}<Button size="sm" variant="outline" onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />重新提交</Button></div></div>
           {batch.error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{batch.error}</div> : null}
-          {loadingResults ? <div className="grid min-h-48 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><div className="mt-3 text-sm text-muted-foreground">正在读取各费率的回测结果...</div></div></div> : reportRows.length ? <><div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">收益与波动随手续费变化</div><EChart height={300} option={performanceOption} /></div><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">风险调整收益随手续费变化</div><EChart height={300} option={riskOption} /></div></div><FeeResultTable results={results} /></> : <FeeProgressTable items={batch.items} />}
+          {loadingResults ? <div className="grid min-h-48 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><div className="mt-3 text-sm text-muted-foreground">正在生成手续费分析结果...</div></div></div> : reportRows.length ? <><div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">收益与波动随手续费变化</div><EChart height={300} option={performanceOption} /></div><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">风险调整收益随手续费变化</div><EChart height={300} option={riskOption} /></div></div><FeeResultTable results={results} /></> : <FeeProgressTable items={batch.items} />}
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
           </div>}
       </div>
@@ -155,46 +174,20 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
   </Dialog>;
 }
 
-async function loadFeeResults(items: BatchResearchItem[]) {
-  const results: FeeResult[] = Array(items.length);
-  let nextIndex = 0;
-  async function worker() {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await loadFeeResult(items[index]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
-  return results;
+function feeResults(items: BatchResearchItem[]): FeeResult[] {
+  return items.map((item) => ({ error: item.result_error ?? item.error, item, metrics: item.metrics }));
 }
 
-async function loadFeeResult(item: BatchResearchItem): Promise<FeeResult> {
-  if (item.state !== "SUCCESS" && item.state !== "FORCED_SUCCESS") return { error: item.error, item, report: null, totalFee: null };
-  if (item.workflow_instance_id === null) return { error: "工作流实例尚未生成", item, report: null, totalFee: null };
-  try {
-    const buffer = await backtestApi.output(item.workflow_instance_id, "daily_portfolios");
-    const analytics = await BacktestAnalytics.create(item.workflow_instance_id, buffer);
-    try {
-      const portfolio = await analytics.portfolios();
-      const parameters = item.parameters as unknown as BacktestParameters;
-      const report = portfolio.length ? quantStatsReport(portfolio.map((row) => ({ time: row.time, value: row.dailyReturn ?? 0 })), parameters.annual_trading_days, parameters.risk_free_rate, true) : null;
-      const fees = portfolio.flatMap((row) => row.dailyFee === null || row.dailyFee < 0 ? [] : [row.dailyFee]);
-      return { error: null, item, report, totalFee: fees.length ? fees.reduce((sum, value) => sum + value, 0) : null };
-    } finally {
-      await analytics.close();
-    }
-  } catch (reason) {
-    return { error: errorMessage(reason), item, report: null, totalFee: null };
-  }
+function successful(item: BatchResearchItem) {
+  return item.state === "SUCCESS" || item.state === "FORCED_SUCCESS";
 }
 
 function FeeProgressTable({ items }: { items: BatchResearchItem[] }) {
-  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>手续费率</TableHead><TableHead>工作流</TableHead><TableHead>状态</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{feeLabel(item)}</TableCell><TableCell className="font-mono">{item.workflow_instance_id ?? "—"}</TableCell><TableCell><SchedulerStateBadge state={item.state} /></TableCell><TableCell className="max-w-96 truncate text-destructive">{item.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>手续费率</TableHead><TableHead>工作流</TableHead><TableHead>状态</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{feeLabel(item)}</TableCell><TableCell className="font-mono">{item.workflow_instance_id ?? "—"}</TableCell><TableCell><SchedulerStateBadge state={item.state} /></TableCell><TableCell className="max-w-96 truncate text-destructive">{item.result_error ?? item.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
 function FeeResultTable({ results }: { results: FeeResult[] }) {
-  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>手续费率</TableHead><TableHead>状态</TableHead><TableHead className="text-right">累计收益</TableHead><TableHead className="text-right">年化收益</TableHead><TableHead className="text-right">夏普比率</TableHead><TableHead className="text-right">年化波动</TableHead><TableHead className="text-right">最大回撤</TableHead><TableHead className="text-right">胜率</TableHead><TableHead className="text-right">累计手续费</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{results.map((result) => <TableRow key={result.item.id}><TableCell className="font-medium">{feeLabel(result.item)}</TableCell><TableCell>{result.report ? <SchedulerStateBadge state="SUCCESS" /> : <SchedulerStateBadge state={result.item.state} />}</TableCell><MetricCell value={result.report?.totalReturn} percent /><MetricCell value={result.report?.cagr} percent /><MetricCell value={result.report?.sharpe} /><MetricCell value={result.report?.volatility} percent /><MetricCell value={result.report?.maxDrawdown} percent /><MetricCell value={result.report?.winRate} percent /><MetricCell value={result.totalFee} currency /><TableCell className="max-w-96 truncate text-destructive">{result.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>手续费率</TableHead><TableHead>状态</TableHead><TableHead className="text-right">累计收益</TableHead><TableHead className="text-right">年化收益</TableHead><TableHead className="text-right">夏普比率</TableHead><TableHead className="text-right">年化波动</TableHead><TableHead className="text-right">最大回撤</TableHead><TableHead className="text-right">胜率</TableHead><TableHead className="text-right">累计手续费</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{results.map((result) => <TableRow key={result.item.id}><TableCell className="font-medium">{feeLabel(result.item)}</TableCell><TableCell>{result.metrics ? <SchedulerStateBadge state="SUCCESS" /> : <SchedulerStateBadge state={result.item.state} />}</TableCell><MetricCell value={result.metrics?.totalReturn} percent /><MetricCell value={result.metrics?.cagr} percent /><MetricCell value={result.metrics?.sharpe} /><MetricCell value={result.metrics?.volatility} percent /><MetricCell value={result.metrics?.maxDrawdown} percent /><MetricCell value={result.metrics?.winRate} percent /><MetricCell value={result.metrics?.totalFee} currency /><TableCell className="max-w-96 truncate text-destructive">{result.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
 function MetricCell({ currency = false, percent = false, value }: { currency?: boolean; percent?: boolean; value: number | null | undefined }) {
@@ -222,18 +215,20 @@ function formatMetric(value: number | null | undefined, percent = false, currenc
 
 function feeChartOption(results: FeeResult[], kind: "performance" | "risk") {
   const labels = results.map((result) => feeLabel(result.item));
-  const value = (select: (report: QuantStatsReport) => number) => results.map((result) => result.report ? select(result.report) : null);
+  const value = (name: string) => results.map((result) => result.metrics?.[name] ?? null);
   const series = kind === "performance"
     ? [
-    { name: "累计收益", data: value((report) => report.totalReturn * 100) },
-    { name: "年化收益", data: value((report) => report.cagr * 100) },
-    { name: "年化波动", data: value((report) => report.volatility * 100) },
-    { name: "最大回撤", data: value((report) => report.maxDrawdown * 100) }
+    { name: "累计收益", data: value("totalReturn").map(percentValue) },
+    { name: "年化收益", data: value("cagr").map(percentValue) },
+    { name: "年化波动", data: value("volatility").map(percentValue) },
+    { name: "最大回撤", data: value("maxDrawdown").map(percentValue) }
       ]
     : [
-    { name: "夏普比率", data: value((report) => report.sharpe) },
-    { name: "索提诺比率", data: value((report) => report.sortino) },
-    { name: "卡尔玛比率", data: value((report) => report.calmar) }
+    { name: "夏普比率", data: value("sharpe") },
+    { name: "索提诺比率", data: value("sortino") },
+    { name: "卡尔玛比率", data: value("calmar") }
       ];
   return { animationDuration: 180, grid: { left: 48, right: 20, top: 40, bottom: 34, containLabel: true }, legend: { top: 0, left: 0 }, tooltip: { trigger: "axis" }, xAxis: { type: "category", data: labels, axisLabel: { interval: 0 } }, yAxis: { type: "value", axisLabel: { formatter: (axisValue: number) => kind === "performance" ? `${axisValue}%` : axisValue.toFixed(2) } }, series: series.map((item) => ({ ...item, type: "line", showSymbol: true, connectNulls: false })) };
 }
+
+function percentValue(value: number | null) { return value === null ? null : value * 100; }

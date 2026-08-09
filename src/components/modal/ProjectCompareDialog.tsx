@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 type CompareKind = "factor" | "backtest";
 type ProjectOption = { id: number; title: string; latest_version: number | null };
-type VersionOption = { id: number; version: number; remark: string };
+type VersionOption = { id: number; version: number; saved: boolean; remark: string };
 type CompareSide = "left" | "right";
 
 type ProjectCompareDialogProps = {
@@ -82,7 +82,7 @@ export default function ProjectCompareDialog({ kind, onOpenChange, open, title }
     try {
       const versions = kind === "factor" ? await factorApi.listVersions(projectId) : await backtestApi.listVersions(projectId);
       if (versionRequestIds.current[side] !== requestId) return;
-      setVersions(versions.map(({ id, remark, version }) => ({ id, remark, version })).sort((left, right) => left.version - right.version));
+      setVersions(versions.filter((item) => item.saved || item.is_current).map(({ id, remark, saved, version }) => ({ id, remark, saved, version })).sort((left, right) => left.version - right.version));
     } catch (reason) {
       if (versionRequestIds.current[side] === requestId) setError(errorMessage(reason));
     } finally {
@@ -143,6 +143,6 @@ export default function ProjectCompareDialog({ kind, onOpenChange, open, title }
 function CompareSelector({ itemId, itemLabel, items, onItemChange, onVersionChange, version, versionLabel, versions }: { itemId: number | null; itemLabel: string; items: ProjectOption[]; onItemChange: (value: string) => void; onVersionChange: (value: string) => void; version: number | null; versionLabel: string; versions: VersionOption[] }) {
   return <div className="space-y-4 rounded-md border bg-muted/15 p-4">
     <div className="space-y-2"><Label>{itemLabel}</Label><Select value={itemId === null ? undefined : String(itemId)} onValueChange={onItemChange}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{items.length ? items.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.title}</SelectItem>) : <SelectItem value="__empty__" disabled>暂无可选研究</SelectItem>}</SelectContent></Select></div>
-    <div className="space-y-2"><Label>{versionLabel}</Label><Select value={version === null ? undefined : String(version)} onValueChange={onVersionChange}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{versions.length ? versions.map((item) => <SelectItem key={item.version} value={String(item.version)}>v{item.version}</SelectItem>) : <SelectItem value="__empty__" disabled>{itemId === null ? "请先选择研究" : "暂无可选版本"}</SelectItem>}</SelectContent></Select></div>
+    <div className="space-y-2"><Label>{versionLabel}</Label><Select value={version === null ? undefined : String(version)} onValueChange={onVersionChange}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{versions.length ? versions.map((item) => <SelectItem key={item.version} value={String(item.version)}>v{item.version}{item.saved ? "" : " · 未保存"}</SelectItem>) : <SelectItem value="__empty__" disabled>{itemId === null ? "请先选择研究" : "暂无可选版本"}</SelectItem>}</SelectContent></Select></div>
   </div>;
 }

@@ -13,33 +13,33 @@ import { Badge } from "@/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Separator } from "@/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
-import { terminalStates, type WorkflowInformation, type WorkflowListItem } from "@/types/workflow";
+import { terminalStates, type WorkflowAttemptInformation } from "@/types/workflow";
 
-export default function WorkflowDetailsModal({ now, onOpenChange, open, workflow }: { now: number; onOpenChange: (open: boolean) => void; open: boolean; workflow: WorkflowListItem | null }) {
-  const [details, setDetails] = useState<WorkflowInformation | null>(null);
+export default function WorkflowDetailsModal({ attemptId, now, onOpenChange, open }: { attemptId: number | null; now: number; onOpenChange: (open: boolean) => void; open: boolean }) {
+  const [details, setDetails] = useState<WorkflowAttemptInformation | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    if (!open || !workflow) { setDetails(null); setError(""); return undefined; }
+    if (!open || attemptId === null) { setDetails(null); setError(""); return undefined; }
     let active = true;
     setDetails(null);
     setError("");
-    workflowsApi.detail(workflow.workflow_instance_id)
+    workflowsApi.attemptDetail(attemptId)
       .then((result) => { if (active) setDetails(result); })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { active = false; };
-  }, [open, workflow?.workflow_instance_id]);
+  }, [attemptId, open]);
   const duration = details ? resolveDurationSeconds(details.duration_seconds, details.started_at, details.finished_at, !terminalStates.has(details.state), now) : null;
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="flex max-h-[88vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(980px,calc(100vw-2rem))]">
-      <DialogHeader className="border-b px-5 py-4 pr-12"><div className="flex min-w-0 items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-md border bg-muted/45"><IconActivity width={16} height={16} /></span><div className="min-w-0"><DialogTitle className="truncate text-base">工作流详情</DialogTitle><DialogDescription className="mt-0.5 font-mono text-[11px]">{workflow ? `${workflowApplicationNames[workflow.application]} / Workflow #${workflow.workflow_instance_id}` : "工作流"}</DialogDescription></div></div></DialogHeader>
+      <DialogHeader className="border-b px-5 py-4 pr-12"><div className="flex min-w-0 items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-md border bg-muted/45"><IconActivity width={16} height={16} /></span><div className="min-w-0"><DialogTitle className="truncate text-base">运行详情</DialogTitle><DialogDescription className="mt-0.5 truncate font-mono text-[11px]">{details ? `${workflowApplicationNames[details.application]} / ${details.project_title ?? `Workspace #${details.workspace_id}`} / 第 ${details.attempt_number} 次运行` : attemptId === null ? "运行记录" : `Attempt #${attemptId}`}</DialogDescription></div></div></DialogHeader>
       {!details && !error ? <div className="grid min-h-72 place-items-center"><IconLoaderCircle className="animate-spin text-muted-foreground" width={20} height={20} /></div> : null}
       {error ? <div className="m-5 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
       {details && <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="grid grid-cols-2 border-b bg-muted/15 md:grid-cols-4"><Meta icon={<IconActivity />} label="工作流状态"><SchedulerStateBadge state={details.state} /></Meta><Meta icon={<IconGitBranch />} label="工作流" value={details.workflow_name} /><Meta icon={<IconBox />} label="Task 数量" value={String(details.task_count)} /><Meta icon={<IconCalendarClock />} label="运行耗时" value={formatDuration(duration, "long")} /></section>
+        <section className="grid grid-cols-2 border-b bg-muted/15 md:grid-cols-4"><Meta icon={<IconActivity />} label="运行状态"><SchedulerStateBadge state={details.state} /></Meta><Meta icon={<IconGitBranch />} label="提交状态"><SchedulerStateBadge state={details.submission_state} /></Meta><Meta icon={<IconBox />} label="Task 数量" value={String(details.task_count)} /><Meta icon={<IconCalendarClock />} label="运行耗时" value={formatDuration(duration, "long")} /></section>
         <section className="grid gap-px bg-border md:grid-cols-3">
-          <InformationGroup title="调度标识" rows={[["Workflow Instance ID", details.workflow_instance_id], ["内部记录 ID", details.record_id], ["项目编码", details.project_code], ["工作流定义编码", details.workflow_definition_code]]} />
-          <InformationGroup title="执行信息" rows={[["应用", workflowApplicationNames[details.application]], ["开始时间", formatDateTime(details.started_at)], ["完成时间", formatDateTime(details.finished_at)], ["最后同步", formatDateTime(details.last_synced_at)]]} />
-          <InformationGroup title="记录时间" rows={[["创建时间", formatDateTime(details.created_at)], ["更新时间", formatDateTime(details.updated_at)]]} />
+          <InformationGroup title="运行标识" rows={[["Attempt ID", details.attempt_id], ["运行序号", `第 ${details.attempt_number} 次`], ["Workflow Instance ID", details.workflow_instance_id], ["Workspace ID", details.workspace_id]]} />
+          <InformationGroup title="调度信息" rows={[["工作流", details.workflow_name], ["项目编码", details.project_code], ["工作流定义编码", details.workflow_definition_code], ["最后同步", formatDateTime(details.last_synced_at)]]} />
+          <InformationGroup title="时间信息" rows={[["提交时间", formatDateTime(details.attempt_created_at)], ["开始时间", formatDateTime(details.started_at)], ["完成时间", formatDateTime(details.finished_at)], ["更新时间", formatDateTime(details.attempt_updated_at)]]} />
         </section>
         <Separator />
         {details.error && <section className="border-b border-rose-500/20 bg-rose-500/8 px-5 py-4"><div className="text-xs font-semibold text-rose-600 dark:text-rose-400">失败信息</div><p className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-rose-700 dark:text-rose-300">{details.error}</p></section>}
@@ -52,8 +52,7 @@ export default function WorkflowDetailsModal({ now, onOpenChange, open, workflow
 function Meta({ children, icon, label, value }: { children?: React.ReactNode; icon: React.ReactNode; label: string; value?: string }) { return <div className="min-w-0 border-r border-t px-4 py-3 first:border-t-0 md:border-t-0"><div className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground">{icon}{label}</div><div className="mt-2 truncate font-mono text-xs font-medium">{children ?? value}</div></div>; }
 function InformationGroup({ rows, title }: { rows: Array<[string, number | string | null]>; title: string }) { return <div className="bg-background p-5"><h3 className="text-xs font-semibold">{title}</h3><dl className="mt-3 space-y-2.5">{rows.map(([label, value]) => <div className="flex items-start justify-between gap-4 text-xs" key={label}><dt className="shrink-0 text-muted-foreground">{label}</dt><dd className="min-w-0 break-all text-right font-mono">{value ?? "—"}</dd></div>)}</dl></div>; }
 function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) { return <h3 className="flex items-center gap-2 text-xs font-semibold">{icon}{title}</h3>; }
-function ParameterTabs({ payload }: { payload: WorkflowInformation["payload"] }) {
-  if (!payload.input_json) return <JsonParameters value={payload.start_parameters} />;
+function ParameterTabs({ payload }: { payload: WorkflowAttemptInformation["payload"] }) {
   return <Tabs className="mt-3" defaultValue="start"><TabsList><TabsTrigger value="start">工作流参数</TabsTrigger><TabsTrigger value="input">Input JSON</TabsTrigger></TabsList><TabsContent value="start"><JsonParameters value={payload.start_parameters} /></TabsContent><TabsContent value="input"><JsonParameters value={payload.input_json} /></TabsContent></Tabs>;
 }
 function JsonParameters({ value }: { value: Record<string, unknown> }) { return <pre className="mt-3 max-h-96 overflow-auto rounded-md border bg-muted/30 p-4 font-mono text-[11px] leading-5 text-foreground">{JSON.stringify(value, null, 2)}</pre>; }

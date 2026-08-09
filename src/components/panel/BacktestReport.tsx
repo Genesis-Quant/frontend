@@ -10,7 +10,6 @@ import DateRangeBar from "@/components/bar/DateRangeBar";
 import EChart from "@/components/chart/EChart";
 import ParquetDataTable from "@/components/table/ParquetDataTable";
 import { useAppStore } from "@/store";
-import type { BacktestSummary } from "@/types/backtest";
 import type { AxisFormat, BacktestChartRanges, ChartRange } from "@/types/chart";
 import { emptyParquetTableQuery, type ParquetTableQuery } from "@/types/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -33,13 +32,12 @@ type BacktestReportProps = {
   chartRanges?: BacktestChartRanges;
   onActiveTabChange?: (value: string) => void;
   onChartRanges?: (ranges: BacktestChartRanges) => void;
-  onSummary: (summary: BacktestSummary) => void;
   riskFreeRate?: number;
   showTabs?: boolean;
   workflowInstanceId: number;
 };
 
-export default function BacktestReport({ activeTab, annualTradingDays = 252, chartRanges, onActiveTabChange, onChartRanges, onSummary, riskFreeRate = 0, showTabs = true, workflowInstanceId }: BacktestReportProps) {
+export default function BacktestReport({ activeTab, annualTradingDays = 252, chartRanges, onActiveTabChange, onChartRanges, riskFreeRate = 0, showTabs = true, workflowInstanceId }: BacktestReportProps) {
   const theme = useAppStore((state) => state.theme);
   const analytics = useRef<BacktestAnalytics | null>(null);
   const [localTab, setLocalTab] = useState("overview");
@@ -102,12 +100,6 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
     loadTable().catch((reason) => { if (!cancelled) { setTableError(reason instanceof Error ? reason.message : String(reason)); setTableLoadedKey(requestKey); } }).finally(() => { if (!cancelled) setTableLoading(false); });
     return () => { cancelled = true; };
   }, [endDate, error, loading, startDate, tableName, tablePage, tablePageSize, tableQuery, tableRequestKey, workflowInstanceId]);
-
-  const fullReport = useMemo(() => createReport(portfolio, annualTradingDays, riskFreeRate, true), [annualTradingDays, portfolio, riskFreeRate]);
-  useEffect(() => {
-    if (!fullReport) return;
-    onSummary({ totalReturn: fullReport.totalReturn, annualReturn: fullReport.cagr, annualVolatility: fullReport.volatility, sharpeRatio: fullReport.sharpe, maxDrawdown: fullReport.maxDrawdown, dailyWinningRate: fullReport.winRate });
-  }, [fullReport, onSummary]);
 
   const selectedPortfolio = useMemo(() => portfolio.filter((row) => (!startDate || row.time >= startDate) && (!endDate || row.time <= endDate)), [endDate, portfolio, startDate]);
   const rangePoints = useMemo(() => portfolio.map((row) => ({ time: row.time, value: row.dailyReturn })), [portfolio]);

@@ -186,7 +186,7 @@ export default function AdminPage() {
       <div className="overflow-x-auto pb-1"><TabsList>
         <TabsTrigger value="overview"><Activity />概览</TabsTrigger>
         <TabsTrigger value="scheduler"><Server />调度管理</TabsTrigger>
-        <TabsTrigger value="workflows"><Workflow />工作流实例</TabsTrigger>
+        <TabsTrigger value="workflows"><Workflow />工作流运行</TabsTrigger>
         <TabsTrigger value="storage"><HardDrive />输出存储</TabsTrigger>
         <TabsTrigger value="users"><Users />用户管理</TabsTrigger>
       </TabsList></div>
@@ -214,7 +214,7 @@ export default function AdminPage() {
         </div>
       </TabsContent>
 
-      <TabsContent value="workflows" className="space-y-4"><div><h2 className="text-lg font-semibold">工作流实例</h2><p className="mt-1 text-sm text-muted-foreground">查看、筛选和管理全部应用的工作流及其 Task。</p></div><WorkflowPanel showUsername /></TabsContent>
+      <TabsContent value="workflows" className="space-y-4"><div><h2 className="text-lg font-semibold">工作流运行</h2><p className="mt-1 text-sm text-muted-foreground">按工作空间查看全部用户的当前运行，并展开追溯每次提交与执行记录。</p></div><WorkflowPanel showUsername /></TabsContent>
       <TabsContent value="storage"><OutputStorageCard deletingWorkspaceKey={deletingWorkspaceKey} loading={storageLoading} storage={outputStorage} onDelete={deleteOrphanWorkspace} /></TabsContent>
       <TabsContent value="users"><AdminUsers currentUserId={currentUser?.id} loading={loading} updatingUserId={updatingUserId} users={users} onUpdate={updateUser} /></TabsContent>
     </Tabs>
@@ -352,7 +352,7 @@ function OutputStorageCard({ deletingWorkspaceKey, loading, onDelete, storage }:
 
 function WorkspaceOwnership({ workspace }: { workspace: AdminOutputWorkspace }) {
   if (workspace.orphaned) return <StatusBadge tone="red">游离</StatusBadge>;
-  return <div className="min-w-0"><div className="truncate text-xs font-medium" title={workspace.project_title ?? undefined}>{workspace.project_title ?? "工作流任务"}</div><div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{workspace.project_id !== null ? `项目 #${workspace.project_id} · ` : ""}Run #{workspace.workflow_run_id}</div></div>;
+  return <div className="min-w-0"><div className="truncate text-xs font-medium" title={workspace.project_title ?? undefined}>{workspace.project_title ?? "工作流任务"}</div><div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{workspace.project_id !== null ? `项目 #${workspace.project_id} · ` : ""}Workspace #{workspace.workflow_workspace_id}</div></div>;
 }
 
 function StorageMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {

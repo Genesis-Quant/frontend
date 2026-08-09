@@ -65,7 +65,7 @@ export default function BacktestPage() {
     {error ? <ErrorPanel message={error} /> : null}
     <BacktestProjectTable loading={loading} projects={projects?.items ?? []} onOpen={(project) => navigate(`/backtest/projects/${project.id}`)} onDelete={setDeleteTarget} />
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">共 {projects?.total ?? 0} 条</p><AppPagination page={page} pageSize={pageSize} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} /></div>
-    <CreateProjectDialog description="创建后设置参数，并在代码弹窗中编辑 DSL 与回调函数。" inputId="backtest-project-title" open={createOpen} submitting={saving} title="创建策略回测项目" value={title} onCreate={create} onOpenChange={setCreateOpen} onValue={setTitle} />
+    <CreateProjectDialog description="创建后设置参数，并在代码弹窗中编辑 DSL 与回调函数。" inputId="backtest-project-title" open={createOpen} placeholder="例如：沪深 300 风险平价策略" submitting={saving} title="创建策略回测项目" value={title} onCreate={create} onOpenChange={setCreateOpen} onValue={setTitle} />
     <DeleteProjectDialog description={`删除后将无法查看“${deleteTarget?.title ?? ""}”及其全部回测版本。该操作不可撤销。`} open={deleteTarget !== null} submitting={deleting} onDelete={remove} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} />
     <ProjectCompareDialog kind="backtest" open={compareOpen} title="策略回测" onOpenChange={setCompareOpen} />
   </div>;

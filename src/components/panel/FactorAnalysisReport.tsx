@@ -29,11 +29,10 @@ type FactorAnalysisReportProps = {
   parameters: FactorAnalysisParameters;
   workflowInstanceId: number;
   onChartRanges?: (ranges: FactorChartRanges) => void;
-  onMetrics: (metrics: FactorMetrics) => void;
 };
 
 type IcType = "RankIC" | "IC";
-export default function FactorAnalysisReport({ chartRanges, factor, onChartRanges, onMetrics, parameters, workflowInstanceId }: FactorAnalysisReportProps) {
+export default function FactorAnalysisReport({ chartRanges, factor, onChartRanges, parameters, workflowInstanceId }: FactorAnalysisReportProps) {
   const theme = useAppStore((state) => state.theme);
   const analytics = useRef<FactorAnalytics | null>(null);
   const factorColumnsKey = parameters.factor_columns.join("\u0001");
@@ -90,7 +89,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
         const calculated = await session.metrics(parameters);
         if (cancelled) return;
         setMetrics(calculated);
-        onMetrics(calculated);
       } catch (reason) {
         if (!cancelled) setError(errorMessage(reason));
       } finally {
@@ -103,7 +101,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       if (analytics.current === session) analytics.current = null;
       session?.close().catch(() => undefined);
     };
-  }, [factorColumnsKey, onMetrics, parameters.n_groups, returnColumnsKey, workflowInstanceId]);
+  }, [factorColumnsKey, parameters.n_groups, returnColumnsKey, workflowInstanceId]);
 
   useEffect(() => {
     const session = analytics.current;

@@ -1,7 +1,7 @@
 import type { DslCatalog, DslDocument, FactorQuery } from "@/types/factor";
 
 export type QueryWorkflowSummary = {
-  record_id: number;
+  workspace_id: number;
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
@@ -32,7 +32,7 @@ export type QueryProjectPage = {
   limit: number;
 };
 
-export type QueryWorkflowSubmitted = { record_id: number; workflow_instance_id: number };
+export type QueryWorkflowSubmitted = { workspace_id: number; workflow_instance_id: number };
 export type QueryOutput = { name: "source_data" | "computed_data" | "filtered_data" | "data"; filename: string; size: number; modified_at: string };
 export type QueryCatalog = DslCatalog;
 

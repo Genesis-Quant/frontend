@@ -220,6 +220,7 @@ async function loadCandidate(projectId: number, versionNumber: number): Promise<
   const factorName = parameters.factor_columns.at(-1);
   const returnColumn = parameters.return_columns[0];
   if (!factorName || !returnColumn) throw new Error(`v${version.version} 缺少因子或收益列，无法生成优选报告`);
+  if (version.workflow_instance_id === null) throw new Error(`v${version.version} 尚未产生分析结果`);
   const [informationBuffer, groupBuffer] = await Promise.all([factorApi.output(version.workflow_instance_id, "information_coefficient"), factorApi.output(version.workflow_instance_id, "group_returns")]);
   const analytics = await FactorAnalytics.create(version.workflow_instance_id, { information: informationBuffer, groups: groupBuffer });
   try {

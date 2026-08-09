@@ -3,13 +3,13 @@ import type {
   DslCatalog,
   FactorAnalysisParameters,
   FactorWorkflowSubmitted,
-  FactorMetrics,
   FactorOutput,
   FactorProject,
   FactorProjectPage,
   FactorVersion,
   FactorVersionListItem
 } from "@/types/factor";
+import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 
 export const factorApi = {
   listProjects: (page = 1, pageSize = 20) => client.get<FactorProjectPage>("/factor/projects", { params: { page, page_size: pageSize } }),
@@ -18,9 +18,12 @@ export const factorApi = {
   updateProject: (projectId: number, title: string) => client.patch<FactorProject>(`/factor/projects/${projectId}`, { title }),
   deleteProject: (projectId: number) => client.delete<{ id: number }>(`/factor/projects/${projectId}`),
   analyze: (projectId: number, parameters: FactorAnalysisParameters) => client.post<FactorWorkflowSubmitted>(`/factor/projects/${projectId}/analyses`, parameters, { timeout: 30000 }),
+  executeBatch: (projectId: number, request: BatchRunRequest<FactorAnalysisParameters>) => client.post<BatchRunAccepted[]>(`/factor/projects/${projectId}/batch-runs`, request, { timeout: 30000 }),
   listVersions: (projectId: number) => client.get<FactorVersionListItem[]>(`/factor/projects/${projectId}/versions`),
   getVersion: (projectId: number, version: number) => client.get<FactorVersion>(`/factor/projects/${projectId}/versions/${version}`),
-  saveVersion: (projectId: number, workflowInstanceId: number, remark: string, metrics: FactorMetrics) => client.post<FactorVersion>(`/factor/projects/${projectId}/versions`, { workflow_instance_id: workflowInstanceId, remark, metrics }),
+  saveVersion: (projectId: number, workflowInstanceId: number, remark: string) => client.post<FactorVersion>(`/factor/projects/${projectId}/versions`, { workflow_instance_id: workflowInstanceId, remark }),
+  updateVersion: (projectId: number, version: number, remark: string) => client.patch<FactorVersion>(`/factor/projects/${projectId}/versions/${version}`, { remark }),
+  deleteVersion: (projectId: number, version: number) => client.delete<{ version: number }>(`/factor/projects/${projectId}/versions/${version}`),
   catalog: () => client.get<DslCatalog>("/factor/dsl/catalog", { timeout: 30000 }),
   outputs: (workflowInstanceId: number) => client.get<FactorOutput[]>(`/factor/workflows/${workflowInstanceId}/outputs`),
   output: (workflowInstanceId: number, name: FactorOutput["name"]) => client.getBinary(`/factor/workflows/${workflowInstanceId}/outputs/${name}`)

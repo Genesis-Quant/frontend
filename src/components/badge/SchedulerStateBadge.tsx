@@ -22,7 +22,10 @@ const schedulerStateLabels: Record<string, string> = {
   READY_STOP: "STOPPING",
   NEED_FAULT_TOLERANCE: "RECOVERING",
   FORCED_SUCCESS: "FORCED",
-  SUBMIT_FAILED: "FAILED"
+  SUBMIT_FAILED: "FAILED",
+  AUTO_SAVE_PENDING: "SAVING",
+  AUTO_SAVE_FAILED: "SAVE FAILED",
+  RESULT_PENDING: "GENERATING"
 };
 
 export function schedulerStateLabel(state: string) { return schedulerStateLabels[state] ?? state; }
@@ -34,8 +37,11 @@ const successStates = new Set(["SUCCESS", "FORCED_SUCCESS"]);
 const runningStates = new Set(["RUNNING_EXECUTION", "DISPATCH"]);
 const queuedStates = new Set([
   "CREATED",
+  "QUEUED",
   "SUBMITTING",
   "SUBMITTED",
+  "AUTO_SAVE_PENDING",
+  "RESULT_PENDING",
   "SUBMITTED_SUCCESS",
   "WAITING",
   "WAIT_TO_RUN",

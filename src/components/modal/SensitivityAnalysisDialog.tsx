@@ -2,9 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Grid2X2, Loader2, RefreshCw, SlidersHorizontal, Table2, X } from "lucide-react";
 
 import { backtestApi } from "@/assets/lib/backtest";
-import { BacktestAnalytics } from "@/assets/lib/backtestAnalysis";
 import { errorMessage } from "@/assets/lib/utils";
-import { quantStatsReport, type QuantStatsReport } from "@/assets/lib/quantstats";
 import SchedulerStateBadge from "@/components/badge/SchedulerStateBadge";
 import EChart from "@/components/chart/EChart";
 import type { BacktestParameters, BatchResearchItem, BatchResearchListItem, BatchResearchResponse, StrategyParameters } from "@/types/backtest";
@@ -16,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 
 const MAX_GRID_POINTS = 100;
-const terminalBatchStates = new Set(["SUCCESS", "FAILURE", "PARTIAL_SUCCESS"]);
+const resultReadyBatchStates = new Set(["SUCCESS", "FAILURE", "PARTIAL_SUCCESS", "RESULT_PENDING"]);
 
 type Scalar = string | number | boolean | null;
 type ParameterKind = "number" | "category";
@@ -92,7 +90,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
   }, [open, projectId, version]);
 
   useEffect(() => {
-    if (!open || !batch || terminalBatchStates.has(batch.state)) return undefined;
+    if (!open || !batch || resultReadyBatchStates.has(batch.state)) return undefined;
     let disposed = false;
     let polling = false;
     const timer = window.setInterval(async () => {
@@ -111,11 +109,17 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
   }, [batch, open]);
 
   useEffect(() => {
-    if (!open || !batch || !terminalBatchStates.has(batch.state)) return undefined;
+    if (!open || !batch || !resultReadyBatchStates.has(batch.state)) return undefined;
+    const pending = batch.items.some((item) => successful(item) && item.metrics === null && item.result_error === null);
+    if (!pending) {
+      setResults(sensitivityResults(batch.items));
+      setLoadingResults(false);
+      return undefined;
+    }
     let disposed = false;
     setLoadingResults(true);
-    loadSensitivityResults(batch.items).then((next) => {
-      if (!disposed) setResults(next);
+    backtestApi.calculateBatchResearch(batch.id).then((next) => {
+      if (!disposed) { setBatch(next); setResults(sensitivityResults(next.items)); }
     }).catch((reason) => {
       if (!disposed) setError(errorMessage(reason));
     }).finally(() => {
@@ -131,6 +135,21 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
       setError("");
     }
     onOpenChange(nextOpen);
+  }
+
+  async function retryResults() {
+    if (!batch || loadingResults) return;
+    setLoadingResults(true);
+    setError("");
+    try {
+      const next = await backtestApi.calculateBatchResearch(batch.id);
+      setBatch(next);
+      setResults(sensitivityResults(next.items));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setLoadingResults(false);
+    }
   }
 
   function updateDimension(index: number, next: Partial<DimensionDraft>) {
@@ -180,6 +199,8 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     }
   }
 
+  const retryableResults = batch?.items.some((item) => successful(item) && item.metrics === null) ?? false;
+
   return <Dialog open={open} onOpenChange={resetForClose}>
     <LargeDialogContent className="flex flex-col overflow-hidden">
       <DialogHeader>
@@ -194,7 +215,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
             <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-sm font-medium">变化参数</div><div className="mt-1 text-xs text-muted-foreground">每个参数至少填写两个不同取值。</div></div><Button size="sm" variant="outline" disabled={drafts.length >= 2 || definitions.length <= drafts.length} onClick={addDimension}><SlidersHorizontal />添加参数</Button></div>
             {drafts.length ? drafts.map((draft, index) => <DimensionEditor key={`${index}-${draft.path}`} definition={definitions.find((item) => item.path === draft.path)} definitions={definitions.filter((item) => item.path === draft.path || !drafts.some((other, otherIndex) => otherIndex !== index && other.path === item.path))} draft={draft} index={index} onChange={updateDimension} onRemove={drafts.length > 1 ? removeDimension : undefined} onPathChange={selectPath} />) : <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">当前版本没有可调参数。</div>}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/15 px-4 py-3 text-sm"><div><span className="text-muted-foreground">参数组合：</span><span className="font-semibold tabular-nums">{grid.items.length}</span>{grid.error ? <div className="mt-1 text-xs text-destructive">{grid.error}</div> : null}</div><div className="text-xs text-muted-foreground">结果指标将在任务完成后从 Parquet 结果计算。</div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/15 px-4 py-3 text-sm"><div><span className="text-muted-foreground">参数组合：</span><span className="font-semibold tabular-nums">{grid.items.length}</span>{grid.error ? <div className="mt-1 text-xs text-destructive">{grid.error}</div> : null}</div><div className="text-xs text-muted-foreground">任务完成后由后端生成并保存结果指标。</div></div>
           {history.length ? <div className="space-y-2 rounded-md border bg-card p-4"><div className="text-sm font-medium">已有敏感性分析</div>{history.map((item) => <div className="flex items-center gap-3 text-sm" key={item.id}><span className="min-w-0 flex-1 truncate">研究 #{item.id}{item.description ? ` · ${item.description}` : ""} · {item.requested_count} 个组合</span><SchedulerStateBadge state={item.state} /><Button size="sm" variant="ghost" disabled={loadingHistoryResearchId !== null} onClick={() => openHistory(item.id)}>{loadingHistoryResearchId === item.id ? <Loader2 className="animate-spin" /> : "查看"}</Button></div>)}</div> : null}
           {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的版本。</div> : null}
           {error ? <div className="rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div> : null}
@@ -202,9 +223,9 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
           </div>}
         {batch && <div className="space-y-5 pb-2">
           {batch.description ? <div className="rounded-md border bg-muted/15 px-4 py-3 text-sm">{batch.description}</div> : null}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex items-center gap-3"><SchedulerStateBadge state={batch.state} /><span className="text-sm text-muted-foreground">已完成 {batch.completed_count}/{batch.requested_count}，失败 {batch.failed_count}</span></div><Button size="sm" variant="outline" onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />重新配置</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex items-center gap-3"><SchedulerStateBadge state={batch.state} /><span className="text-sm text-muted-foreground">已完成 {batch.completed_count}/{batch.requested_count}，失败 {batch.failed_count}</span></div><div className="flex gap-2">{retryableResults ? <Button disabled={loadingResults} size="sm" variant="outline" onClick={retryResults}>{loadingResults ? <Loader2 className="animate-spin" /> : <RefreshCw />}重试生成结果</Button> : null}<Button size="sm" variant="outline" onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />重新配置</Button></div></div>
           {batch.error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{batch.error}</div> : null}
-          {loadingResults ? <div className="grid min-h-48 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><div className="mt-3 text-sm text-muted-foreground">正在读取各参数组合的结果...</div></div></div> : results.some((item) => item.metrics && Object.keys(item.metrics).length) ? <SensitivityReport metrics={metrics} results={results} /> : <SensitivityProgressTable items={batch.items} />}
+          {loadingResults ? <div className="grid min-h-48 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><div className="mt-3 text-sm text-muted-foreground">正在生成参数敏感性分析结果...</div></div></div> : results.some((item) => item.metrics && Object.keys(item.metrics).length) ? <SensitivityReport metrics={metrics} results={results} /> : <SensitivityProgressTable items={batch.items} />}
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
           </div>}
       </div>
@@ -262,44 +283,15 @@ function SensitivityErrors({ dimensions, results }: { dimensions: SensitivityDim
 
 function SensitivityProgressTable({ items }: { items: BatchResearchItem[] }) {
   const dimensions = inferDimensions(items);
-  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>参数组合</TableHead><TableHead>工作流</TableHead><TableHead>状态</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell className="max-w-96 truncate">{sensitivityItemLabel(item, dimensions)}</TableCell><TableCell className="font-mono">{item.workflow_instance_id ?? "—"}</TableCell><TableCell><SchedulerStateBadge state={item.state} /></TableCell><TableCell className="max-w-96 truncate text-destructive">{item.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>参数组合</TableHead><TableHead>工作流</TableHead><TableHead>状态</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell className="max-w-96 truncate">{sensitivityItemLabel(item, dimensions)}</TableCell><TableCell className="font-mono">{item.workflow_instance_id ?? "—"}</TableCell><TableCell><SchedulerStateBadge state={item.state} /></TableCell><TableCell className="max-w-96 truncate text-destructive">{item.result_error ?? item.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
-async function loadSensitivityResults(items: BatchResearchItem[]) {
-  const results = new Array<SensitivityPoint>(items.length);
-  let nextIndex = 0;
-  async function worker() {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await loadSensitivityResult(items[index]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
-  return results;
+function sensitivityResults(items: BatchResearchItem[]): SensitivityPoint[] {
+  return items.map((item) => ({ error: item.result_error ?? item.error, item, metrics: item.metrics ?? {} }));
 }
 
-async function loadSensitivityResult(item: BatchResearchItem): Promise<SensitivityPoint> {
-  if (item.state !== "SUCCESS" && item.state !== "FORCED_SUCCESS") return { error: item.error, item, metrics: {} };
-  if (item.workflow_instance_id === null) return { error: "工作流实例尚未生成", item, metrics: {} };
-  try {
-    const buffer = await backtestApi.output(item.workflow_instance_id, "daily_portfolios");
-    const analytics = await BacktestAnalytics.create(item.workflow_instance_id, buffer);
-    try {
-      const portfolio = await analytics.portfolios();
-      const parameters = item.parameters as unknown as BacktestParameters;
-      const report = portfolio.length ? quantStatsReport(portfolio.map((row) => ({ time: row.time, value: row.dailyReturn ?? 0 })), parameters.annual_trading_days, parameters.risk_free_rate, true) : null;
-      return { error: report ? null : "结果为空", item, metrics: report ? backtestMetricValues(report) : {} };
-    } finally {
-      await analytics.close();
-    }
-  } catch (reason) {
-    return { error: errorMessage(reason), item, metrics: {} };
-  }
-}
-
-function backtestMetricValues(report: QuantStatsReport) {
-  return { totalReturn: report.totalReturn, cagr: report.cagr, sharpe: report.sharpe, volatility: report.volatility, maxDrawdown: report.maxDrawdown, winRate: report.winRate, calmar: report.calmar };
+function successful(item: BatchResearchItem) {
+  return item.state === "SUCCESS" || item.state === "FORCED_SUCCESS";
 }
 
 function parameterDefinitions(parameters: StrategyParameters) {

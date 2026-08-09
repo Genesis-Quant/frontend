@@ -1,6 +1,7 @@
 import { client } from "@/assets/lib/request";
 import { isFactorQuery, type DslCatalog } from "@/types/factor";
-import { callbackNames, callbackParameters, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestSummary, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName } from "@/types/backtest";
+import { callbackNames, callbackParameters, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName } from "@/types/backtest";
+import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 
 export function validCallback(callback: CallbackName, source: string) {
   const match = new RegExp(`\\bdef\\s+${callback}\\s*\\(([^)]*)\\)\\s*\\{`).exec(source);
@@ -161,15 +162,19 @@ export const backtestApi = {
   updateProject: (projectId: number, title: string) => client.patch<BacktestProject>(`/backtest/projects/${projectId}`, { title }),
   deleteProject: (projectId: number) => client.delete<{ id: number }>(`/backtest/projects/${projectId}`),
   run: (projectId: number, parameters: BacktestParameters) => client.post<BacktestWorkflowSubmitted>(`/backtest/projects/${projectId}/runs`, parameters, { timeout: 30000 }),
+  executeBatch: (projectId: number, request: BatchRunRequest<BacktestParameters>) => client.post<BatchRunAccepted[]>(`/backtest/projects/${projectId}/batch-runs`, request, { timeout: 30000 }),
   listVersions: (projectId: number) => client.get<BacktestVersionListItem[]>(`/backtest/projects/${projectId}/versions`),
   getVersion: (projectId: number, version: number) => client.get<BacktestVersion>(`/backtest/projects/${projectId}/versions/${version}`),
-  saveVersion: (projectId: number, workflowInstanceId: number, remark: string, summary: BacktestSummary) => client.post<BacktestVersion>(`/backtest/projects/${projectId}/versions`, { workflow_instance_id: workflowInstanceId, remark, summary }),
+  saveVersion: (projectId: number, workflowInstanceId: number, remark: string) => client.post<BacktestVersion>(`/backtest/projects/${projectId}/versions`, { workflow_instance_id: workflowInstanceId, remark }),
+  updateVersion: (projectId: number, version: number, remark: string) => client.patch<BacktestVersion>(`/backtest/projects/${projectId}/versions/${version}`, { remark }),
+  deleteVersion: (projectId: number, version: number) => client.delete<{ version: number }>(`/backtest/projects/${projectId}/versions/${version}`),
   catalog: () => client.get<DslCatalog>("/backtest/dsl/catalog", { timeout: 30000 }),
   outputs: (workflowInstanceId: number) => client.get<BacktestOutput[]>(`/backtest/workflows/${workflowInstanceId}/outputs`),
   output: (workflowInstanceId: number, name: BacktestOutputName) => client.getBinary(`/backtest/workflows/${workflowInstanceId}/outputs/${name}`),
   listBatchResearch: (projectId: number, version: number, analysisType: "fee_analysis" | "sensitivity", page = 1, pageSize = 20) => client.get<BatchResearchPage>("/backtest/batch-research", { params: { project_id: projectId, version, analysis_type: analysisType, page, page_size: pageSize } }),
   createBatchResearch: (request: BatchResearchRequest) => client.post<BatchResearchResponse>("/backtest/batch-research", request, { timeout: 120000 }),
   getBatchResearch: (researchId: number) => client.get<BatchResearchResponse>(`/backtest/batch-research/${researchId}`),
+  calculateBatchResearch: (researchId: number) => client.post<BatchResearchResponse>(`/backtest/batch-research/${researchId}/results`, undefined, { timeout: 120000 }),
   createFeeAnalysis: (projectId: number, version: number, rates: number[]) => client.post<BatchResearchResponse>(`/backtest/projects/${projectId}/versions/${version}/fee-analysis`, { rates }, { timeout: 120000 })
 };
 

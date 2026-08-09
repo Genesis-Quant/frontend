@@ -96,7 +96,10 @@ export const analysisReturnColumns = (maxLags: number) => Array.from({ length: m
 export const analysisManagedFactors = ["circ_mv", "total_mv"];
 
 export type FactorWorkflowSummary = {
-  record_id: number;
+  id: number;
+  version: number;
+  saved: boolean;
+  workspace_id: number;
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
@@ -127,7 +130,7 @@ export type FactorProject = {
   id: number;
   title: string;
   latest_version: number | null;
-  draft: FactorWorkflowSummary | null;
+  draft: FactorWorkflowSummary;
   created_at: string;
   updated_at: string;
 };
@@ -148,22 +151,26 @@ export type FactorProjectPage = {
 };
 
 export type FactorWorkflowSubmitted = {
-  record_id: number;
+  workspace_id: number;
   workflow_instance_id: number;
 };
 
 export type FactorVersion = {
   id: number;
   project_id: number;
-  workflow_instance_id: number;
+  workflow_workspace_id: number;
+  workflow_instance_id: number | null;
   version: number;
+  saved: boolean;
+  is_current: boolean;
   remark: string;
   parameters: FactorAnalysisParameters;
-  metrics: FactorMetrics;
+  metrics: FactorMetrics | null;
   created_at: string;
+  updated_at: string;
 };
 
-export type FactorVersionListItem = Pick<FactorVersion, "id" | "version" | "remark" | "created_at">;
+export type FactorVersionListItem = Pick<FactorVersion, "id" | "version" | "saved" | "is_current" | "remark" | "workflow_instance_id" | "created_at">;
 
 export type JsonSchema = {
   $defs?: Record<string, JsonSchema>;

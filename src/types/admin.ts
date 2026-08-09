@@ -52,7 +52,7 @@ export type AdminOutputWorkspace = {
   size_bytes: number;
   modified_at: string | null;
   orphaned: boolean;
-  workflow_run_id: number | null;
+  workflow_workspace_id: number | null;
   project_id: number | null;
   project_title: string | null;
 };
@@ -106,7 +106,7 @@ export type IncrementalUpdateRun = {
   job_id: string;
   workers: string[];
   channel: string;
-  record_id: number;
+  workspace_id: number;
   workflow_instance_id: number;
   project_code: number;
   workflow_definition_code: number;

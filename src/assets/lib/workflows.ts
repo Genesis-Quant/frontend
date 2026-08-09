@@ -1,5 +1,5 @@
 import { client } from "@/assets/lib/request";
-import { terminalStates, type WorkflowActionResponse, type WorkflowInformation, type WorkflowListFilters, type WorkflowListPage, type WorkflowStatusInformation, type WorkflowTasks } from "@/types/workflow";
+import { terminalStates, type WorkflowActionResponse, type WorkflowAttemptInformation, type WorkflowAttemptListPage, type WorkflowListFilters, type WorkflowStatusInformation, type WorkflowTasks, type WorkflowWorkspaceListPage, type WorkflowWorkspaceStatus } from "@/types/workflow";
 
 export const workflowApplicationNames = { query: "Query", factor: "Factor", backtest: "Backtest", incremental: "Incremental" } as const;
 export type WorkflowResultPhase = "idle" | "running" | "failure" | "success";
@@ -32,8 +32,10 @@ export function resolveDurationSeconds(
 }
 
 export const workflowsApi = {
-  list: (filters: WorkflowListFilters) => client.get<WorkflowListPage>("/workflows", { params: filters }),
-  detail: (workflowInstanceId: number) => client.get<WorkflowInformation>(`/workflows/${workflowInstanceId}`),
+  list: (filters: WorkflowListFilters) => client.get<WorkflowWorkspaceListPage>("/workflows", { params: filters }),
+  attempts: (workspaceId: number, page = 1) => client.get<WorkflowAttemptListPage>(`/workflows/workspaces/${workspaceId}/attempts`, { params: { page, page_size: 20 } }),
+  attemptDetail: (attemptId: number) => client.get<WorkflowAttemptInformation>(`/workflows/attempts/${attemptId}`),
+  workspaceStatus: (workspaceId: number) => client.get<WorkflowWorkspaceStatus>(`/workflows/workspaces/${workspaceId}/status`),
   status: (workflowInstanceId: number) => client.get<WorkflowStatusInformation>(`/workflows/${workflowInstanceId}/status`),
   tasks: (workflowInstanceId: number) => client.get<WorkflowTasks>(`/workflows/${workflowInstanceId}/tasks`),
   stop: (workflowInstanceId: number) => client.post<WorkflowActionResponse>(`/workflows/${workflowInstanceId}/actions/stop`, null)
