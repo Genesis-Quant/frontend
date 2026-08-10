@@ -2,13 +2,12 @@ import IconActivity from "~icons/lucide/activity";
 import IconBox from "~icons/lucide/box";
 import IconBraces from "~icons/lucide/braces";
 import IconCalendarClock from "~icons/lucide/calendar-clock";
-import IconGitBranch from "~icons/lucide/git-branch";
 import IconLoaderCircle from "~icons/lucide/loader-circle";
 import { useEffect, useState } from "react";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
 import { formatDuration, resolveDurationSeconds, workflowApplicationNames, workflowsApi } from "@/assets/lib/workflows";
-import SchedulerStateBadge from "@/components/badge/SchedulerStateBadge";
+import SchedulerState from "@/components/status/SchedulerState";
 import { Badge } from "@/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Separator } from "@/ui/separator";
@@ -35,7 +34,7 @@ export default function WorkflowDetailsModal({ attemptId, now, onOpenChange, ope
       {!details && !error ? <div className="grid min-h-72 place-items-center"><IconLoaderCircle className="animate-spin text-muted-foreground" width={20} height={20} /></div> : null}
       {error ? <div className="m-5 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
       {details && <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="grid grid-cols-2 border-b bg-muted/15 md:grid-cols-4"><Meta icon={<IconActivity />} label="运行状态"><SchedulerStateBadge state={details.state} /></Meta><Meta icon={<IconGitBranch />} label="提交状态"><SchedulerStateBadge state={details.submission_state} /></Meta><Meta icon={<IconBox />} label="Task 数量" value={String(details.task_count)} /><Meta icon={<IconCalendarClock />} label="运行耗时" value={formatDuration(duration, "long")} /></section>
+        <section className="grid grid-cols-1 border-b bg-muted/15 sm:grid-cols-3"><Meta icon={<IconActivity />} label="运行状态"><SchedulerState state={details.state} /></Meta><Meta icon={<IconBox />} label="Task 数量" value={String(details.task_count)} /><Meta icon={<IconCalendarClock />} label="运行耗时" value={formatDuration(duration, "long")} /></section>
         <section className="grid gap-px bg-border md:grid-cols-3">
           <InformationGroup title="运行标识" rows={[["Attempt ID", details.attempt_id], ["运行序号", `第 ${details.attempt_number} 次`], ["Workflow Instance ID", details.workflow_instance_id], ["Workspace ID", details.workspace_id]]} />
           <InformationGroup title="调度信息" rows={[["工作流", details.workflow_name], ["项目编码", details.project_code], ["工作流定义编码", details.workflow_definition_code], ["最后同步", formatDateTime(details.last_synced_at)]]} />

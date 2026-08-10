@@ -1,7 +1,7 @@
 import { Loader2, MoreHorizontal, Trash2 } from "lucide-react";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
-import SchedulerStateBadge from "@/components/badge/SchedulerStateBadge";
+import SchedulerState from "@/components/status/SchedulerState";
 import { ProjectTableState } from "@/components/table/ProjectTableState";
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
@@ -16,5 +16,5 @@ export default function QueryProjectTable({ loading, projects, onDelete, onOpen 
 }
 
 function QueryProjectRow({ onDelete, onOpen, project }: { onDelete: () => void; onOpen: () => void; project: QueryProjectListItem }) {
-  return <TableRow className="group cursor-pointer" onClick={onOpen}><TableCell className="px-5 py-4 font-mono text-xs text-muted-foreground">{project.id}</TableCell><TableCell className="px-4 py-4 font-medium group-hover:underline">{project.title}</TableCell><TableCell className="px-4 py-4"><SchedulerStateBadge state={project.current?.state ?? "IDLE"} /></TableCell><TableCell className="px-3 py-4 font-mono text-sm text-muted-foreground">{project.current?.workflow_instance_id ?? "—"}</TableCell><TableCell className="px-3 py-4 text-muted-foreground">{formatDateTime(project.updated_at)}</TableCell><TableCell className="px-3 py-4 text-right" onClick={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="项目操作" size="icon-sm" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>;
+  return <TableRow className="group cursor-pointer" onClick={onOpen}><TableCell className="px-5 py-4 font-mono text-xs text-muted-foreground">{project.id}</TableCell><TableCell className="px-4 py-4 font-medium group-hover:underline">{project.title}</TableCell><TableCell className="px-4 py-4"><SchedulerState state={project.current?.state ?? "IDLE"} /></TableCell><TableCell className="px-3 py-4 font-mono text-sm text-muted-foreground">{project.current?.workflow_instance_id ?? "—"}</TableCell><TableCell className="px-3 py-4 text-muted-foreground">{formatDateTime(project.updated_at)}</TableCell><TableCell className="px-3 py-4 text-right" onClick={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="项目操作" size="icon-sm" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>;
 }

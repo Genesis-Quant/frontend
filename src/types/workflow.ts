@@ -1,32 +1,29 @@
 export type WorkflowApplication = "query" | "factor" | "backtest" | "incremental";
 
 export type WorkflowTaskInformation = {
+  task_instance_id: number | null;
+  name: string;
+  state: string;
+  host: string | null;
+  duration_seconds: number | null;
+};
+
+export type WorkflowTaskSummary = {
   task_code: number | null;
   task_instance_id: number | null;
   name: string;
-  task_type: string | null;
   state: string;
-  host: string | null;
-  retry_times: number | null;
-  max_retry_times: number | null;
-  started_at: string | null;
-  finished_at: string | null;
-  duration_seconds: number | null;
 };
 
 export type WorkflowAttemptSummary = {
   attempt_id: number;
   attempt_number: number;
   is_current: boolean;
-  submission_state: string;
   workflow_instance_id: number | null;
   workflow_definition_code: number | null;
-  workflow_name: string | null;
   state: string;
-  tasks: WorkflowTaskInformation[];
+  tasks: WorkflowTaskSummary[];
   tasks_error: string | null;
-  error: string | null;
-  requested_outputs: string[];
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -44,13 +41,9 @@ export type WorkflowAttemptListPage = {
 export type WorkflowAttemptInformation = {
   application: WorkflowApplication;
   workspace_id: number;
-  user_id: number;
-  project_id: number | null;
   project_title: string | null;
   attempt_id: number;
   attempt_number: number;
-  is_current: boolean;
-  submission_state: string;
   workflow_instance_id: number | null;
   project_code: number | null;
   workflow_definition_code: number | null;
@@ -63,8 +56,6 @@ export type WorkflowAttemptInformation = {
   last_synced_at: string | null;
   attempt_created_at: string;
   attempt_updated_at: string;
-  workflow_created_at: string | null;
-  workflow_updated_at: string | null;
   task_count: number;
   payload: {
     start_parameters: Record<string, string>;
@@ -76,18 +67,11 @@ export type WorkflowAttemptInformation = {
 };
 
 export type WorkflowStatusInformation = {
-  workflow_instance_id: number;
   state: string;
   error: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  duration_seconds: number | null;
-  last_synced_at: string | null;
 };
 
 export type WorkflowWorkspaceStatus = {
-  application: WorkflowApplication;
-  workspace_id: number;
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
@@ -96,16 +80,12 @@ export type WorkflowWorkspaceStatus = {
 };
 
 export type WorkflowTasks = {
-  workflow_instance_id: number;
   state: string;
   error: string | null;
   tasks: WorkflowTaskInformation[];
 };
 
 export type WorkflowActionResponse = {
-  action: "stop" | "pause" | "resume" | "rerun" | "retry-failed";
-  scheduler_submission: unknown;
-  synchronization_error: string | null;
   workflow: WorkflowStatusInformation;
 };
 

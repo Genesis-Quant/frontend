@@ -155,13 +155,16 @@ export default function FactorAnalysisDetailPage() {
     setError("");
     try {
       const [nextProject, nextVersions, nextCatalog] = await Promise.all([factorApi.getProject(projectId), factorApi.listVersions(projectId), factorApi.catalog()]);
+      const latestVersion = nextProject.latest_version === null
+        ? null
+        : await factorApi.getVersion(projectId, nextProject.latest_version);
       if (requestId !== loadRequest.current) return;
       setProject(nextProject);
       setVersions(nextVersions);
-      setCurrentVersion(null);
+      setCurrentVersion(latestVersion);
       setCatalog(nextCatalog);
       setStopping(false);
-      setSelectedVersion(null);
+      setSelectedVersion(latestVersion?.version ?? null);
       setWorkflowInstanceId(null);
       setWorkflowState("IDLE");
       setWorkflowError(null);
@@ -325,21 +328,21 @@ export default function FactorAnalysisDetailPage() {
       setProject(nextProject);
       setVersions(nextVersions);
       setDeleteVersionOpen(false);
-      if (nextProject.draft) {
+      if (nextProject.latest_version !== null) {
+        const nextVersion = await factorApi.getVersion(projectId, nextProject.latest_version);
+        setCurrentVersion(nextVersion);
+        setSelectedVersion(nextVersion.version);
+        setParameters(normalizeAnalysisParameters(nextProject.draft.parameters));
+        setWorkflowInstanceId(null);
+        setWorkflowState("IDLE");
+        setWorkflowError(null);
+      } else if (nextProject.draft) {
         setCurrentVersion(null);
         setSelectedVersion(null);
         setParameters(normalizeAnalysisParameters(nextProject.draft.parameters));
         setWorkflowInstanceId(nextProject.draft.workflow_instance_id);
         setWorkflowState(nextProject.draft.state);
         setWorkflowError(nextProject.draft.error);
-      } else if (nextVersions[0]) {
-        const nextVersion = await factorApi.getVersion(projectId, nextVersions[0].version);
-        setCurrentVersion(nextVersion);
-        setSelectedVersion(nextVersion.version);
-        setParameters(normalizeAnalysisParameters(nextVersion.parameters));
-        setWorkflowInstanceId(null);
-        setWorkflowState("IDLE");
-        setWorkflowError(null);
       } else {
         setCurrentVersion(null);
         setSelectedVersion(null);

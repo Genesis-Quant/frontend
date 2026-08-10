@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Ellipsis, GitCompare, Pencil, Trash2 } from "lucide-react";
 
-import SchedulerStateBadge from "@/components/badge/SchedulerStateBadge";
+import SchedulerState from "@/components/status/SchedulerState";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/ui/dropdown-menu";
@@ -24,7 +24,7 @@ export default function VersionNavigator({ displayedState, displayedWorkflowInst
       <Button aria-label="下一版本" className="size-8" disabled={next === undefined} size="icon" variant="outline" onClick={() => next !== undefined && onVersion(next)}><ChevronRight /></Button>
     </div>
     {current?.remark ? <div className="mt-2 rounded-md border bg-background/60 px-3 py-2 text-sm leading-6 text-muted-foreground"><div className="mb-1 text-xs font-medium text-foreground">版本备注</div><div className="whitespace-pre-wrap break-words">{current.remark}</div></div> : null}
-    {displayedWorkflowInstanceId && !current?.remark ? <div className="mt-2 flex items-center gap-2 rounded-md border bg-background/60 px-3 py-2 text-xs text-muted-foreground"><SchedulerStateBadge state={displayedState} /><span className="font-mono">Workflow {displayedWorkflowInstanceId}</span></div> : null}
+    {displayedWorkflowInstanceId && !current?.remark ? <div className="mt-2 flex items-center gap-2 rounded-md border bg-background/60 px-3 py-2 text-xs text-muted-foreground"><SchedulerState state={displayedState} /><span className="font-mono">Workflow {displayedWorkflowInstanceId}</span></div> : null}
   </div>;
 }
 

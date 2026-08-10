@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { maxBatchRunItems } from "@/assets/lib/projectQueue";
 import { errorMessage } from "@/assets/lib/utils";
 import MonacoEditorFrame from "@/components/editor/MonacoEditorFrame";
-import SchedulerStateBadge from "@/components/badge/SchedulerStateBadge";
+import SchedulerState from "@/components/status/SchedulerState";
 import { useAppStore } from "@/store";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
@@ -109,7 +109,7 @@ function QueueItemState<T>({ item, pending }: { item: ProjectQueueItem<T>; pendi
   if (pending) return <Badge variant="secondary">待执行</Badge>;
   if (item.error) return <Badge variant="destructive">保存失败</Badge>;
   if (item.state === "SUCCESS") return <Badge variant="secondary"><Loader2 className="animate-spin" />生成版本</Badge>;
-  return <SchedulerStateBadge state={item.state} />;
+  return <SchedulerState state={item.state} />;
 }
 
 function QueueStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
