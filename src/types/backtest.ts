@@ -155,13 +155,13 @@ export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "star
 }
 
 export const defaultBacktestParameters = (): BacktestParameters => ({
-  config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, matchingMode: 2, enableMinimumPerTransactionFee: true },
+  config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, syntheticSpread: 0.001, enableMinimumPerTransactionFee: true },
   params: {
     riskParityCapitalRatio: 0.98,
-    riskParityLotSize: 100,
-    riskParityMomentumThreshold: 0,
     riskParityAssetCount: 20,
-    riskParityCovarianceWindow: 60
+    riskParityCovarianceWindow: 60,
+    riskParityRebalanceBars: 5,
+    riskParityMinimumMomentum: 0
   },
   codes_query: defaultBacktestCodesQuery(),
   dataset_query: {
@@ -188,6 +188,48 @@ export const defaultBacktestParameters = (): BacktestParameters => ({
         op: "unary.pct_change",
         fields: { col: "close_hfq" },
         params: { periods: 120 }
+      },
+      momentum_20d: {
+        type: "TS",
+        op: "unary.pct_change",
+        fields: { col: "close_hfq" },
+        params: { periods: 20 }
+      },
+      volatility_20d: {
+        type: "TS",
+        op: "unary.rolling_std",
+        fields: { col: "return_1d" },
+        params: { window: 20, min_periods: 20 }
+      },
+      momentum_120d_rank: {
+        type: "CS",
+        op: "unary.rank_pct",
+        fields: { col: "momentum_120d" },
+        params: { ascending: true, ties_method: "average" }
+      },
+      momentum_20d_rank: {
+        type: "CS",
+        op: "unary.rank_pct",
+        fields: { col: "momentum_20d" },
+        params: { ascending: true, ties_method: "average" }
+      },
+      low_volatility_rank: {
+        type: "CS",
+        op: "unary.rank_pct",
+        fields: { col: "volatility_20d" },
+        params: { ascending: false, ties_method: "average" }
+      },
+      momentum_score: {
+        type: "DIRECT",
+        op: "binary.add",
+        fields: { left: "momentum_120d_rank", right: "momentum_20d_rank" },
+        params: {}
+      },
+      multi_factor_score: {
+        type: "DIRECT",
+        op: "binary.add",
+        fields: { left: "momentum_score", right: "low_volatility_rank" },
+        params: {}
       }
     },
     filters: []
@@ -202,7 +244,9 @@ export const defaultBacktestParameters = (): BacktestParameters => ({
         covarianceTimesWeights[index] = sum(flatten(covariance[index,]) * weights)
     }
     portfolioVolatility = sqrt(sum(weights * covarianceTimesWeights))
-    if (portfolioVolatility <= 0) return double("inf")
+    if (portfolioVolatility <= 0) {
+        return double("inf")
+    }
     riskContributions = weights * covarianceTimesWeights / portfolioVolatility
     targetContribution = portfolioVolatility / count
     return sum(square(riskContributions - targetContribution))
@@ -226,7 +270,9 @@ def nonnegativeWeightJacobian(weights) {
 
 def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
     count = rows(covariance)
-    if (count == 0 || cols(covariance) != count) throw "协方差矩阵必须是非空方阵"
+    if (count == 0 || cols(covariance) != count) {
+        throw "协方差矩阵必须是非空方阵"
+    }
     equalityConstraint = dict(STRING, ANY)
     equalityConstraint[\`type] = \`eq
     equalityConstraint[\`fun] = weightSumConstraint
@@ -237,73 +283,105 @@ def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
     nonnegativeConstraint[\`jac] = nonnegativeWeightJacobian
     bounds = matrix(take(0.0, count), take(1.0, count))
     optimization = fminSLSQP(riskParityObjective{, covariance}, take(1.0 / count, count), constraints=[equalityConstraint, nonnegativeConstraint], bounds=bounds, ftol=tolerance, maxIter=maxIterations)
-    if (optimization[\`mode] != 0) throw "SLSQP 风险平价优化失败"
+    if (optimization[\`mode] != 0) {
+        throw "SLSQP 风险平价优化失败"
+    }
     return optimization[\`xopt]
 }`,
   callbacks: {
     initialize: `def initialize(mutable context) {
     strategyParams = getParams()
     context["barCount"] = 0l
-    context["rebalanceCount"] = 0l
     context["riskParityCapitalRatio"] = double(strategyParams["riskParityCapitalRatio"])
-    context["riskParityLotSize"] = long(strategyParams["riskParityLotSize"])
-    context["riskParityMomentumThreshold"] = double(strategyParams["riskParityMomentumThreshold"])
     context["riskParityAssetCount"] = long(strategyParams["riskParityAssetCount"])
     context["riskParityCovarianceWindow"] = long(strategyParams["riskParityCovarianceWindow"])
+    context["riskParityRebalanceBars"] = long(strategyParams["riskParityRebalanceBars"])
+    context["riskParityMinimumMomentum"] = double(strategyParams["riskParityMinimumMomentum"])
 }`,
     beforeTrading: `def beforeTrading(mutable context) {
     return NULL
 }`,
     onBar: `def onBar(mutable context, message, indicator) {
+    return NULL
+}`,
+    onSnapshot: `def onSnapshot(mutable context, message, indicator) {
+    /*
+    message（策略中也可命名为 msg）是当前时间点的合成快照表；同一次回调中
+    每行对应一只证券。日频行情会在 09:30 和 15:00 各生成一次快照。
+
+    标量列：
+    - symbol SYMBOL：证券代码，例如 600000.XSHG、000001.XSHE
+    - symbolSource SYMBOL：交易所，XSHG 或 XSHE
+    - timestamp TIMESTAMP：本次快照时间
+    - lastPrice DOUBLE：09:30 使用当日开盘价，15:00 使用当日收盘价
+    - upLimitPrice/downLimitPrice DOUBLE：当日涨跌停价
+    - totalBidQty/totalOfferQty LONG：LONG 最大值，表示无限流动性
+    - prevClosePrice DOUBLE：前收盘价
+
+    一档盘口 Array Vector 列：
+    - bidPrice[0]/offerPrice[0]：买一价/卖一价
+    - bidQty[0]/offerQty[0]：LONG 最大值，表示无限流动性
+    */
+    if (time(message.timestamp[0]) != 09:30:00.000) {
+        return
+    }
     context["barCount"] = context["barCount"] + 1l
-    if (context["barCount"] % 5l != 1l) return
-    source = context["coreBacktestUnfilteredFactorData"]
-    currentDate = date(message.tradeTime[0])
-    historyTimes = exec distinct time from source where date(time) < currentDate order by time
-    if (historyTimes.size() == 0) return
+    if ((context["barCount"] - 1l) % context["riskParityRebalanceBars"] != 0l) {
+        return
+    }
+    history = backtest::getHistoryData(context, message, false)
+    historyTimes = exec distinct time from history order by time
+    if (historyTimes.size() == 0) {
+        return
+    }
     signalTime = historyTimes[historyTimes.size() - 1]
-    signal = select * from source where time == signalTime
-    eligible = select code, momentum_120d from signal where stock_pool_member == true, momentum_120d > context["riskParityMomentumThreshold"], not isNull(momentum_120d), not isNull(return_1d)
+    signal = select * from history where time == signalTime
+    eligible = select code, multi_factor_score from signal where stock_pool_member == true, momentum_120d > context["riskParityMinimumMomentum"], volatility_20d > 0, not isNull(multi_factor_score), not isNull(return_1d)
     selectedCount = min(long(context["riskParityAssetCount"]), eligible.rows())
     rowCount = message.rows()
     weights = take(0.0, rowCount)
     if (selectedCount > 0) {
-        selected = eligible[isort(eligible.momentum_120d, false)[0:selectedCount]]
+        selected = eligible[isort(eligible.multi_factor_score, false)[0:selectedCount]]
         riskDates = historyTimes.tail(long(context["riskParityCovarianceWindow"]))
-        riskHistory = select time, code, return_1d from source where time in riskDates, code in selected.code
+        riskHistory = select time, code, return_1d from history where time in riskDates, code in selected.code
         returnMatrix = exec return_1d from riskHistory pivot by time, code
         returnMatrix = nullFill(returnMatrix, 0.0)
         covariance = covarMatrix(returnMatrix)
-        riskCodes = string(returnMatrix.colNames())
+        riskCodes = symbol(returnMatrix.colNames())
         riskWeights = solveRiskParity(covariance)
         for (index in 0..(rowCount - 1)) {
-            code = strReplace(strReplace(string(message.symbol[index]), ".XSHE", ".SZ"), ".XSHG", ".SH")
-            riskIndex = find(riskCodes, code)
-            if (riskIndex < riskCodes.size()) weights[index] = riskWeights[riskIndex]
+            riskIndex = find(riskCodes, message.symbol[index])
+            if (riskIndex < riskCodes.size()) {
+                weights[index] = riskWeights[riskIndex]
+            }
         }
     }
     currentQuantities = take(0l, rowCount)
     for (index in 0..(rowCount - 1)) {
         position = Backtest::getPosition(context.engine, message.symbol[index], "stock")["longPosition"]
-        if (count(position) > 0) currentQuantities[index] = long(position[0])
+        if (count(position) > 0) {
+            currentQuantities[index] = long(position.sum())
+        }
     }
-    equity = Backtest::getAvailableCash(context.engine, "stock") + sum(double(currentQuantities) * message.open)
+    equity = Backtest::getAvailableCash(context.engine, "stock") + sum(double(currentQuantities) * message.lastPrice)
     targetQuantities = take(0l, rowCount)
     for (index in 0..(rowCount - 1)) {
-        if (weights[index] > 0 && message.open[index] > 0) targetQuantities[index] = long(floor(equity * context["riskParityCapitalRatio"] * weights[index] / message.open[index] / double(context["riskParityLotSize"]))) * context["riskParityLotSize"]
+        if (weights[index] > 0 && message.lastPrice[index] > 0) {
+            targetQuantities[index] = long(floor(equity * context["riskParityCapitalRatio"] * weights[index] / message.lastPrice[index] / 100.0)) * 100l
+        }
     }
     for (index in 0..(rowCount - 1)) {
         difference = targetQuantities[index] - currentQuantities[index]
-        if (difference < 0) Backtest::submitOrder(context.engine, (message.symbol[index], context.tradeTime, 5, message.open[index], -difference, 3), "riskParitySell")
+        if (difference < 0) {
+            backtest::order_target(context, message, message.symbol[index], targetQuantities[index], "riskParitySell")
+        }
     }
     for (index in 0..(rowCount - 1)) {
         difference = targetQuantities[index] - currentQuantities[index]
-        if (difference > 0) Backtest::submitOrder(context.engine, (message.symbol[index], context.tradeTime, 5, message.open[index], difference, 1), "riskParityBuy")
+        if (difference > 0) {
+            backtest::order_target(context, message, message.symbol[index], targetQuantities[index], "riskParityBuy")
+        }
     }
-    context["rebalanceCount"] = context["rebalanceCount"] + 1l
-}`,
-    onSnapshot: `def onSnapshot(mutable context, message, indicator) {
-    return NULL
 }`,
     onOrder: `def onOrder(mutable context, event) {
     return NULL
@@ -315,7 +393,7 @@ def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
     return NULL
 }`,
     finalize: `def finalize(mutable context) {
-    print("rebalanceCount=" + string(context["rebalanceCount"]))
+    return NULL
 }`
   }
 });
