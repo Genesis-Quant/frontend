@@ -315,12 +315,12 @@ def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
     - timestamp TIMESTAMP：本次快照时间
     - lastPrice DOUBLE：09:30 使用当日开盘价，15:00 使用当日收盘价
     - upLimitPrice/downLimitPrice DOUBLE：当日涨跌停价
-    - totalBidQty/totalOfferQty LONG：LONG 最大值，表示无限流动性
+    - totalBidQty/totalOfferQty LONG：十亿股/份，表示不会触发整数溢出的近似无限流动性
     - prevClosePrice DOUBLE：前收盘价
 
     一档盘口 Array Vector 列：
     - bidPrice[0]/offerPrice[0]：买一价/卖一价
-    - bidQty[0]/offerQty[0]：LONG 最大值，表示无限流动性
+    - bidQty[0]/offerQty[0]：十亿股/份，表示不会触发整数溢出的近似无限流动性
     */
     if (time(message.timestamp[0]) != 09:30:00.000) {
         return
