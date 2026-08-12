@@ -1,0 +1,133 @@
+{
+  "getParams": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "getParams()",
+        "name": "getParams",
+        "parameters": []
+      }
+    ],
+    "markdown": "### `backtest::getParams`\n\n```dolphindb\ngetParams()\n```\n\n返回 run_backtest 上传的只读策略参数字典。\n\n#### 返回\n\nSTRING → ANY 的策略参数字典。"
+  },
+  "getHistoryData": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "getHistoryData(context, msg, filter=true)",
+        "name": "getHistoryData",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "filter=true",
+            "name": "filter",
+            "optional": true,
+            "default": "true"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::getHistoryData`\n\n```dolphindb\ngetHistoryData(context, msg, filter=true)\n```\n\n返回严格早于当前 onSnapshot 消息日期的 DSL 数据。\n\nfilter=true 读取 filters 后的数据，false 读取 filters 前的数据。\nmsg 只用于确定当前回调日期，合成快照字段使用 timestamp。\n\n#### 参数\n\n- `context`：当前 Backtest 策略上下文。\n- `msg`：当前 onSnapshot 的快照表；仅使用 timestamp[0] 确定当前交易日。\n- `filter=true`：true 读取 filters 后的数据，false 读取 filters 前的数据。\n\n#### 返回\n\n严格早于当前快照日期的 DSL 历史表；没有数据时返回空表。"
+  },
+  "getLastData": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "getLastData(context, msg, filter=true)",
+        "name": "getLastData",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "filter=true",
+            "name": "filter",
+            "optional": true,
+            "default": "true"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::getLastData`\n\n```dolphindb\ngetLastData(context, msg, filter=true)\n```\n\n返回严格早于当前消息日期的最后一个实际存在的 DSL 截面。\n\n#### 参数\n\n- `context`：当前 Backtest 策略上下文。\n- `msg`：当前 onSnapshot 的快照表；仅使用 timestamp[0] 确定当前交易日。\n- `filter=true`：true 读取 filters 后的数据，false 读取 filters 前的数据。\n\n#### 返回\n\n严格早于当前快照日期的最后一个实际 DSL 截面；没有数据时返回空表。"
+  },
+  "order_target": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "order_target(mutable context, msg, stockCode, targetAmount, orderLabel=\"order_target\")",
+        "name": "order_target",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "stockCode",
+            "name": "stockCode"
+          },
+          {
+            "full": "targetAmount",
+            "name": "targetAmount"
+          },
+          {
+            "full": "orderLabel=\"order_target\"",
+            "name": "orderLabel",
+            "optional": true,
+            "default": "\"order_target\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::order_target`\n\n```dolphindb\norder_target(mutable context, msg, stockCode, targetAmount, orderLabel=\"order_target\")\n```\n\n将指定证券的多头持仓调整到目标股数。\n\ntargetAmount 是精确目标股数，允许卖出不足一手的剩余持仓。买单使用\n卖一价，卖单使用买一价，确保限价单能够参与盘口撮合。\n\n#### 参数\n\n- `mutable context`：可变 Backtest 策略上下文，必须包含 context.engine。\n- `msg`：当前合成快照表，需包含 symbol、timestamp、bidPrice 和 offerPrice。\n- `stockCode`：目标证券代码，使用 000001.XSHE 或 600000.XSHG 格式。\n- `targetAmount`：目标多头股数，必须是非负整数；清仓时允许卖出不足 100 股的尾仓。\n- `orderLabel=\"order_target\"`：写入成交明细 label 列的订单标签。\n\n#### 返回\n\n无需调仓时返回 NULL，否则返回 Backtest::submitOrder 的订单结果。"
+  },
+  "order_target_value": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "order_target_value(mutable context, msg, stockCode, targetValue, orderLabel=\"order_target_value\")",
+        "name": "order_target_value",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "stockCode",
+            "name": "stockCode"
+          },
+          {
+            "full": "targetValue",
+            "name": "targetValue"
+          },
+          {
+            "full": "orderLabel=\"order_target_value\"",
+            "name": "orderLabel",
+            "optional": true,
+            "default": "\"order_target_value\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::order_target_value`\n\n```dolphindb\norder_target_value(mutable context, msg, stockCode, targetValue, orderLabel=\"order_target_value\")\n```\n\n使用当前快照 lastPrice 将目标市值换算成目标股数并下单。\n\n#### 参数\n\n- `mutable context`：可变 Backtest 策略上下文，必须包含 context.engine。\n- `msg`：当前合成快照表，需包含 symbol、timestamp、lastPrice、bidPrice 和 offerPrice。\n- `stockCode`：目标证券代码，使用 000001.XSHE 或 600000.XSHG 格式。\n- `targetValue`：非负目标市值；函数按当前 lastPrice 换算并以 100 股为一手调整。\n- `orderLabel=\"order_target_value\"`：写入成交明细 label 列的订单标签。\n\n#### 返回\n\n无需调仓时返回 NULL，否则返回 Backtest::submitOrder 的订单结果。"
+  }
+}

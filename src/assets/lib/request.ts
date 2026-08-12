@@ -42,6 +42,7 @@ function errorMessage(error: unknown) {
 export const client = {
   get: <T>(url: string, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "GET", url }),
   getBinary: (url: string) => request<ArrayBuffer>({ method: "GET", url, responseType: "arraybuffer", timeout: 120000 }),
+  getText: (url: string, config: AxiosRequestConfig = {}) => request<string>({ ...config, method: "GET", responseType: "text", timeout: 120000, url }),
   post: <T>(url: string, data: unknown, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "POST", url, data }),
   patch: <T>(url: string, data: unknown, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "PATCH", url, data }),
   delete: <T>(url: string, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "DELETE", url })
