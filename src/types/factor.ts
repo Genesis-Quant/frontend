@@ -320,6 +320,7 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
 
 export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParameters {
   const defaults = defaultAnalysisParameters();
+  if (isFactorAnalysisParameters(value)) return structuredClone(value);
   if (!canNormalizeFactorAnalysisParameters(value)) return defaults;
 
   const input = value as Record<string, unknown>;

@@ -155,7 +155,7 @@ export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "star
 }
 
 export const defaultBacktestParameters = (): BacktestParameters => ({
-  config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, matchingMode: 2, enableMinimumPerTransactionFee: true },
+  config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, enableMinimumPerTransactionFee: true },
   params: {
     riskParityCapitalRatio: 0.98,
     riskParityLotSize: 100,
