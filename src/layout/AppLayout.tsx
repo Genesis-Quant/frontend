@@ -1,4 +1,4 @@
-import { CandlestickChart, DatabaseZap, FlaskConical, Home, Menu, Moon, ShieldCheck, Sun, Workflow } from "lucide-react";
+import { BookOpenText, CandlestickChart, DatabaseZap, FlaskConical, Home, Menu, Moon, ShieldCheck, Sun, Workflow } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { Avatar, AvatarFallback } from "@/ui/avatar";
@@ -13,7 +13,8 @@ const navigation = [
   { id: "query", label: "数据查询", path: "/query", icon: DatabaseZap },
   { id: "factor", label: "因子分析", path: "/factor", icon: FlaskConical },
   { id: "backtest", label: "策略回测", path: "/backtest", icon: CandlestickChart },
-  { id: "workflows", label: "工作流", path: "/workflows", icon: Workflow }
+  { id: "workflows", label: "工作流", path: "/workflows", icon: Workflow },
+  { id: "mcp", label: "MCP", path: "/mcp", icon: BookOpenText }
 ];
 
 const adminNavigation = { id: "admin", label: "管理面板", path: "/admin", icon: ShieldCheck };
@@ -66,6 +67,7 @@ function activePage(pathname: string) {
   if (pathname.startsWith("/factor")) return "factor";
   if (pathname.startsWith("/backtest")) return "backtest";
   if (pathname.startsWith("/workflows")) return "workflows";
+  if (pathname.startsWith("/mcp")) return "mcp";
   if (pathname.startsWith("/admin")) return "admin";
   if (pathname.startsWith("/profile")) return "profile";
   return "home";
