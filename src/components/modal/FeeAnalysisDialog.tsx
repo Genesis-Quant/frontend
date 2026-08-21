@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Loader2, RefreshCw } from "lucide-react";
+import { BarChart3, Loader2, RefreshCw, Trash2 } from "lucide-react";
 
-import { backtestApi } from "@/assets/lib/backtest";
+import { backtestApi, canDeleteBacktestAnalysis } from "@/assets/lib/backtest";
 import { SensitivityAnalytics, type SensitivityResultRow } from "@/assets/lib/sensitivity";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
 import EChart from "@/components/chart/EChart";
+import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
+import { AnalysisHistoryItem, AnalysisHistoryPanel } from "@/components/panel/AnalysisHistoryPanel";
 import SchedulerState from "@/components/status/SchedulerState";
 import type { BatchResearchListItem, BatchResearchResponse } from "@/types/backtest";
 import { terminalStates } from "@/types/workflow";
@@ -33,6 +35,9 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
   const [submitting, setSubmitting] = useState(false);
   const [loadingResults, setLoadingResults] = useState(false);
   const [loadingHistoryResearchId, setLoadingHistoryResearchId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BatchResearchListItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [error, setError] = useState("");
   const resultRequest = useRef(0);
   const analytics = useRef<SensitivityAnalytics | null>(null);
@@ -46,6 +51,9 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
     setSubmitting(false);
     setLoadingResults(false);
     setLoadingHistoryResearchId(null);
+    setDeleteTarget(null);
+    setDeleting(false);
+    setDeleteError("");
     setError("");
   }, [open, projectId, version]);
 
@@ -150,36 +158,67 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
     }
   }
 
+  async function deleteResearch() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await backtestApi.deleteBatchResearch(deleteTarget.id);
+      setHistory((items) => items.filter((item) => item.id !== deleteTarget.id));
+      if (research?.id === deleteTarget.id) {
+        analytics.current?.close();
+        analytics.current = null;
+        setResearch(null);
+        setResults([]);
+      }
+      setDeleteTarget(null);
+    } catch (reason) {
+      setDeleteError(errorMessage(reason));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const successfulResults = results.filter((row) => row.status === "SUCCESS");
   const performanceOption = useMemo(() => feeChartOption(successfulResults, "performance"), [successfulResults]);
   const riskOption = useMemo(() => feeChartOption(successfulResults, "risk"), [successfulResults]);
   const running = research !== null && !terminalStates.has(research.state);
 
-  return <Dialog open={open} onOpenChange={onOpenChange}>
-    <LargeDialogContent className="flex flex-col overflow-hidden">
-      <DialogHeader>
+  return <>
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <LargeDialogContent className={research ? "flex flex-col overflow-hidden" : "flex !h-[34rem] max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden sm:!max-w-5xl xl:!w-[min(64rem,calc(100vw-6rem))]"}>
+      <DialogHeader className="shrink-0 border-b pb-3 pr-8">
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 手续费分析</DialogTitle>
         <DialogDescription>{research ? `研究 #${research.id} 使用一个工作流复用回测数据，依次计算 ${research.requested_count} 个手续费率。` : "选择一系列手续费率，在同一个 Runtime 工作流中复用查询数据和消息表完成全部回测。费率按百分比填写。"}</DialogDescription>
       </DialogHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {!research
-          ? <div className="mx-auto max-w-xl space-y-5 py-4">
-          <div className="rounded-md border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">分析保留当前版本的全部策略参数，只依次替换 <code className="rounded bg-muted px-1 font-mono text-xs">config.commission</code>。完整区间数据只查询一次，各费率结果写入同一个 Parquet。</div>
-          <label className="block space-y-2"><span className="text-sm font-medium">手续费率（%）</span><Input value={rateText} onChange={(event) => setRateText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /><span className="text-xs text-muted-foreground">用逗号分隔多个费率。</span></label>
-          {history.length ? <div className="space-y-2 rounded-md border bg-card p-4"><div className="text-sm font-medium">已有手续费分析</div>{history.map((item) => <div className="flex items-center gap-3 text-sm" key={item.id}><span className="min-w-0 flex-1 truncate">研究 #{item.id} · {item.requested_count} 个费率</span><SchedulerState state={item.state} /><Button size="sm" variant="ghost" disabled={loadingHistoryResearchId !== null} onClick={() => openHistory(item.id)}>{loadingHistoryResearchId === item.id ? <Loader2 className="animate-spin" /> : "查看"}</Button></div>)}</div> : null}
-          {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的回测版本。</div> : null}
-          {error ? <ErrorMessage message={error} /> : null}
-          <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>取消</Button><Button onClick={submit} disabled={submitting || version === null}>{submitting ? <Loader2 className="animate-spin" /> : <BarChart3 />}开始分析</Button></DialogFooter>
-          </div>
-          : <div className="space-y-5 pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex flex-wrap items-center gap-3"><SchedulerState state={research.state} /><span className="text-sm text-muted-foreground">Workspace #{research.workflow_workspace_id}</span>{research.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{research.workflow_instance_id}</span> : null}<span className="text-sm text-muted-foreground">成功 {research.completed_count} / 失败 {research.failed_count} / 共 {research.requested_count}</span></div><Button size="sm" variant="outline" disabled={running} onClick={() => { setResearch(null); setResults([]); setError(""); }}><RefreshCw />新建分析</Button></div>
+      {!research
+        ? <div className="grid min-h-0 flex-1 gap-4 pt-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
+          <section className="flex min-h-0 flex-col overflow-hidden rounded-md border bg-card">
+            <div className="border-b px-4 py-3"><div className="text-sm font-medium">分析配置</div><div className="mt-1 text-xs text-muted-foreground">保留当前版本的其他参数，仅替换手续费率。</div></div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+              <label className="block space-y-2"><span className="text-sm font-medium">手续费率（%）</span><Input value={rateText} onChange={(event) => setRateText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /><span className="text-xs text-muted-foreground">用逗号分隔；完整区间数据只查询一次。</span></label>
+              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2"><div className="rounded-md bg-muted/40 px-3 py-2"><span className="block text-foreground">变更字段</span><code className="font-mono">config.commission</code></div><div className="rounded-md bg-muted/40 px-3 py-2"><span className="block text-foreground">结果存储</span>所有费率写入同一结果文件</div></div>
+              {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的回测版本。</div> : null}
+              {error ? <ErrorMessage message={error} /> : null}
+            </div>
+            <DialogFooter className="shrink-0 border-t px-4 py-3"><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>取消</Button><Button onClick={submit} disabled={submitting || version === null}>{submitting ? <Loader2 className="animate-spin" /> : <BarChart3 />}开始分析</Button></DialogFooter>
+          </section>
+          <AnalysisHistoryPanel count={history.length} emptyMessage="当前版本还没有手续费分析" title="历史分析">
+            {history.map((item) => <AnalysisHistoryItem deleteDisabled={!canDeleteBacktestAnalysis(item.state)} deleteLabel={`删除手续费分析 ${item.id}`} description={`${item.requested_count} 个费率`} key={item.id} loading={loadingHistoryResearchId === item.id} onDelete={() => { setDeleteError(""); setDeleteTarget(item); }} onOpen={() => openHistory(item.id)} state={item.state} title={`研究 #${item.id}`} />)}
+          </AnalysisHistoryPanel>
+        </div>
+        : <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="space-y-5 pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex flex-wrap items-center gap-3"><SchedulerState state={research.state} /><span className="text-sm text-muted-foreground">Workspace #{research.workflow_workspace_id}</span>{research.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{research.workflow_instance_id}</span> : null}<span className="text-sm text-muted-foreground">成功 {research.completed_count} / 失败 {research.failed_count} / 共 {research.requested_count}</span></div><div className="flex items-center gap-2"><Button size="sm" variant="destructive" disabled={!canDeleteBacktestAnalysis(research.state)} onClick={() => { setDeleteError(""); setDeleteTarget(research); }}><Trash2 />删除分析</Button><Button size="sm" variant="outline" disabled={running} onClick={() => { setResearch(null); setResults([]); setError(""); }}><RefreshCw />新建分析</Button></div></div>
           {research.error ? <ErrorMessage message={research.error} /> : null}
           {running ? <LoadingPanel label="手续费分析工作流正在运行..." /> : loadingResults ? <LoadingPanel label="DuckDB 正在读取手续费分析结果..." /> : results.length ? <><div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">收益与波动随手续费变化</div><EChart height={300} option={performanceOption} /></div><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">风险调整收益随手续费变化</div><EChart height={300} option={riskOption} /></div></div><FeeResultTable results={results} /></> : null}
           {error ? <ErrorMessage message={error} /> : null}
-          </div>}
-      </div>
+          </div>
+        </div>}
     </LargeDialogContent>
-  </Dialog>;
+  </Dialog>
+  <DeleteConfirmationDialog actionLabel="删除分析" description={`将永久删除手续费分析 #${deleteTarget?.id ?? ""}、关联工作流和结果文件。该操作不可撤销。`} error={deleteError} open={deleteTarget !== null} submitting={deleting} title={`删除手续费分析 #${deleteTarget?.id ?? ""}`} onDelete={deleteResearch} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) { setDeleteTarget(null); setDeleteError(""); } }} />
+  </>;
 }
 
 function FeeResultTable({ results }: { results: SensitivityResultRow[] }) {

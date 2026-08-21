@@ -129,5 +129,479 @@
       }
     ],
     "markdown": "### `backtest::order_target_value`\n\n```dolphindb\norder_target_value(mutable context, msg, stockCode, targetValue, orderLabel=\"order_target_value\")\n```\n\n使用当前快照 lastPrice 将目标市值换算成目标股数并下单。\n\n#### 参数\n\n- `mutable context`：可变 Backtest 策略上下文，必须包含 context.engine。\n- `msg`：当前合成快照表，需包含 symbol、timestamp、lastPrice、bidPrice 和 offerPrice。\n- `stockCode`：目标证券代码，使用 000001.XSHE 或 600000.XSHG 格式。\n- `targetValue`：非负目标市值；函数按当前 lastPrice 换算并以 100 股为一手调整。\n- `orderLabel=\"order_target_value\"`：写入成交明细 label 列的订单标签。\n\n#### 返回\n\n无需调仓时返回 NULL，否则返回 Backtest::submitOrder 的订单结果。"
+  },
+  "get_trading_days": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_trading_days(startDate, endDate, exchange=\"XSHG\")",
+        "name": "get_trading_days",
+        "parameters": [
+          {
+            "full": "startDate",
+            "name": "startDate"
+          },
+          {
+            "full": "endDate",
+            "name": "endDate"
+          },
+          {
+            "full": "exchange=\"XSHG\"",
+            "name": "exchange",
+            "optional": true,
+            "default": "\"XSHG\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_trading_days`\n\n返回闭区间内的交易所交易日 DATE 向量。`exchange` 只允许 `\"XSHG\"` 或 `\"XSHE\"`；日历来自 DolphinDB `getMarketCalendar`，与当前回测 message 是否缺行无关。"
+  },
+  "is_trading_day": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "is_trading_day(targetDate, exchange=\"XSHG\")",
+        "name": "is_trading_day",
+        "parameters": [
+          {
+            "full": "targetDate",
+            "name": "targetDate"
+          },
+          {
+            "full": "exchange=\"XSHG\"",
+            "name": "exchange",
+            "optional": true,
+            "default": "\"XSHG\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::is_trading_day`\n\n判断目标日期是否为指定交易所交易日，返回 BOOL。"
+  },
+  "shift_trading_day": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "shift_trading_day(targetDate, offset, exchange=\"XSHG\")",
+        "name": "shift_trading_day",
+        "parameters": [
+          {
+            "full": "targetDate",
+            "name": "targetDate"
+          },
+          {
+            "full": "offset",
+            "name": "offset"
+          },
+          {
+            "full": "exchange=\"XSHG\"",
+            "name": "exchange",
+            "optional": true,
+            "default": "\"XSHG\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::shift_trading_day`\n\n按交易所日历移动整数个交易日；正数向后、负数向前。`offset=0` 时输入日期本身必须是交易日。"
+  },
+  "previous_trading_day": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "previous_trading_day(targetDate, count=1, exchange=\"XSHG\")",
+        "name": "previous_trading_day",
+        "parameters": [
+          {
+            "full": "targetDate",
+            "name": "targetDate"
+          },
+          {
+            "full": "count=1",
+            "name": "count",
+            "optional": true,
+            "default": "1"
+          },
+          {
+            "full": "exchange=\"XSHG\"",
+            "name": "exchange",
+            "optional": true,
+            "default": "\"XSHG\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::previous_trading_day`\n\n返回严格早于目标日期的第 `count` 个交易日；`count` 必须是正整数。"
+  },
+  "next_trading_day": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "next_trading_day(targetDate, count=1, exchange=\"XSHG\")",
+        "name": "next_trading_day",
+        "parameters": [
+          {
+            "full": "targetDate",
+            "name": "targetDate"
+          },
+          {
+            "full": "count=1",
+            "name": "count",
+            "optional": true,
+            "default": "1"
+          },
+          {
+            "full": "exchange=\"XSHG\"",
+            "name": "exchange",
+            "optional": true,
+            "default": "\"XSHG\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::next_trading_day`\n\n返回严格晚于目标日期的第 `count` 个交易日；`count` 必须是正整数。"
+  },
+  "history": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "history(context, msg, count, codes=NULL, fields=NULL, filter=true)",
+        "name": "history",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "count",
+            "name": "count"
+          },
+          {
+            "full": "codes=NULL",
+            "name": "codes",
+            "optional": true,
+            "default": "NULL"
+          },
+          {
+            "full": "fields=NULL",
+            "name": "fields",
+            "optional": true,
+            "default": "NULL"
+          },
+          {
+            "full": "filter=true",
+            "name": "filter",
+            "optional": true,
+            "default": "true"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::history`\n\n返回当前消息日期以前最近 `count` 个实际 time 截面。`codes` 可限定证券，`fields` 可限定数据列；`time`、`code` 始终保留。`filter=true` 读取 DSL filters 后的数据，`false` 读取 filters 前的数据。不存在的字段会报错。"
+  },
+  "current_snapshot": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "current_snapshot(msg, codes=NULL)",
+        "name": "current_snapshot",
+        "parameters": [
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "codes=NULL",
+            "name": "codes",
+            "optional": true,
+            "default": "NULL"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::current_snapshot`\n\n返回当前 message 的完整快照或指定代码子集，不读取历史数据。"
+  },
+  "can_trade": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "can_trade(msg, stockCode, direction=0)",
+        "name": "can_trade",
+        "parameters": [
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "stockCode",
+            "name": "stockCode"
+          },
+          {
+            "full": "direction=0",
+            "name": "direction",
+            "optional": true,
+            "default": "0"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::can_trade`\n\n检查当前快照是否存在有效可撮合盘口。`direction=0` 检查最新价，`1` 检查卖一价、卖一量和涨停价，`3` 检查买一价、买一量和跌停价。它不检查资金、可卖持仓、整手规则或插件风控。"
+  },
+  "get_portfolio": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_portfolio(context)",
+        "name": "get_portfolio",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_portfolio`\n\n返回 Backtest 股票账户当前权益字典。"
+  },
+  "get_total_equity": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_total_equity(context)",
+        "name": "get_total_equity",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_total_equity`\n\n返回当前组合总权益 DOUBLE；缺失或无效的 `totalEquity` 会报错。"
+  },
+  "get_positions": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_positions(context)",
+        "name": "get_positions",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_positions`\n\n返回股票账户全部当前持仓表；不伪造空持仓，也不改写插件字段。"
+  },
+  "get_position": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_position(context, stockCode)",
+        "name": "get_position",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          },
+          {
+            "full": "stockCode",
+            "name": "stockCode"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_position`\n\n返回指定 `.XSHG/.XSHE` 证券的当前持仓字典。"
+  },
+  "get_available_cash": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_available_cash(context)",
+        "name": "get_available_cash",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_available_cash`\n\n返回股票账户当前可用现金 DOUBLE。"
+  },
+  "get_open_orders": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "get_open_orders(context)",
+        "name": "get_open_orders",
+        "parameters": [
+          {
+            "full": "context",
+            "name": "context"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::get_open_orders`\n\n返回当前活动订单的插件原始结果。使用列前应对非空结果做 Schema 自省。"
+  },
+  "order_target_percent": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "order_target_percent(mutable context, msg, stockCode, targetPercent, orderLabel=\"order_target_percent\")",
+        "name": "order_target_percent",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "stockCode",
+            "name": "stockCode"
+          },
+          {
+            "full": "targetPercent",
+            "name": "targetPercent"
+          },
+          {
+            "full": "orderLabel=\"order_target_percent\"",
+            "name": "orderLabel",
+            "optional": true,
+            "default": "\"order_target_percent\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::order_target_percent`\n\n把单只证券调整到当前组合总权益的目标比例。`targetPercent` 必须是 `[0,1]` 内有限数值；多证券资金预算请使用 `order_target_portfolio`。"
+  },
+  "order_target_portfolio": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "order_target_portfolio(mutable context, msg, targetWeights, orderLabel=\"order_target_portfolio\")",
+        "name": "order_target_portfolio",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "msg",
+            "name": "msg"
+          },
+          {
+            "full": "targetWeights",
+            "name": "targetWeights"
+          },
+          {
+            "full": "orderLabel=\"order_target_portfolio\"",
+            "name": "orderLabel",
+            "optional": true,
+            "default": "\"order_target_portfolio\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::order_target_portfolio`\n\n按“`.XSHG/.XSHE` 代码 → 非负权重”字典调整组合，权重和不得超过 1；字典外已有持仓目标为 0。函数先减仓再按真实可用现金加仓，不可交易代码会跳过，返回实际提交的订单号向量。存在挂单或延迟时应等状态更新后再调用。"
+  },
+  "run_daily": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "run_daily(mutable context, callback, phase=\"open\")",
+        "name": "run_daily",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "callback",
+            "name": "callback"
+          },
+          {
+            "full": "phase=\"open\"",
+            "name": "phase",
+            "optional": true,
+            "default": "\"open\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::run_daily`\n\n在 `initialize` 中注册每日任务。callback 固定签名为 `def callback(mutable context, message, indicator)`；phase 只允许 `before_trading`、`open`、`after_trading`，非 open 阶段的 message/indicator 为 NULL。"
+  },
+  "run_weekly": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "run_weekly(mutable context, callback, tradingDay=1, phase=\"open\")",
+        "name": "run_weekly",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "callback",
+            "name": "callback"
+          },
+          {
+            "full": "tradingDay=1",
+            "name": "tradingDay",
+            "optional": true,
+            "default": "1"
+          },
+          {
+            "full": "phase=\"open\"",
+            "name": "phase",
+            "optional": true,
+            "default": "\"open\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::run_weekly`\n\n在 `initialize` 中注册每周任务。`tradingDay=1` 表示 XSHG 日历的周首交易日，负数从周末倒数，不能为 0。指定日不在本次回放日期中时不会补触发。"
+  },
+  "run_monthly": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "run_monthly(mutable context, callback, tradingDay=1, phase=\"open\")",
+        "name": "run_monthly",
+        "parameters": [
+          {
+            "full": "mutable context",
+            "name": "context"
+          },
+          {
+            "full": "callback",
+            "name": "callback"
+          },
+          {
+            "full": "tradingDay=1",
+            "name": "tradingDay",
+            "optional": true,
+            "default": "1"
+          },
+          {
+            "full": "phase=\"open\"",
+            "name": "phase",
+            "optional": true,
+            "default": "\"open\""
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::run_monthly`\n\n在 `initialize` 中注册每月任务。`tradingDay=1` 表示 XSHG 日历的月首交易日，`-1` 表示月末交易日，不能为 0。指定日不在本次回放日期中时不会补触发。"
   }
 }

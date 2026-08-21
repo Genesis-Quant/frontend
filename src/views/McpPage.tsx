@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   BookOpenText,
   Check,
   ChevronRight,
@@ -163,13 +164,14 @@ export default function McpPage() {
 }
 
 function McpConnection({ mcpUrl }: { mcpUrl: string }) {
-  const [copied, setCopied] = useState<"url" | "token" | null>(null);
+  const [copied, setCopied] = useState<"prompt" | "token" | "url" | null>(null);
   const resetTimer = useRef<number | undefined>(undefined);
   const token = localStorage.getItem(tokenStorageKey) ?? "";
+  const installPrompt = `请为当前 Agent 安装并启用 Arena MCP：服务地址为 ${mcpUrl}，Bearer Token 从环境变量 ARENA_TOKEN 读取；请自动识别当前客户端的 MCP 配置方式，完成配置后验证连接并列出可用工具，若 ARENA_TOKEN 尚未设置则只提醒我设置该环境变量，不要索取或写入明文 Token。`;
 
   useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
-  async function copy(target: "url" | "token", value: string) {
+  async function copy(target: "prompt" | "token" | "url", value: string) {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(target);
@@ -180,16 +182,54 @@ function McpConnection({ mcpUrl }: { mcpUrl: string }) {
     }
   }
 
-  return <div aria-label="MCP 连接信息" className="mt-5 flex flex-col gap-2 sm:flex-row">
-    <div className="flex min-w-0 flex-1 items-center gap-3 border bg-muted/30 px-3 py-2">
-      <span className="shrink-0 text-xs font-medium text-muted-foreground">MCP URL</span>
-      <code className="min-w-0 flex-1 truncate text-xs" title={mcpUrl}>{mcpUrl}</code>
-      <Button aria-label="复制 MCP URL" size="xs" variant="ghost" onClick={() => { copy("url", mcpUrl); }}>
-        {copied === "url" ? <Check /> : <Copy />}{copied === "url" ? "已复制" : "复制 URL"}
+  return <section aria-label="MCP 连接信息" className="mt-5 overflow-hidden rounded-md border bg-card">
+    <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+      <ConnectionItem
+        actionLabel={copied === "url" ? "已复制" : "复制地址"}
+        copied={copied === "url"}
+        label="服务地址"
+        value={mcpUrl}
+        onCopy={() => { copy("url", mcpUrl); }}
+      />
+      <ConnectionItem
+        actionLabel={copied === "token" ? "已复制" : "复制 Token"}
+        copied={copied === "token"}
+        disabled={!token}
+        label="访问令牌"
+        value={token ? "已从当前登录会话获取" : "登录后可复制"}
+        onCopy={() => { copy("token", token); }}
+      />
+    </div>
+
+    <div className="grid items-center gap-4 border-t bg-muted/25 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md border bg-background text-foreground"><Bot className="size-4" /></div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium">交给 Agent 自动安装</div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">复制下面的一句话并发送给任意 Agent，它会自动识别客户端、配置连接并验证工具。</p>
+          <code className="mt-2 block max-w-4xl truncate text-[11px] leading-5 text-muted-foreground" title={installPrompt}>{installPrompt}</code>
+        </div>
+      </div>
+      <Button className="w-full md:w-40" size="sm" onClick={() => { copy("prompt", installPrompt); }}>
+        {copied === "prompt" ? <Check /> : <Copy />}{copied === "prompt" ? "安装提示词已复制" : "复制安装提示词"}
       </Button>
     </div>
-    <Button disabled={!token} size="sm" variant="outline" onClick={() => { copy("token", token); }}>
-      {copied === "token" ? <Check /> : <Copy />}{copied === "token" ? "已复制" : "复制 Token"}
+  </section>;
+}
+
+function ConnectionItem({ actionLabel, copied, disabled = false, label, onCopy, value }: {
+  actionLabel: string;
+  copied: boolean;
+  disabled?: boolean;
+  label: string;
+  onCopy: () => void;
+  value: string;
+}) {
+  return <div className="grid min-h-14 min-w-0 grid-cols-[5rem_minmax(0,1fr)_6rem] items-center gap-3 px-4 py-3">
+    <span className="text-xs font-medium text-muted-foreground">{label}</span>
+    <code className="min-w-0 truncate text-xs" title={value}>{value}</code>
+    <Button aria-label={`${actionLabel} ${label}`} className="w-24" disabled={disabled} size="xs" variant="ghost" onClick={onCopy}>
+      {copied ? <Check /> : <Copy />}{actionLabel}
     </Button>
   </div>;
 }

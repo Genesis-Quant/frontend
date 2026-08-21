@@ -169,7 +169,7 @@ function ResultContent({ columns, download, error, loading, numericStats, onPage
   if (phase === "idle") return <EmptyStatePanel description="完成 DSL 后执行查询。" icon={FileQuestion} title="尚未执行查询" />;
   if (error) return <ErrorPanel message={error} />;
   if (loading && !columns.length) return <EmptyStatePanel description="DuckDB 正在读取查询结果。" icon={Loader2} iconClassName="animate-spin" title="正在读取 Parquet" />;
-  return total || rows.length ? <ParquetDataTable columns={columns} download={download} loading={loading} numericStats={numericStats} pagination={{ page, pageSize, total, onPageChange: onPage, onPageSizeChange: onPageSize }} query={{ value: query, onChange: onQuery }} rows={rows} timeColumn={timeColumn} /> : <EmptyStatePanel description="当前条件下没有数据行。" icon={Database} title="查询结果为空" />;
+  return columns.length ? <ParquetDataTable columns={columns} download={download} loading={loading} numericStats={numericStats} pagination={{ page, pageSize, total, onPageChange: onPage, onPageSizeChange: onPageSize }} query={{ value: query, onChange: onQuery }} rows={rows} timeColumn={timeColumn} /> : <EmptyStatePanel description="结果文件没有可展示的列。" icon={Database} title="查询结果为空" />;
 }
 
 function identifier(value: string) { return `"${value.replace(/"/g, "\"\"")}"`; }

@@ -1,10 +1,12 @@
-import { CalendarRange, Gauge, History, Loader2, Play, RotateCcw } from "lucide-react";
+import { CalendarRange, Gauge, Loader2, Play, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { backtestApi } from "@/assets/lib/backtest";
+import { backtestApi, canDeleteBacktestAnalysis } from "@/assets/lib/backtest";
 import { OptimizationAnalytics, optimizationAlgorithmLabels, type OptimizationReportData } from "@/assets/lib/optimization";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
+import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
+import { AnalysisHistoryItem, AnalysisHistoryPanel } from "@/components/panel/AnalysisHistoryPanel";
 import OptimizationReport from "@/components/panel/OptimizationReport";
 import { AppPagination } from "@/components/pagination/AppPagination";
 import SchedulerState from "@/components/status/SchedulerState";
@@ -49,6 +51,9 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
   const [submitting, setSubmitting] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BacktestOptimization | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [error, setError] = useState("");
   const historyRequest = useRef(0);
   const reportRequest = useRef(0);
@@ -73,6 +78,9 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
     setLoadingHistory(false);
     historyRequest.current += 1;
     setHistoryPage(1);
+    setDeleteTarget(null);
+    setDeleting(false);
+    setDeleteError("");
     setError("");
   }, [baseParameters, open, projectId, version]);
 
@@ -173,6 +181,32 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
     }
   }
 
+  async function deleteOptimization() {
+    if (!deleteTarget || deleting) return;
+    const optimizationId = deleteTarget.id;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await backtestApi.deleteOptimization(optimizationId);
+      const remainingTotal = Math.max(0, historyTotal - 1);
+      const remainingPages = Math.max(1, Math.ceil(remainingTotal / historyPageSize));
+      setHistory((items) => items.filter((item) => item.id !== optimizationId));
+      setHistoryTotal(remainingTotal);
+      if (report?.id === optimizationId) {
+        analytics.current?.close();
+        analytics.current = null;
+        setReport(null);
+        setReportData(null);
+      }
+      setDeleteTarget(null);
+      if (historyPage > remainingPages) setHistoryPage(remainingPages);
+    } catch (reason) {
+      setDeleteError(errorMessage(reason));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function buildSettings(): OptimizationSettings | string {
     if (!selectedParameters.length) return "请至少选择一个需要调优的策略参数";
     if (!algorithms.length) return "请至少选择一种调优算法";
@@ -209,43 +243,48 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
   const historyPages = Math.max(1, Math.ceil(historyTotal / historyPageSize));
   const reportRunning = report !== null && !terminalStates.has(report.state);
 
-  return <Dialog open={open} onOpenChange={onOpenChange}>
+  return <>
+  <Dialog open={open} onOpenChange={onOpenChange}>
     <LargeDialogContent className="flex flex-col overflow-hidden">
-      <DialogHeader>
+      <DialogHeader className="shrink-0 border-b pb-3 pr-8">
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 参数调优</DialogTitle>
         <DialogDescription>在滚动训练窗口内选择参数，再用紧随其后的持有窗口形成严格样本外净值路径。</DialogDescription>
       </DialogHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {report
-          ? <div className="space-y-4 pb-2">
+      {report
+        ? <div className="min-h-0 flex-1 overflow-y-auto pr-1"><div className="space-y-4 pb-2">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3">
             <div className="flex flex-wrap items-center gap-3"><SchedulerState state={report.state} /><span className="text-sm text-muted-foreground">报告 #{report.id}</span><span className="text-sm text-muted-foreground">Workspace #{report.workflow_workspace_id}</span>{report.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{report.workflow_instance_id}</span> : null}</div>
-            <Button size="sm" variant="outline" disabled={reportRunning} onClick={() => { setReport(null); setReportData(null); setError(""); }}><RotateCcw />新建调优</Button>
+            <div className="flex items-center gap-2"><Button size="sm" variant="destructive" disabled={!canDeleteBacktestAnalysis(report.state)} onClick={() => { setDeleteError(""); setDeleteTarget(report); }}><Trash2 />删除报告</Button><Button size="sm" variant="outline" disabled={reportRunning} onClick={() => { setReport(null); setReportData(null); setError(""); }}><RotateCcw />新建调优</Button></div>
           </div>
           <div className="grid gap-3 rounded-md border bg-muted/20 p-4 text-sm md:grid-cols-4"><Info label="区间" value={`${report.parameters.start_date} → ${report.parameters.end_date}`} /><Info label="滚动窗口" value={`${report.parameters.lookback_period} 回看 / ${report.parameters.holding_period} 持有`} /><Info label="重复" value={`${report.parameters.repetitions} 次`} /><Info label="算法" value={`${report.parameters.algorithms.length} 种`} /></div>
           {report.error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{report.error}</div> : null}
           {reportRunning ? <LoadingPanel label="参数调优工作流正在运行..." /> : loadingReport ? <LoadingPanel label="DuckDB 正在读取并汇总全部算法结果..." /> : reportData ? <OptimizationReport data={reportData} /> : null}
           {error ? <ErrorMessage message={error} /> : null}
+          </div></div>
+        : <div className="grid min-h-0 flex-1 gap-4 pt-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="flex min-h-0 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid gap-4 xl:grid-cols-[minmax(20rem,.85fr)_minmax(0,1.15fr)]">
+              <div className="space-y-4">
+                <Card className="gap-3 rounded-md py-3"><CardHeader className="px-3.5"><CardTitle className="flex items-center justify-between text-sm font-medium"><span>调优参数</span><span className="text-xs font-normal tabular-nums text-muted-foreground">已选 {selectedParameters.length}</span></CardTitle></CardHeader><CardContent className="space-y-2 px-3.5">{numericParameters.length ? numericParameters.map(([name, value]) => { const checked = selectedParameters.includes(name); return <div className="rounded-md border bg-background p-2.5" key={name}><div className="flex items-center gap-2.5"><Checkbox checked={checked} onCheckedChange={(next) => toggleParameter(name, next === true)} id={`optimization-parameter-${name}`} /><Label className="min-w-0 flex-1" htmlFor={`optimization-parameter-${name}`}><span className="truncate font-mono text-xs">{name}</span><span className="ml-auto font-mono text-xs text-muted-foreground">{value}</span></Label></div>{checked ? <Input className="mt-2" id={`optimization-values-${name}`} value={parameterValues[name] ?? ""} onChange={(event) => setParameterValues((current) => ({ ...current, [name]: event.target.value }))} /> : null}</div>; }) : <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">当前版本没有可调优的数值型策略参数</div>}</CardContent></Card>
+                <Card className="gap-3 rounded-md py-3"><CardHeader className="px-3.5"><CardTitle className="flex items-center gap-2 text-sm font-medium"><CalendarRange className="size-4" />滚动区间</CardTitle></CardHeader><CardContent className="grid gap-3 px-3.5 sm:grid-cols-2"><Field label="开始日期"><Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></Field><Field label="截止日期"><Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></Field><Field label="回看周期"><Input value={lookbackPeriod} onChange={(event) => setLookbackPeriod(event.target.value)} /></Field><Field label="持有周期"><Input value={holdingPeriod} onChange={(event) => setHoldingPeriod(event.target.value)} /></Field><Field label="重复次数"><Input inputMode="numeric" value={repetitions} onChange={(event) => setRepetitions(event.target.value)} /></Field><Field label="每窗口评估组合"><Input inputMode="numeric" value={evaluationBudget} onChange={(event) => setEvaluationBudget(event.target.value)} /></Field><Field label="随机种子"><Input inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value)} /></Field></CardContent></Card>
+              </div>
+              <Card className="h-full gap-3 rounded-md py-3"><CardHeader className="px-3.5"><CardTitle className="flex items-center justify-between text-sm font-medium"><span>调优算法</span><span className="text-xs font-normal tabular-nums text-muted-foreground">已选 {algorithms.length} / {optimizationAlgorithms.length}</span></CardTitle></CardHeader><CardContent className="grid flex-1 auto-rows-fr gap-2 px-3.5 sm:grid-cols-2 xl:grid-cols-3">{optimizationAlgorithms.map((algorithm) => <Label className="cursor-pointer rounded-md border bg-background px-2.5 py-2 transition-colors hover:bg-muted/50" htmlFor={`optimization-algorithm-${algorithm}`} key={algorithm}><Checkbox checked={algorithms.includes(algorithm)} id={`optimization-algorithm-${algorithm}`} onCheckedChange={(next) => toggleAlgorithm(algorithm, next === true)} /><span className="text-xs leading-4">{optimizationAlgorithmLabels[algorithm]}</span></Label>)}</CardContent></Card>
+            </div>
+            </div>
+            <div className="mt-3 shrink-0 space-y-3 border-t pt-3">{error ? <ErrorMessage message={error} /> : null}<DialogFooter><Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={submitting || version === null || !numericParameters.length} onClick={submit}>{submitting ? <Loader2 className="animate-spin" /> : <Play />}提交参数调优</Button></DialogFooter></div>
           </div>
-          : <div className="space-y-5 pb-2">
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card className="gap-4 rounded-md py-4"><CardHeader className="px-4"><CardTitle className="text-sm font-medium">调优参数</CardTitle></CardHeader><CardContent className="space-y-3 px-4">{numericParameters.length ? numericParameters.map(([name, value]) => { const checked = selectedParameters.includes(name); return <div className="rounded-md border bg-background p-3" key={name}><div className="flex items-center gap-3"><Checkbox checked={checked} onCheckedChange={(next) => toggleParameter(name, next === true)} id={`optimization-parameter-${name}`} /><Label className="min-w-0 flex-1" htmlFor={`optimization-parameter-${name}`}><span className="truncate font-mono">{name}</span><span className="ml-auto font-mono text-xs text-muted-foreground">当前 {value}</span></Label></div>{checked ? <div className="mt-3"><Label className="mb-2 text-xs text-muted-foreground" htmlFor={`optimization-values-${name}`}>候选数值列表</Label><Input id={`optimization-values-${name}`} value={parameterValues[name] ?? ""} onChange={(event) => setParameterValues((current) => ({ ...current, [name]: event.target.value }))} /></div> : null}</div>; }) : <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">当前版本没有可调优的数值型策略参数</div>}</CardContent></Card>
-            <Card className="gap-4 rounded-md py-4"><CardHeader className="px-4"><CardTitle className="text-sm font-medium">调优算法</CardTitle></CardHeader><CardContent className="grid gap-2 px-4 sm:grid-cols-2">{optimizationAlgorithms.map((algorithm) => <Label className="cursor-pointer rounded-md border bg-background px-3 py-2.5 transition-colors hover:bg-muted/50" htmlFor={`optimization-algorithm-${algorithm}`} key={algorithm}><Checkbox checked={algorithms.includes(algorithm)} id={`optimization-algorithm-${algorithm}`} onCheckedChange={(next) => toggleAlgorithm(algorithm, next === true)} /><span>{optimizationAlgorithmLabels[algorithm]}</span></Label>)}</CardContent></Card>
-          </div>
-
-          <Card className="gap-4 rounded-md py-4"><CardHeader className="px-4"><CardTitle className="flex items-center gap-2 text-sm font-medium"><CalendarRange className="size-4" />滚动区间</CardTitle></CardHeader><CardContent className="grid gap-4 px-4 sm:grid-cols-2 lg:grid-cols-4"><Field label="开始日期"><Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></Field><Field label="截止日期"><Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></Field><Field label="回看周期"><Input value={lookbackPeriod} onChange={(event) => setLookbackPeriod(event.target.value)} /></Field><Field label="持有周期"><Input value={holdingPeriod} onChange={(event) => setHoldingPeriod(event.target.value)} /></Field><Field label="重复次数"><Input inputMode="numeric" value={repetitions} onChange={(event) => setRepetitions(event.target.value)} /></Field><Field label="每窗口评估组合"><Input inputMode="numeric" value={evaluationBudget} onChange={(event) => setEvaluationBudget(event.target.value)} /></Field><Field label="随机种子"><Input inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value)} /></Field></CardContent></Card>
-
-          {error ? <ErrorMessage message={error} /> : null}
-          <DialogFooter><Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={submitting || version === null || !numericParameters.length} onClick={submit}>{submitting ? <Loader2 className="animate-spin" /> : <Play />}提交参数调优</Button></DialogFooter>
-
-          <Card className="gap-3 rounded-md py-4"><CardHeader className="px-4"><CardTitle className="flex items-center gap-2 text-sm font-medium"><History className="size-4" />历史报告</CardTitle></CardHeader><CardContent className="space-y-3 px-4">{loadingHistory ? <div className="grid min-h-24 place-items-center"><Loader2 className="animate-spin text-muted-foreground" /></div> : history.length ? <>{history.map((item) => <button className="flex w-full items-center gap-3 rounded-md border bg-background px-3 py-3 text-left transition-colors hover:bg-muted/50" key={item.id} onClick={() => { setReport(item); setError(""); }} type="button"><Gauge className="size-4 text-primary" /><span className="min-w-0 flex-1"><span className="block text-sm font-medium">报告 #{item.id} · {item.parameters.algorithms.length} 种算法</span><span className="mt-1 block truncate text-xs text-muted-foreground">{item.parameters.start_date} → {item.parameters.end_date} · {item.parameters.repetitions} 次重复</span></span><SchedulerState state={item.state} /></button>)}{historyPages > 1 ? <AppPagination page={historyPage} pageSize={historyPageSize} pageSizeOptions={[historyPageSize]} totalPages={historyPages} onPageChange={setHistoryPage} onPageSizeChange={() => undefined} /> : null}</> : <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">当前版本还没有参数调优报告</div>}</CardContent></Card>
-          </div>}
-      </div>
+          <AnalysisHistoryPanel count={historyTotal} emptyMessage="当前版本还没有参数调优报告" footer={historyPages > 1 ? <AppPagination page={historyPage} pageSize={historyPageSize} pageSizeOptions={[historyPageSize]} totalPages={historyPages} onPageChange={setHistoryPage} onPageSizeChange={() => undefined} /> : undefined} loading={loadingHistory} title="历史报告">
+            {history.map((item) => <AnalysisHistoryItem deleteDisabled={!canDeleteBacktestAnalysis(item.state)} deleteLabel={`删除参数调优报告 ${item.id}`} description={`${item.parameters.start_date} → ${item.parameters.end_date} · ${item.parameters.repetitions} 次`} icon={Gauge} key={item.id} onDelete={() => { setDeleteError(""); setDeleteTarget(item); }} onOpen={() => { setReport(item); setError(""); }} state={item.state} title={`报告 #${item.id} · ${item.parameters.algorithms.length} 种算法`} />)}
+          </AnalysisHistoryPanel>
+        </div>}
     </LargeDialogContent>
-  </Dialog>;
+  </Dialog>
+  <DeleteConfirmationDialog actionLabel="删除报告" description={`将永久删除参数调优报告 #${deleteTarget?.id ?? ""}、关联工作流和全部算法结果文件。该操作不可撤销。`} error={deleteError} open={deleteTarget !== null} submitting={deleting} title={`删除参数调优报告 #${deleteTarget?.id ?? ""}`} onDelete={deleteOptimization} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) { setDeleteTarget(null); setDeleteError(""); } }} />
+  </>;
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="space-y-2"><span className="text-sm font-medium">{label}</span>{children}</label>; }
+function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="space-y-1.5"><span className="text-xs font-medium text-muted-foreground">{label}</span>{children}</label>; }
 function Info({ label, value }: { label: string; value: string }) { return <div><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 font-medium">{value}</div></div>; }
 function LoadingPanel({ label }: { label: string }) { return <div className="grid min-h-64 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><p className="mt-3 text-sm text-muted-foreground">{label}</p></div></div>; }
 function ErrorMessage({ message }: { message: string }) { return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{message}</div>; }

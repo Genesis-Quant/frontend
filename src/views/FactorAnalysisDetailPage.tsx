@@ -18,6 +18,7 @@ import FactorAnalysisControlsPanel from "@/components/panel/FactorAnalysisContro
 import FactorAnalysisResultsPanel from "@/components/panel/FactorAnalysisResultsPanel";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import ExecutionQueuePanel from "@/components/panel/ExecutionQueuePanel";
+import TaskLogPanel from "@/components/panel/TaskLogPanel";
 import { canNormalizeFactorAnalysisParameters, defaultAnalysisParameters, isFactorAnalysisParameters, normalizeAnalysisParameters, type DslCatalog, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
@@ -413,15 +414,17 @@ export default function FactorAnalysisDetailPage() {
       onValidity={setDslValid}
       onVersion={selectVersion}
     />}>
-      <FactorAnalysisResultsPanel
-        displayedParameters={resultParameters}
-        displayedState={displayedState}
-        displayedWorkflowInstanceId={displayedWorkflowInstanceId}
-        error={error}
-        readOnly={readOnly}
-        running={running}
-        workflowError={displayedWorkflowError}
-      />
+      {activeWorkflow && workflowInstanceId
+        ? <TaskLogPanel className="h-[calc(100dvh-9rem)] min-h-[32rem]" taskInstanceId={null} workflowInstanceId={workflowInstanceId} />
+        : <FactorAnalysisResultsPanel
+          displayedParameters={resultParameters}
+          displayedState={displayedState}
+          displayedWorkflowInstanceId={displayedWorkflowInstanceId}
+          error={error}
+          readOnly={readOnly}
+          running={running}
+          workflowError={displayedWorkflowError}
+        />}
     </AnalysisWorkspace>
     <SaveVersionDialog
       version={project.draft.version}

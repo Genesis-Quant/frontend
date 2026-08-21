@@ -7,7 +7,8 @@ import { errorMessage } from "@/assets/lib/utils";
 import ProjectListActions from "@/components/bar/ProjectListActions";
 import { AppPagination } from "@/components/pagination/AppPagination";
 import { PageHero } from "@/components/bar/PageHero";
-import { CreateProjectDialog, DeleteProjectDialog } from "@/components/modal/ProjectDialogs";
+import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
+import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ProjectCompareDialog from "@/components/modal/ProjectCompareDialog";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import FactorProjectTable from "@/components/table/FactorProjectTable";
@@ -69,7 +70,7 @@ export default function FactorAnalysisPage() {
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">共 {projects?.total ?? 0} 条</p><AppPagination page={page} pageSize={pageSize} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} /></div>
 
     <CreateProjectDialog description="创建后进入研究页设置参数和 DSL。" inputId="factor-project-title" open={createOpen} placeholder="例如：量价因子有效性研究" submitting={saving} title="创建因子研究项目" value={title} onCreate={create} onOpenChange={setCreateOpen} onValue={setTitle} />
-    <DeleteProjectDialog description={`删除后将无法查看“${deleteTarget?.title ?? ""}”及其所有历史版本。该操作不可撤销。`} open={deleteTarget !== null} submitting={deleting} onDelete={remove} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} />
+    <DeleteConfirmationDialog description={`删除后将无法查看“${deleteTarget?.title ?? ""}”及其所有历史版本。该操作不可撤销。`} open={deleteTarget !== null} submitting={deleting} onDelete={remove} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} />
     <ProjectCompareDialog kind="factor" open={compareOpen} title="因子分析" onOpenChange={setCompareOpen} />
   </div>;
 }

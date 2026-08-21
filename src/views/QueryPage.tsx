@@ -7,7 +7,8 @@ import { errorMessage } from "@/assets/lib/utils";
 import ProjectListActions from "@/components/bar/ProjectListActions";
 import { AppPagination } from "@/components/pagination/AppPagination";
 import { PageHero } from "@/components/bar/PageHero";
-import { CreateProjectDialog, DeleteProjectDialog } from "@/components/modal/ProjectDialogs";
+import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
+import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import QueryProjectTable from "@/components/table/QueryProjectTable";
 import { Button } from "@/ui/button";
@@ -65,6 +66,6 @@ export default function QueryPage() {
     <QueryProjectTable loading={loading} projects={projects?.items ?? []} onOpen={(project) => navigate(`/query/projects/${project.id}`)} onDelete={setDeleteTarget} />
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">每个用户最多创建 {projects?.limit ?? 5} 个项目</p><AppPagination page={page} pageSize={pageSize} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} /></div>
     <CreateProjectDialog description="项目保存当前查询结果，不创建历史版本。" inputId="query-project-title" open={createOpen} submitting={saving} title="创建查询项目" value={title} onCreate={create} onOpenChange={setCreateOpen} onValue={setTitle} />
-    <DeleteProjectDialog description={`删除后将同时清理“${deleteTarget?.title ?? ""}”的查询工作流和 Parquet 结果。`} open={deleteTarget !== null} submitting={deleting} onDelete={remove} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} />
+    <DeleteConfirmationDialog description={`删除后将同时清理“${deleteTarget?.title ?? ""}”的查询工作流和 Parquet 结果。`} open={deleteTarget !== null} submitting={deleting} onDelete={remove} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} />
   </div>;
 }

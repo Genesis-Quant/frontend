@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Grid2X2, Loader2, RefreshCw, SlidersHorizontal, Table2, X } from "lucide-react";
+import { Grid2X2, Loader2, RefreshCw, SlidersHorizontal, Table2, Trash2, X } from "lucide-react";
 
-import { backtestApi } from "@/assets/lib/backtest";
+import { backtestApi, canDeleteBacktestAnalysis } from "@/assets/lib/backtest";
 import { SensitivityAnalytics, type SensitivityResultRow } from "@/assets/lib/sensitivity";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
-import SchedulerState from "@/components/status/SchedulerState";
 import EChart from "@/components/chart/EChart";
+import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
+import { AnalysisHistoryItem, AnalysisHistoryPanel } from "@/components/panel/AnalysisHistoryPanel";
+import SchedulerState from "@/components/status/SchedulerState";
 import type { BacktestParameters, BatchResearchListItem, BatchResearchResponse, StrategyParameters } from "@/types/backtest";
 import { terminalStates } from "@/types/workflow";
 import { Button } from "@/ui/button";
@@ -64,6 +66,9 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
   const [submitting, setSubmitting] = useState(false);
   const [loadingResults, setLoadingResults] = useState(false);
   const [loadingHistoryResearchId, setLoadingHistoryResearchId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BatchResearchListItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [error, setError] = useState("");
   const resultRequest = useRef(0);
   const analytics = useRef<SensitivityAnalytics | null>(null);
@@ -83,6 +88,9 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     setSubmitting(false);
     setLoadingResults(false);
     setLoadingHistoryResearchId(null);
+    setDeleteTarget(null);
+    setDeleting(false);
+    setDeleteError("");
   }, [definitions, open, projectId, version]);
 
   useEffect(() => {
@@ -210,38 +218,64 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     }
   }
 
+  async function deleteResearch() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await backtestApi.deleteBatchResearch(deleteTarget.id);
+      setHistory((items) => items.filter((item) => item.id !== deleteTarget.id));
+      if (batch?.id === deleteTarget.id) {
+        analytics.current?.close();
+        analytics.current = null;
+        setBatch(null);
+        setResults([]);
+      }
+      setDeleteTarget(null);
+    } catch (reason) {
+      setDeleteError(errorMessage(reason));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const running = batch !== null && !terminalStates.has(batch.state);
 
-  return <Dialog open={open} onOpenChange={resetForClose}>
+  return <>
+  <Dialog open={open} onOpenChange={resetForClose}>
     <LargeDialogContent className="flex flex-col overflow-hidden">
-      <DialogHeader>
+      <DialogHeader className="shrink-0 border-b pb-3 pr-8">
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 参数敏感性分析</DialogTitle>
         <DialogDescription>{batch ? `研究 #${batch.id} 使用一个工作流复用回测数据，依次计算 ${batch.requested_count} 个参数组合。` : "选择一个或两个参数，输入取值生成参数网格；全部组合在同一个 Runtime 工作流中完成。"}</DialogDescription>
       </DialogHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {!batch && <div className="mx-auto max-w-3xl space-y-5 py-2">
-          <div className="rounded-md border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">可调参数来自当前版本的 params 字典，只展示其中的简单值。单参数生成敏感性折线图，双参数生成参数组合热力图，也可以固定其中一个参数查看另一个参数的折线变化。最多提交 {MAX_GRID_POINTS} 个组合。</div>
-          <div className="space-y-3 rounded-md border bg-card p-4">
+      {!batch && <div className="grid min-h-0 flex-1 gap-4 pt-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-md border bg-card">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-3"><div><div className="text-sm font-medium">分析配置</div><div className="mt-1 text-xs text-muted-foreground">最多 2 个参数、{MAX_GRID_POINTS} 个组合；仅展示 params 中的简单值。</div></div><div className="rounded-md bg-muted px-3 py-1.5 text-sm"><span className="text-muted-foreground">组合数 </span><span className="font-semibold tabular-nums">{grid.items.length}</span></div></div>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             <label className="block space-y-1.5"><span className="text-sm font-medium">备注</span><Input maxLength={512} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
             <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-sm font-medium">变化参数</div><div className="mt-1 text-xs text-muted-foreground">每个参数至少填写两个不同取值。</div></div><Button size="sm" variant="outline" disabled={drafts.length >= 2 || definitions.length <= drafts.length} onClick={addDimension}><SlidersHorizontal />添加参数</Button></div>
-            {drafts.length ? drafts.map((draft, index) => <DimensionEditor key={`${index}-${draft.path}`} definition={definitions.find((item) => item.path === draft.path)} definitions={definitions.filter((item) => item.path === draft.path || !drafts.some((other, otherIndex) => otherIndex !== index && other.path === item.path))} draft={draft} index={index} onChange={updateDimension} onRemove={drafts.length > 1 ? removeDimension : undefined} onPathChange={selectPath} />) : <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">当前版本没有可调参数。</div>}
+            {drafts.length ? <div className={drafts.length > 1 ? "grid gap-3 xl:grid-cols-2" : "grid gap-3"}>{drafts.map((draft, index) => <DimensionEditor key={`${index}-${draft.path}`} definition={definitions.find((item) => item.path === draft.path)} definitions={definitions.filter((item) => item.path === draft.path || !drafts.some((other, otherIndex) => otherIndex !== index && other.path === item.path))} draft={draft} index={index} onChange={updateDimension} onRemove={drafts.length > 1 ? removeDimension : undefined} onPathChange={selectPath} />)}</div> : <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">当前版本没有可调参数。</div>}
+            {grid.error ? <div className="text-xs text-destructive">{grid.error}</div> : <div className="text-xs text-muted-foreground">完整区间数据只查询一次，全部组合写入同一个结果文件。</div>}
+            {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的版本。</div> : null}
+            {error ? <div className="rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div> : null}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/15 px-4 py-3 text-sm"><div><span className="text-muted-foreground">参数组合：</span><span className="font-semibold tabular-nums">{grid.items.length}</span>{grid.error ? <div className="mt-1 text-xs text-destructive">{grid.error}</div> : null}</div><div className="text-xs text-muted-foreground">完整区间数据只查询一次，全部组合写入同一个结果文件。</div></div>
-          {history.length ? <div className="space-y-2 rounded-md border bg-card p-4"><div className="text-sm font-medium">已有敏感性分析</div>{history.map((item) => <div className="flex items-center gap-3 text-sm" key={item.id}><span className="min-w-0 flex-1 truncate">研究 #{item.id}{item.description ? ` · ${item.description}` : ""} · {item.requested_count} 个组合</span><SchedulerState state={item.state} /><Button size="sm" variant="ghost" disabled={loadingHistoryResearchId !== null} onClick={() => openHistory(item.id)}>{loadingHistoryResearchId === item.id ? <Loader2 className="animate-spin" /> : "查看"}</Button></div>)}</div> : null}
-          {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的版本。</div> : null}
-          {error ? <div className="rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div> : null}
-          <DialogFooter><Button variant="outline" onClick={() => resetForClose(false)} disabled={submitting}>取消</Button><Button onClick={() => { submit().catch(() => undefined); }} disabled={submitting || version === null || Boolean(grid.error) || grid.items.length === 0}>{submitting ? <Loader2 className="animate-spin" /> : <SlidersHorizontal />}提交敏感性分析</Button></DialogFooter>
-          </div>}
-        {batch && <div className="space-y-5 pb-2">
+          <DialogFooter className="shrink-0 border-t px-4 py-3"><Button variant="outline" onClick={() => resetForClose(false)} disabled={submitting}>取消</Button><Button onClick={() => { submit().catch(() => undefined); }} disabled={submitting || version === null || Boolean(grid.error) || grid.items.length === 0}>{submitting ? <Loader2 className="animate-spin" /> : <SlidersHorizontal />}提交敏感性分析</Button></DialogFooter>
+        </section>
+        <AnalysisHistoryPanel count={history.length} emptyMessage="当前版本还没有参数敏感性分析" title="历史分析">
+          {history.map((item) => <AnalysisHistoryItem deleteDisabled={!canDeleteBacktestAnalysis(item.state)} deleteLabel={`删除参数敏感性分析 ${item.id}`} description={`${item.description ? `${item.description} · ` : ""}${item.requested_count} 个组合`} key={item.id} loading={loadingHistoryResearchId === item.id} onDelete={() => { setDeleteError(""); setDeleteTarget(item); }} onOpen={() => openHistory(item.id)} state={item.state} title={`研究 #${item.id}`} />)}
+        </AnalysisHistoryPanel>
+      </div>}
+      {batch && <div className="min-h-0 flex-1 overflow-y-auto pr-1"><div className="space-y-5 pb-2">
           {batch.description ? <div className="rounded-md border bg-muted/15 px-4 py-3 text-sm">{batch.description}</div> : null}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex flex-wrap items-center gap-3"><SchedulerState state={batch.state} /><span className="text-sm text-muted-foreground">Workspace #{batch.workflow_workspace_id}</span>{batch.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{batch.workflow_instance_id}</span> : null}<span className="text-sm text-muted-foreground">成功 {batch.completed_count} / 失败 {batch.failed_count} / 共 {batch.requested_count}</span></div><Button size="sm" variant="outline" disabled={running} onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />新建分析</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex flex-wrap items-center gap-3"><SchedulerState state={batch.state} /><span className="text-sm text-muted-foreground">Workspace #{batch.workflow_workspace_id}</span>{batch.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{batch.workflow_instance_id}</span> : null}<span className="text-sm text-muted-foreground">成功 {batch.completed_count} / 失败 {batch.failed_count} / 共 {batch.requested_count}</span></div><div className="flex items-center gap-2"><Button size="sm" variant="destructive" disabled={!canDeleteBacktestAnalysis(batch.state)} onClick={() => { setDeleteError(""); setDeleteTarget(batch); }}><Trash2 />删除分析</Button><Button size="sm" variant="outline" disabled={running} onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />新建分析</Button></div></div>
           {batch.error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{batch.error}</div> : null}
           {running ? <LoadingPanel label="参数敏感性分析工作流正在运行..." /> : loadingResults ? <LoadingPanel label="DuckDB 正在读取参数敏感性分析结果..." /> : results.length ? <SensitivityReport metrics={metrics} results={results} /> : null}
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
-          </div>}
-      </div>
+          </div></div>}
     </LargeDialogContent>
-  </Dialog>;
+  </Dialog>
+  <DeleteConfirmationDialog actionLabel="删除分析" description={`将永久删除参数敏感性分析 #${deleteTarget?.id ?? ""}、关联工作流和结果文件。该操作不可撤销。`} error={deleteError} open={deleteTarget !== null} submitting={deleting} title={`删除参数敏感性分析 #${deleteTarget?.id ?? ""}`} onDelete={deleteResearch} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) { setDeleteTarget(null); setDeleteError(""); } }} />
+  </>;
 }
 
 function DimensionEditor({ definition, definitions, draft, index, onChange, onPathChange, onRemove }: { definition?: ParameterDefinition; definitions: ParameterDefinition[]; draft: DimensionDraft; index: number; onChange: (index: number, next: Partial<DimensionDraft>) => void; onPathChange: (index: number, path: string) => void; onRemove?: (index: number) => void }) {
@@ -252,7 +286,7 @@ function DimensionEditor({ definition, definitions, draft, index, onChange, onPa
     const next = tokens.includes(token) ? tokens.filter((item) => item !== token) : [...tokens, token];
     onChange(index, { values: next.join(", ") });
   }
-  return <div className="space-y-3 rounded-md border bg-muted/15 p-3"><div className="flex items-start gap-3"><div className="min-w-0 flex-1 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">参数 {index + 1}</div><Select value={draft.path} onValueChange={(value) => onPathChange(index, value)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{available.map((item) => <SelectItem key={item.path} value={item.path}>{item.label}</SelectItem>)}</SelectContent></Select></div>{onRemove ? <Button aria-label="移除参数" className="mt-5 shrink-0" size="icon" variant="ghost" onClick={() => onRemove(index)}><X /></Button> : null}</div><label className="block space-y-1.5"><span className="text-xs font-medium text-muted-foreground">取值{definition?.kind === "number" ? "（数值）" : "（类别）"}</span><Input value={draft.values} onChange={(event) => onChange(index, { values: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /><span className="text-xs text-muted-foreground">用逗号分隔。{definition?.options?.length ? `可选值：${definition.options.map(formatSensitivityValue).join("、")}` : definition ? `当前值：${formatSensitivityValue(definition.baseValue)}` : ""}</span>{definition?.options?.length ? <div className="flex flex-wrap gap-1">{definition.options.map((value) => <Button key={formatInputValue(value)} size="sm" type="button" variant="ghost" onClick={() => toggleOption(value)}>{formatSensitivityValue(value)}</Button>)}</div> : null}</label></div>;
+  return <div className="relative grid gap-3 rounded-md border bg-muted/15 p-3 sm:grid-cols-[minmax(8rem,.8fr)_minmax(11rem,1.2fr)]"><div className="min-w-0 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">参数 {index + 1}</div><Select value={draft.path} onValueChange={(value) => onPathChange(index, value)}><SelectTrigger className="w-full" title={definition?.label}><SelectValue /></SelectTrigger><SelectContent>{available.map((item) => <SelectItem key={item.path} value={item.path}>{item.label}</SelectItem>)}</SelectContent></Select></div><label className="block min-w-0 space-y-1.5"><span className="text-xs font-medium text-muted-foreground">取值{definition?.kind === "number" ? "（数值）" : "（类别）"}</span><div className="flex gap-1"><Input className="min-w-0" value={draft.values} onChange={(event) => onChange(index, { values: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} />{onRemove ? <Button aria-label="移除参数" className="shrink-0" size="icon" variant="ghost" onClick={() => onRemove(index)}><X /></Button> : null}</div><span className="block truncate text-xs text-muted-foreground">{definition?.options?.length ? `可选值：${definition.options.map(formatSensitivityValue).join("、")}` : definition ? `当前值：${formatSensitivityValue(definition.baseValue)}` : ""}</span>{definition?.options?.length ? <div className="flex flex-wrap gap-1">{definition.options.map((value) => <Button key={formatInputValue(value)} size="sm" type="button" variant="ghost" onClick={() => toggleOption(value)}>{formatSensitivityValue(value)}</Button>)}</div> : null}</label></div>;
 }
 
 function SensitivityReport({ metrics, results }: { metrics: SensitivityMetric[]; results: SensitivityPoint[] }) {
