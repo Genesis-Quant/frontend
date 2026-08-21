@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Grid2X2, Loader2, RefreshCw, SlidersHorizontal, Table2, X } from "lucide-react";
 
 import { backtestApi } from "@/assets/lib/backtest";
+import { SensitivityAnalytics, type SensitivityResultRow } from "@/assets/lib/sensitivity";
 import { errorMessage } from "@/assets/lib/utils";
+import { workflowsApi } from "@/assets/lib/workflows";
 import SchedulerState from "@/components/status/SchedulerState";
 import EChart from "@/components/chart/EChart";
-import type { BacktestParameters, BatchResearchItem, BatchResearchListItem, BatchResearchResponse, StrategyParameters } from "@/types/backtest";
+import type { BacktestParameters, BatchResearchListItem, BatchResearchResponse, StrategyParameters } from "@/types/backtest";
+import { terminalStates } from "@/types/workflow";
 import { Button } from "@/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, LargeDialogContent } from "@/ui/dialog";
 import { Input } from "@/ui/input";
@@ -14,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 
 const MAX_GRID_POINTS = 100;
-const resultReadyBatchStates = new Set(["SUCCESS", "FAILURE", "PARTIAL_SUCCESS", "RESULT_PENDING"]);
+const successStates = new Set(["SUCCESS"]);
 
 type Scalar = string | number | boolean | null;
 type ParameterKind = "number" | "category";
@@ -27,8 +30,8 @@ type ParameterDefinition = {
 };
 type DimensionDraft = { path: string; values: string };
 type SensitivityDimension = { kind: ParameterKind; label: string; path: string; values: Scalar[] };
-type SensitivityMetric = { format: "number" | "percent"; key: string; label: string };
-type SensitivityPoint = { error: string | null; item: BatchResearchItem; metrics: Record<string, number | null> };
+type SensitivityMetric = { format: "number" | "percent"; key: keyof SensitivityResultRow["metrics"]; label: string };
+type SensitivityPoint = SensitivityResultRow;
 type StrategyGridItem = { parameters: StrategyParameters };
 
 type SensitivityAnalysisDialogProps = {
@@ -62,6 +65,8 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
   const [loadingResults, setLoadingResults] = useState(false);
   const [loadingHistoryResearchId, setLoadingHistoryResearchId] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const resultRequest = useRef(0);
+  const analytics = useRef<SensitivityAnalytics | null>(null);
 
   const grid = useMemo(() => buildGrid(baseParameters.params, drafts, definitions), [baseParameters.params, definitions, drafts]);
   const batchItems = useMemo(() => grid.items.map((item) => ({ parameters: { ...baseParameters, params: item.parameters } })), [baseParameters, grid.items]);
@@ -85,48 +90,68 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     let disposed = false;
     backtestApi.listBatchResearch(projectId, version, "sensitivity", 1, 100).then((page) => {
       if (!disposed) setHistory(page.items);
-    }).catch(() => undefined);
+    }).catch((reason) => { if (!disposed) setError(errorMessage(reason)); });
     return () => { disposed = true; };
   }, [open, projectId, version]);
 
   useEffect(() => {
-    if (!open || !batch || resultReadyBatchStates.has(batch.state)) return undefined;
+    if (!open || !batch || terminalStates.has(batch.state)) return undefined;
     let disposed = false;
     let polling = false;
-    const timer = window.setInterval(async () => {
+    const refresh = async () => {
       if (polling) return;
       polling = true;
       try {
-        const next = await backtestApi.getBatchResearch(batch.id);
-        if (!disposed) setBatch(next);
+        const status = await workflowsApi.workspaceStatus(batch.workflow_workspace_id);
+        if (disposed) return;
+        if (terminalStates.has(status.state)) {
+          const current = await backtestApi.getBatchResearch(batch.id);
+          if (!disposed) {
+            setBatch(current);
+            setHistory((items) => items.map((item) => item.id === current.id ? current : item));
+          }
+        } else {
+          setBatch((current) => current?.id === batch.id ? { ...current, workflow_instance_id: status.workflow_instance_id, state: status.state, error: status.error, updated_at: status.updated_at } : current);
+        }
+        if (!disposed) setError("");
       } catch (reason) {
         if (!disposed) setError(errorMessage(reason));
       } finally {
         polling = false;
       }
-    }, 2500);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 2500);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [batch, open]);
+  }, [batch?.id, batch?.state, batch?.workflow_workspace_id, open]);
 
   useEffect(() => {
-    if (!open || !batch || !resultReadyBatchStates.has(batch.state)) return undefined;
-    const pending = batch.items.some((item) => successful(item) && item.metrics === null && item.result_error === null);
-    if (!pending) {
-      setResults(sensitivityResults(batch.items));
+    const requestId = ++resultRequest.current;
+    analytics.current?.close();
+    analytics.current = null;
+    setResults([]);
+    if (!open || !batch || !successStates.has(batch.state)) {
       setLoadingResults(false);
       return undefined;
     }
     let disposed = false;
     setLoadingResults(true);
-    backtestApi.calculateBatchResearch(batch.id).then((next) => {
-      if (!disposed) { setBatch(next); setResults(sensitivityResults(next.items)); }
+    setError("");
+    backtestApi.batchResearchOutput(batch.id, "results").then(async (buffer) => {
+      const nextAnalytics = await SensitivityAnalytics.create(batch.id, buffer);
+      if (disposed || requestId !== resultRequest.current) { await nextAnalytics.close(); return; }
+      analytics.current = nextAnalytics;
+      const rows = await nextAnalytics.results();
+      if (!disposed && requestId === resultRequest.current) setResults(rows);
     }).catch((reason) => {
-      if (!disposed) setError(errorMessage(reason));
+      if (!disposed && requestId === resultRequest.current) setError(errorMessage(reason));
     }).finally(() => {
-      if (!disposed) setLoadingResults(false);
+      if (!disposed && requestId === resultRequest.current) setLoadingResults(false);
     });
     return () => { disposed = true; };
-  }, [batch, open]);
+  }, [batch?.id, batch?.state, open]);
+
+  useEffect(() => () => { analytics.current?.close(); }, []);
 
   function resetForClose(nextOpen: boolean) {
     if (!nextOpen) {
@@ -135,21 +160,6 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
       setError("");
     }
     onOpenChange(nextOpen);
-  }
-
-  async function retryResults() {
-    if (!batch || loadingResults) return;
-    setLoadingResults(true);
-    setError("");
-    try {
-      const next = await backtestApi.calculateBatchResearch(batch.id);
-      setBatch(next);
-      setResults(sensitivityResults(next.items));
-    } catch (reason) {
-      setError(errorMessage(reason));
-    } finally {
-      setLoadingResults(false);
-    }
   }
 
   function updateDimension(index: number, next: Partial<DimensionDraft>) {
@@ -179,6 +189,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     try {
       const response = await backtestApi.createBatchResearch({ analysis_type: "sensitivity", project_id: projectId, version, description: description.trim(), items: batchItems });
       setBatch(response);
+      setHistory((items) => [response, ...items.filter((item) => item.id !== response.id)]);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -199,13 +210,13 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     }
   }
 
-  const retryableResults = batch?.items.some((item) => successful(item) && item.metrics === null) ?? false;
+  const running = batch !== null && !terminalStates.has(batch.state);
 
   return <Dialog open={open} onOpenChange={resetForClose}>
     <LargeDialogContent className="flex flex-col overflow-hidden">
       <DialogHeader>
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 参数敏感性分析</DialogTitle>
-        <DialogDescription>{batch ? `批量研究 #${batch.id}，每个参数组合对应一个独立回测工作流。` : "选择一个或两个参数，输入取值后生成参数网格并批量执行。"}</DialogDescription>
+        <DialogDescription>{batch ? `研究 #${batch.id} 使用一个工作流复用回测数据，依次计算 ${batch.requested_count} 个参数组合。` : "选择一个或两个参数，输入取值生成参数网格；全部组合在同一个 Runtime 工作流中完成。"}</DialogDescription>
       </DialogHeader>
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {!batch && <div className="mx-auto max-w-3xl space-y-5 py-2">
@@ -215,7 +226,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
             <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-sm font-medium">变化参数</div><div className="mt-1 text-xs text-muted-foreground">每个参数至少填写两个不同取值。</div></div><Button size="sm" variant="outline" disabled={drafts.length >= 2 || definitions.length <= drafts.length} onClick={addDimension}><SlidersHorizontal />添加参数</Button></div>
             {drafts.length ? drafts.map((draft, index) => <DimensionEditor key={`${index}-${draft.path}`} definition={definitions.find((item) => item.path === draft.path)} definitions={definitions.filter((item) => item.path === draft.path || !drafts.some((other, otherIndex) => otherIndex !== index && other.path === item.path))} draft={draft} index={index} onChange={updateDimension} onRemove={drafts.length > 1 ? removeDimension : undefined} onPathChange={selectPath} />) : <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">当前版本没有可调参数。</div>}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/15 px-4 py-3 text-sm"><div><span className="text-muted-foreground">参数组合：</span><span className="font-semibold tabular-nums">{grid.items.length}</span>{grid.error ? <div className="mt-1 text-xs text-destructive">{grid.error}</div> : null}</div><div className="text-xs text-muted-foreground">任务完成后由后端生成并保存结果指标。</div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/15 px-4 py-3 text-sm"><div><span className="text-muted-foreground">参数组合：</span><span className="font-semibold tabular-nums">{grid.items.length}</span>{grid.error ? <div className="mt-1 text-xs text-destructive">{grid.error}</div> : null}</div><div className="text-xs text-muted-foreground">完整区间数据只查询一次，全部组合写入同一个结果文件。</div></div>
           {history.length ? <div className="space-y-2 rounded-md border bg-card p-4"><div className="text-sm font-medium">已有敏感性分析</div>{history.map((item) => <div className="flex items-center gap-3 text-sm" key={item.id}><span className="min-w-0 flex-1 truncate">研究 #{item.id}{item.description ? ` · ${item.description}` : ""} · {item.requested_count} 个组合</span><SchedulerState state={item.state} /><Button size="sm" variant="ghost" disabled={loadingHistoryResearchId !== null} onClick={() => openHistory(item.id)}>{loadingHistoryResearchId === item.id ? <Loader2 className="animate-spin" /> : "查看"}</Button></div>)}</div> : null}
           {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的版本。</div> : null}
           {error ? <div className="rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div> : null}
@@ -223,9 +234,9 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
           </div>}
         {batch && <div className="space-y-5 pb-2">
           {batch.description ? <div className="rounded-md border bg-muted/15 px-4 py-3 text-sm">{batch.description}</div> : null}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex items-center gap-3"><SchedulerState state={batch.state} /><span className="text-sm text-muted-foreground">已完成 {batch.completed_count}/{batch.requested_count}，失败 {batch.failed_count}</span></div><div className="flex gap-2">{retryableResults ? <Button disabled={loadingResults} size="sm" variant="outline" onClick={retryResults}>{loadingResults ? <Loader2 className="animate-spin" /> : <RefreshCw />}重试生成结果</Button> : null}<Button size="sm" variant="outline" onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />重新配置</Button></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex flex-wrap items-center gap-3"><SchedulerState state={batch.state} /><span className="text-sm text-muted-foreground">Workspace #{batch.workflow_workspace_id}</span>{batch.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{batch.workflow_instance_id}</span> : null}<span className="text-sm text-muted-foreground">成功 {batch.completed_count} / 失败 {batch.failed_count} / 共 {batch.requested_count}</span></div><Button size="sm" variant="outline" disabled={running} onClick={() => { setBatch(null); setResults([]); setError(""); }}><RefreshCw />新建分析</Button></div>
           {batch.error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{batch.error}</div> : null}
-          {loadingResults ? <div className="grid min-h-48 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><div className="mt-3 text-sm text-muted-foreground">正在生成参数敏感性分析结果...</div></div></div> : results.some((item) => item.metrics && Object.keys(item.metrics).length) ? <SensitivityReport metrics={metrics} results={results} /> : <SensitivityProgressTable items={batch.items} />}
+          {running ? <LoadingPanel label="参数敏感性分析工作流正在运行..." /> : loadingResults ? <LoadingPanel label="DuckDB 正在读取参数敏感性分析结果..." /> : results.length ? <SensitivityReport metrics={metrics} results={results} /> : null}
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
           </div>}
       </div>
@@ -245,7 +256,7 @@ function DimensionEditor({ definition, definitions, draft, index, onChange, onPa
 }
 
 function SensitivityReport({ metrics, results }: { metrics: SensitivityMetric[]; results: SensitivityPoint[] }) {
-  const dimensions = useMemo(() => inferDimensions(results.map((item) => item.item)), [results]);
+  const dimensions = useMemo(() => inferDimensions(results), [results]);
   const [metricKey, setMetricKey] = useState(metrics[0]?.key ?? "");
   const [mode, setMode] = useState<"heatmap" | "fix-first" | "fix-second">("heatmap");
   const [fixedValue, setFixedValue] = useState("");
@@ -257,7 +268,7 @@ function SensitivityReport({ metrics, results }: { metrics: SensitivityMetric[];
   const isHeatmap = Boolean(second) && mode === "heatmap";
   const visibleResults = useMemo(() => {
     if (!fixedDimension || isHeatmap) return results;
-    return results.filter((item) => serializeValue(getStrategyParameter(item.item.parameters.params, fixedDimension.path)) === fixedValue);
+    return results.filter((item) => serializeValue(getStrategyParameter(item.params, fixedDimension.path)) === fixedValue);
   }, [fixedDimension, fixedValue, isHeatmap, results]);
   useEffect(() => {
     if (!metrics.some((item) => item.key === metricKey)) setMetricKey(metrics[0]?.key ?? "");
@@ -268,30 +279,17 @@ function SensitivityReport({ metrics, results }: { metrics: SensitivityMetric[];
   }, [fixedDimension, fixedValue]);
   if (!selectedMetric || !first) return <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">没有可展示的敏感性指标。</div>;
   const chart = isHeatmap && second ? heatmapOption(visibleResults, first, second, selectedMetric) : lineOption(visibleResults, lineDimension ?? first, selectedMetric);
-  return <div className="space-y-5"><div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3"><div><div className="text-xs text-muted-foreground">分析维度</div><div className="mt-1 font-medium">{dimensions.length} 个参数</div></div><div><div className="text-xs text-muted-foreground">有效组合</div><div className="mt-1 font-medium tabular-nums">{results.filter((item) => Object.keys(item.metrics).length).length} / {results.length}</div></div><div><div className="text-xs text-muted-foreground">当前指标</div><div className="mt-1 font-medium">{selectedMetric.label}</div></div></div>
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-4"><div className="w-56 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">结果指标</div><Select value={selectedMetric.key} onValueChange={setMetricKey}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{metrics.map((metric) => <SelectItem key={metric.key} value={metric.key}>{metric.label}</SelectItem>)}</SelectContent></Select></div>{second ? <div className="flex flex-wrap items-end gap-3"><Tabs value={mode} onValueChange={(value) => { const next = value as typeof mode; setMode(next); const dimension = next === "fix-first" ? first : next === "fix-second" ? second : undefined; setFixedValue(dimension ? serializeValue(dimension.values[0]) : ""); }}><TabsList><TabsTrigger value="heatmap"><Grid2X2 />二维热力图</TabsTrigger><TabsTrigger value="fix-first">固定 {first.label}</TabsTrigger><TabsTrigger value="fix-second">固定 {second.label}</TabsTrigger></TabsList></Tabs>{fixedDimension && !isHeatmap ? <div className="w-48 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">{fixedDimension.label}</div><Select value={fixedValue} onValueChange={setFixedValue}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{fixedDimension.values.map((value) => <SelectItem key={serializeValue(value)} value={serializeValue(value)}>{formatSensitivityValue(value)}</SelectItem>)}</SelectContent></Select></div> : null}</div> : null}</div>
+  return <div className="space-y-5"><div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3"><div><div className="text-xs text-muted-foreground">分析维度</div><div className="mt-1 font-medium">{dimensions.length} 个参数</div></div><div><div className="text-xs text-muted-foreground">有效组合</div><div className="mt-1 font-medium tabular-nums">{results.filter((item) => item.status === "SUCCESS").length} / {results.length}</div></div><div><div className="text-xs text-muted-foreground">当前指标</div><div className="mt-1 font-medium">{selectedMetric.label}</div></div></div>
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-4"><div className="w-56 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">结果指标</div><Select value={selectedMetric.key} onValueChange={(value) => setMetricKey(value as SensitivityMetric["key"])}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{metrics.map((metric) => <SelectItem key={metric.key} value={metric.key}>{metric.label}</SelectItem>)}</SelectContent></Select></div>{second ? <div className="flex flex-wrap items-end gap-3"><Tabs value={mode} onValueChange={(value) => { const next = value as typeof mode; setMode(next); const dimension = next === "fix-first" ? first : next === "fix-second" ? second : undefined; setFixedValue(dimension ? serializeValue(dimension.values[0]) : ""); }}><TabsList><TabsTrigger value="heatmap"><Grid2X2 />二维热力图</TabsTrigger><TabsTrigger value="fix-first">固定 {first.label}</TabsTrigger><TabsTrigger value="fix-second">固定 {second.label}</TabsTrigger></TabsList></Tabs>{fixedDimension && !isHeatmap ? <div className="w-48 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">{fixedDimension.label}</div><Select value={fixedValue} onValueChange={setFixedValue}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{fixedDimension.values.map((value) => <SelectItem key={serializeValue(value)} value={serializeValue(value)}>{formatSensitivityValue(value)}</SelectItem>)}</SelectContent></Select></div> : null}</div> : null}</div>
     <div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">{isHeatmap ? `${first.label} × ${second?.label} · ${selectedMetric.label}` : `${lineDimension?.label ?? first.label} 敏感性 · ${selectedMetric.label}`}</div><EChart height={360} option={chart} /></div><SensitivityTable dimensions={dimensions} metric={selectedMetric} results={visibleResults} />{results.some((item) => item.error) ? <SensitivityErrors dimensions={dimensions} results={results} /> : null}</div>;
 }
 
 function SensitivityTable({ dimensions, metric, results }: { dimensions: SensitivityDimension[]; metric: SensitivityMetric; results: SensitivityPoint[] }) {
-  return <div className="rounded-md border bg-card"><div className="flex items-center gap-2 border-b px-4 py-3"><Table2 className="size-4 text-primary" /><span className="text-sm font-medium">参数组合明细</span><span className="text-xs text-muted-foreground">{results.length} 条</span></div><Table><TableHeader><TableRow><TableHead>组合</TableHead><TableHead className="text-right">{metric.label}</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{results.map((item) => <TableRow key={item.item.id}><TableCell><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">{dimensions.map((dimension) => <span key={dimension.path}><span className="text-muted-foreground">{dimension.label}：</span>{formatSensitivityValue(getStrategyParameter(item.item.parameters.params, dimension.path))}</span>)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetricValue(item.metrics[metric.key], metric.format)}</TableCell><TableCell><SchedulerState state={item.error ? "FAILURE" : item.item.state} /></TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="rounded-md border bg-card"><div className="flex items-center gap-2 border-b px-4 py-3"><Table2 className="size-4 text-primary" /><span className="text-sm font-medium">参数组合明细</span><span className="text-xs text-muted-foreground">{results.length} 条</span></div><Table><TableHeader><TableRow><TableHead>组合</TableHead><TableHead className="text-right">{metric.label}</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{results.map((item) => <TableRow key={item.caseIndex}><TableCell><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">{dimensions.map((dimension) => <span key={dimension.path}><span className="text-muted-foreground">{dimension.label}：</span>{formatSensitivityValue(getStrategyParameter(item.params, dimension.path))}</span>)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetricValue(item.metrics[metric.key], metric.format)}</TableCell><TableCell><SchedulerState state={item.status} /></TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
 function SensitivityErrors({ dimensions, results }: { dimensions: SensitivityDimension[]; results: SensitivityPoint[] }) {
-  return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{results.filter((item) => item.error).map((item) => <div key={item.item.id}>{sensitivityItemLabel(item.item, dimensions)}：{item.error}</div>)}</div>;
-}
-
-function SensitivityProgressTable({ items }: { items: BatchResearchItem[] }) {
-  const dimensions = inferDimensions(items);
-  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>参数组合</TableHead><TableHead>工作流</TableHead><TableHead>状态</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell className="max-w-96 truncate">{sensitivityItemLabel(item, dimensions)}</TableCell><TableCell className="font-mono">{item.workflow_instance_id ?? "—"}</TableCell><TableCell><SchedulerState state={item.state} /></TableCell><TableCell className="max-w-96 truncate text-destructive">{item.result_error ?? item.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
-}
-
-function sensitivityResults(items: BatchResearchItem[]): SensitivityPoint[] {
-  return items.map((item) => ({ error: item.result_error ?? item.error, item, metrics: item.metrics ?? {} }));
-}
-
-function successful(item: BatchResearchItem) {
-  return item.state === "SUCCESS" || item.state === "FORCED_SUCCESS";
+  return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{results.filter((item) => item.error).map((item) => <div key={item.caseIndex}>{sensitivityItemLabel(item, dimensions)}：{item.error}</div>)}</div>;
 }
 
 function parameterDefinitions(parameters: StrategyParameters) {
@@ -361,9 +359,9 @@ function defaultValues(definition: ParameterDefinition) {
   return formatInputValue(definition.baseValue);
 }
 
-function inferDimensions(items: BatchResearchItem[]) {
+function inferDimensions(items: SensitivityResultRow[]) {
   if (!items.length) return [] as SensitivityDimension[];
-  const flattened = items.map((item) => flattenScalars((item.parameters.params ?? {}) as Record<string, unknown>));
+  const flattened = items.map((item) => flattenScalars(item.params));
   const paths = new Set(flattened.flatMap((value) => [...value.keys()]));
   return [...paths].map((path) => {
     const values = uniqueValues(flattened.map((value) => value.get(path) ?? null));
@@ -379,8 +377,8 @@ function flattenScalars(parameters: Record<string, unknown>) {
   return values;
 }
 
-function sensitivityItemLabel(item: BatchResearchItem, dimensions: SensitivityDimension[]) {
-  return dimensions.map((dimension) => `${dimension.label}=${formatSensitivityValue(getStrategyParameter(item.parameters.params, dimension.path))}`).join("，");
+function sensitivityItemLabel(item: SensitivityResultRow, dimensions: SensitivityDimension[]) {
+  return dimensions.map((dimension) => `${dimension.label}=${formatSensitivityValue(getStrategyParameter(item.params, dimension.path))}`).join("，");
 }
 
 function uniqueValues(values: Scalar[]) {
@@ -390,17 +388,21 @@ function uniqueValues(values: Scalar[]) {
 }
 
 function lineOption(results: SensitivityPoint[], dimension: SensitivityDimension, metric: SensitivityMetric) {
-  const points = results.map((item) => ({ parameter: getStrategyParameter(item.item.parameters.params, dimension.path), label: formatSensitivityValue(getStrategyParameter(item.item.parameters.params, dimension.path)), value: item.metrics[metric.key] })).filter((item): item is { label: string; parameter: Scalar; value: number } => item.value !== null && item.value !== undefined && Number.isFinite(item.value)).sort((left, right) => compareScalars(left.parameter, right.parameter));
+  const points = results.map((item) => ({ parameter: getStrategyParameter(item.params, dimension.path), label: formatSensitivityValue(getStrategyParameter(item.params, dimension.path)), value: item.metrics[metric.key] })).filter((item): item is { label: string; parameter: Scalar; value: number } => item.value !== null && item.value !== undefined && Number.isFinite(item.value)).sort((left, right) => compareScalars(left.parameter, right.parameter));
   return { animationDuration: 180, grid: { left: 56, right: 24, top: 24, bottom: 48, containLabel: true }, tooltip: { trigger: "axis" }, xAxis: { type: "category", data: points.map((item) => item.label), name: dimension.label, nameLocation: "middle", nameGap: 30 }, yAxis: { type: "value", name: metric.label, nameLocation: "middle", nameGap: 42, axisLabel: { formatter: (value: number) => formatMetricValue(value, metric.format) } }, series: [{ type: "line", data: points.map((item) => item.value), smooth: false, symbol: "circle", symbolSize: 7, lineStyle: { width: 2 }, itemStyle: { color: "#2563eb" } }] };
 }
 
 function heatmapOption(results: SensitivityPoint[], xDimension: SensitivityDimension, yDimension: SensitivityDimension, metric: SensitivityMetric) {
   const xLabels = xDimension.values.map(formatSensitivityValue);
   const yLabels = yDimension.values.map(formatSensitivityValue);
+  const xIndexes = new Map(xDimension.values.map((value, index) => [serializeValue(value), index]));
+  const yIndexes = new Map(yDimension.values.map((value, index) => [serializeValue(value), index]));
   const cells = results.flatMap((item) => {
     const value = item.metrics[metric.key];
     if (value === null || value === undefined || !Number.isFinite(value)) return [];
-    return [[xLabels.indexOf(formatSensitivityValue(getStrategyParameter(item.item.parameters.params, xDimension.path))), yLabels.indexOf(formatSensitivityValue(getStrategyParameter(item.item.parameters.params, yDimension.path))), value]];
+    const xIndex = xIndexes.get(serializeValue(getStrategyParameter(item.params, xDimension.path)));
+    const yIndex = yIndexes.get(serializeValue(getStrategyParameter(item.params, yDimension.path)));
+    return xIndex === undefined || yIndex === undefined ? [] : [[xIndex, yIndex, value]];
   });
   const values = cells.map((cell) => cell[2]);
   const minimum = values.length ? Math.min(...values) : 0;
@@ -421,3 +423,4 @@ function formatInputValue(value: Scalar) { return value === null ? "null" : Stri
 function formatSensitivityValue(value: unknown) { if (value === null || value === undefined) return "空值"; if (typeof value === "boolean") return value ? "是" : "否"; if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString("zh-CN") : value.toLocaleString("zh-CN", { maximumFractionDigits: 8 }); return String(value); }
 function formatMetricValue(value: number | null | undefined, format: SensitivityMetric["format"]) { if (value === null || value === undefined || !Number.isFinite(value)) return "—"; return format === "percent" ? `${(value * 100).toFixed(2)}%` : value.toFixed(3); }
 function parameterLabel(path: string) { return path; }
+function LoadingPanel({ label }: { label: string }) { return <div className="grid min-h-48 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><div className="mt-3 text-sm text-muted-foreground">{label}</div></div></div>; }

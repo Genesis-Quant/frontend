@@ -1,4 +1,4 @@
-import { BrowserDuckDb } from "@/assets/lib/duckdb";
+import { BrowserDuckDb, duckDbDateValue } from "@/assets/lib/duckdb";
 import { readParquetNumericColumnStats } from "@/assets/lib/parquetColumnStats";
 import { backtestTableConfigs } from "@/assets/lib/backtestTable";
 import type { ParquetColumnFilterState, ParquetNumericColumnStatsMap, ParquetTableQuery } from "@/types/table";
@@ -44,7 +44,7 @@ export class BacktestAnalytics {
         totalFee - coalesce(lag(totalFee) OVER (ORDER BY tradeDate), 0) AS dailyFee
       FROM read_parquet(${literal(this.files.daily_portfolios)}) ORDER BY tradeDate
     `);
-    return rows.map((row) => ({ time: dateValue(row.tradeDate), netValue: numberValue(row.netValue), totalEquity: numberValue(row.totalEquity), dailyReturn: numberValue(row.ratio), dailyFee: numberValue(row.dailyFee) }));
+    return rows.map((row) => ({ time: duckDbDateValue(row.tradeDate), netValue: numberValue(row.netValue), totalEquity: numberValue(row.totalEquity), dailyReturn: numberValue(row.ratio), dailyFee: numberValue(row.dailyFee) }));
   }
 
   async tablePage(name: BacktestTableName, page: number, pageSize: number, range: BacktestDateRange, query: ParquetTableQuery = { filters: [], sorting: [] }): Promise<BacktestTablePage> {
@@ -89,7 +89,6 @@ export class BacktestAnalytics {
 function literal(value: string) { return `'${value.replace(/'/g, "''")}'`; }
 function identifier(value: string) { return `"${value.replace(/"/g, "\"\"")}"`; }
 function numberValue(value: unknown) { if (value === null || value === undefined) return null; const number = Number(value); return Number.isFinite(number) ? number : null; }
-function dateValue(value: unknown) { if (value instanceof Date) return value.toISOString().slice(0, 10); if (typeof value === "number" || typeof value === "bigint") { const number = Number(value); const date = new Date(number > 10_000_000_000_000 ? number / 1000 : number); if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10); } return String(value ?? "").slice(0, 10); }
 
 function tableWhere(name: BacktestTableName, range: BacktestDateRange, filters: ParquetColumnFilterState[]) {
   const predicates = [`CAST(${identifier(backtestTableTimeColumns[name])} AS DATE) BETWEEN DATE ${literal(range.start)} AND DATE ${literal(range.end)}`];

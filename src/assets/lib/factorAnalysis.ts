@@ -1,4 +1,4 @@
-import { BrowserDuckDb } from "@/assets/lib/duckdb";
+import { BrowserDuckDb, duckDbDateValue } from "@/assets/lib/duckdb";
 import type { FactorAnalysisParameters, FactorMetricSummary, FactorMetrics } from "@/types/factor";
 
 export type InformationPoint = { time: string; ic: number | null; rankIc: number | null; icCumulative: number | null; rankIcCumulative: number | null };
@@ -38,7 +38,7 @@ export class FactorAnalytics {
     const ic = identifier(`${factor}_${returnColumn}_ic`);
     const rank = identifier(`${factor}_${returnColumn}_rank_ic`);
     const row = (await this.rows(`SELECT min(time) AS start_time, max(time) AS end_time FROM read_parquet(${literal(this.informationFile)}) WHERE ${ic} IS NOT NULL OR ${rank} IS NOT NULL`))[0] ?? {};
-    return { start: dateValue(row.start_time), end: dateValue(row.end_time) };
+    return { start: duckDbDateValue(row.start_time), end: duckDbDateValue(row.end_time) };
   }
 
   async informationSeries(factor: string, returnColumn: string, range?: FactorDateRange): Promise<InformationPoint[]> {
@@ -53,7 +53,7 @@ export class FactorAnalytics {
       ORDER BY time
     `);
     return rows.map((row) => ({
-      time: dateValue(row.time),
+      time: duckDbDateValue(row.time),
       ic: numberValue(row.ic),
       rankIc: numberValue(row.rank_ic),
       icCumulative: numberValue(row.ic_cumulative),
@@ -75,7 +75,7 @@ export class FactorAnalytics {
       FROM daily
       ORDER BY time
     `);
-    return rows.map((row) => ({ time: dateValue(row.time), value: numberValue(row.value), cumulative: numberValue(row.cumulative) }));
+    return rows.map((row) => ({ time: duckDbDateValue(row.time), value: numberValue(row.value), cumulative: numberValue(row.cumulative) }));
   }
 
   async groupSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<GroupPoint[]> {
@@ -85,7 +85,7 @@ export class FactorAnalytics {
     });
     const rows = await this.rows(`SELECT time, ${columns.join(", ")} FROM read_parquet(${literal(this.groupsFile)}) ${dateFilter(range)} ORDER BY time`);
     return rows.map((row) => ({
-      time: dateValue(row.time),
+      time: duckDbDateValue(row.time),
       values: Object.fromEntries(Array.from({ length: nGroups }, (_, group) => [`Group ${group + 1}`, numberValue(row[`group_${group + 1}`])]))
     }));
   }
@@ -195,18 +195,6 @@ function numberValue(value: unknown) {
 
 function integerValue(value: unknown) {
   return Math.max(0, Math.trunc(numberValue(value) ?? 0));
-}
-
-function dateValue(value: unknown) {
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  if (typeof value === "number" || typeof value === "bigint") {
-    const number = Number(value);
-    const milliseconds = number > 10_000_000_000_000 ? number / 1000 : number;
-    const date = new Date(milliseconds);
-    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
-  }
-  return String(value ?? "").slice(0, 10);
 }
 
 function dateFilter(range?: FactorDateRange) {

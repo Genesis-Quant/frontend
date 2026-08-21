@@ -8,6 +8,7 @@ import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
 import AnalysisWorkspace from "@/components/layout/AnalysisWorkspace";
 import FeeAnalysisDialog from "@/components/modal/FeeAnalysisDialog";
+import ParameterOptimizationDialog from "@/components/modal/ParameterOptimizationDialog";
 import { DeleteVersionDialog, RenameDialog } from "@/components/modal/ProjectDialogs";
 import SensitivityAnalysisDialog from "@/components/modal/SensitivityAnalysisDialog";
 import QueueSubmitDialog from "@/components/modal/QueueSubmitDialog";
@@ -47,6 +48,7 @@ export default function BacktestDetailPage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [feeAnalysisOpen, setFeeAnalysisOpen] = useState(false);
+  const [optimizationOpen, setOptimizationOpen] = useState(false);
   const [sensitivityOpen, setSensitivityOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
@@ -378,12 +380,13 @@ export default function BacktestDetailPage() {
   if (!project || !catalog) return <div className="mx-auto w-full max-w-xl py-20"><ErrorPanel message={error} /></div>;
 
   return <>
-    <AnalysisWorkspace backTo="/backtest" sidebar={<BacktestControlsPanel activeWorkflow={activeWorkflow} catalog={catalog} displayedParameters={displayedParameters} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} onFeeAnalysis={() => setFeeAnalysisOpen(true)} onSensitivity={() => setSensitivityOpen(true)} project={project} projectId={projectId} queueCount={queueItems.length} readOnly={readOnly} ready={ready} selectedVersion={selectedVersion} stopping={stopping} submitting={submitting} workflowState={workflowState} versions={versions} onCompare={() => setCompareOpen(true)} onContinue={continueFromVersion} onDeleteVersion={() => { setError(""); setDeleteVersionOpen(true); }} onLogs={openTaskLog} onOpenQueue={() => setQueueOpen(true)} onParameters={setParameters} onQueue={() => { setQueueRemark(""); setQueueSubmitOpen(true); }} onRenameProject={() => { setError(""); setProjectTitle(project.title); setRenameProjectOpen(true); }} onRenameVersion={() => { setError(""); setVersionTitle(versions.find((version) => version.version === selectedVersion)?.remark ?? ""); setRenameVersionOpen(true); }} onRun={run} onSave={() => setSaveOpen(true)} onShowParameters={() => setParametersOpen(true)} onStop={stopBacktest} onValidity={setEditorValid} onVersion={selectVersion} />}>
+    <AnalysisWorkspace backTo="/backtest" sidebar={<BacktestControlsPanel activeWorkflow={activeWorkflow} catalog={catalog} displayedParameters={displayedParameters} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} onFeeAnalysis={() => setFeeAnalysisOpen(true)} onOptimization={() => setOptimizationOpen(true)} onSensitivity={() => setSensitivityOpen(true)} project={project} projectId={projectId} queueCount={queueItems.length} readOnly={readOnly} ready={ready} selectedVersion={selectedVersion} stopping={stopping} submitting={submitting} workflowState={workflowState} versions={versions} onCompare={() => setCompareOpen(true)} onContinue={continueFromVersion} onDeleteVersion={() => { setError(""); setDeleteVersionOpen(true); }} onLogs={openTaskLog} onOpenQueue={() => setQueueOpen(true)} onParameters={setParameters} onQueue={() => { setQueueRemark(""); setQueueSubmitOpen(true); }} onRenameProject={() => { setError(""); setProjectTitle(project.title); setRenameProjectOpen(true); }} onRenameVersion={() => { setError(""); setVersionTitle(versions.find((version) => version.version === selectedVersion)?.remark ?? ""); setRenameVersionOpen(true); }} onRun={run} onSave={() => setSaveOpen(true)} onShowParameters={() => setParametersOpen(true)} onStop={stopBacktest} onValidity={setEditorValid} onVersion={selectVersion} />}>
       <BacktestResultsPanel annualTradingDays={resultParameters.annual_trading_days} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} error={error} readOnly={readOnly} riskFreeRate={resultParameters.risk_free_rate} running={running} workflowError={displayedWorkflowError} />
     </AnalysisWorkspace>
     <SaveVersionDialog version={project.draft.version} open={saveOpen} remark={remark} submitting={saving} onClose={() => setSaveOpen(false)} onRemark={setRemark} onSave={saveVersion} />
     <VersionCompareDialog currentVersion={currentVersion} currentVersionNumber={currentVersion?.version ?? project.draft.version} kind="backtest" loadVersion={(version) => backtestApi.getVersion(projectId, version)} open={compareOpen} projectTitle={project.title} versions={versions} onOpenChange={setCompareOpen} />
     <FeeAnalysisDialog open={feeAnalysisOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setFeeAnalysisOpen} />
+    <ParameterOptimizationDialog baseParameters={displayedParameters} open={optimizationOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setOptimizationOpen} />
     <SensitivityAnalysisDialog baseParameters={displayedParameters} open={sensitivityOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setSensitivityOpen} />
     <RequestBodyDialog editable={!readOnly} endpoint={`/api/v1/backtest/projects/${projectId}/runs`} open={parametersOpen} value={displayedParameters} validate={(value) => isBacktestParameters(value) ? null : "回测参数结构不完整。"} onApply={setParameters} onClose={() => setParametersOpen(false)} />
     <TaskLogModal open={logsOpen} workflowInstanceId={displayedWorkflowInstanceId} taskInstanceId={logTaskInstanceId} onOpenChange={setLogsOpen} />

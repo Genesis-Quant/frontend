@@ -1,4 +1,4 @@
-import { BarChart3, Braces, Ellipsis, ListPlus, ListTodo, Percent, SlidersHorizontal, Terminal } from "lucide-react";
+import { BarChart3, Braces, Ellipsis, Gauge, ListPlus, ListTodo, Percent, SlidersHorizontal, Terminal } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
@@ -6,10 +6,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 type AnalysisMoreActionsProps = {
   candidateReportDisabled?: boolean;
   feeAnalysisDisabled?: boolean;
+  optimizationDisabled?: boolean;
   queueCount?: number;
   queueDisabled?: boolean;
   sensitivityDisabled?: boolean;
   onFeeAnalysis?: () => void;
+  onOptimization?: () => void;
   onCandidateReport?: () => void;
   onSensitivity?: () => void;
   onLogs: () => void;
@@ -19,7 +21,7 @@ type AnalysisMoreActionsProps = {
   workflowInstanceId: number | null;
 };
 
-export default function AnalysisMoreActions({ candidateReportDisabled = false, feeAnalysisDisabled = false, onCandidateReport, onFeeAnalysis, onSensitivity, queueCount = 0, queueDisabled = false, sensitivityDisabled = false, onLogs, onOpenQueue, onQueue, onShowParameters, workflowInstanceId }: AnalysisMoreActionsProps) {
+export default function AnalysisMoreActions({ candidateReportDisabled = false, feeAnalysisDisabled = false, optimizationDisabled = false, onCandidateReport, onFeeAnalysis, onOptimization, onSensitivity, queueCount = 0, queueDisabled = false, sensitivityDisabled = false, onLogs, onOpenQueue, onQueue, onShowParameters, workflowInstanceId }: AnalysisMoreActionsProps) {
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button aria-label="更多操作" size="icon" variant="outline"><Ellipsis /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
@@ -30,6 +32,7 @@ export default function AnalysisMoreActions({ candidateReportDisabled = false, f
       {onCandidateReport ? <DropdownMenuItem disabled={candidateReportDisabled} onSelect={onCandidateReport}><BarChart3 />因子优选报告</DropdownMenuItem> : null}
       {onFeeAnalysis ? <DropdownMenuItem disabled={feeAnalysisDisabled} onSelect={onFeeAnalysis}><Percent />手续费分析</DropdownMenuItem> : null}
       {onSensitivity ? <DropdownMenuItem disabled={sensitivityDisabled} onSelect={onSensitivity}><SlidersHorizontal />参数敏感性</DropdownMenuItem> : null}
+      {onOptimization ? <DropdownMenuItem disabled={optimizationDisabled} onSelect={onOptimization}><Gauge />参数调优</DropdownMenuItem> : null}
     </DropdownMenuContent>
   </DropdownMenu>;
 }

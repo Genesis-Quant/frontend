@@ -86,47 +86,120 @@ export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "
 export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "return_summary" | "daily_trading_statistics" | "engine_stat";
 export type BacktestOutput = { name: BacktestOutputName; filename: string; size: number; modified_at: string };
 
+export const optimizationAlgorithms = [
+  "random_search",
+  "latin_hypercube",
+  "halton",
+  "maximin",
+  "hill_climb",
+  "coordinate_descent",
+  "pattern_search",
+  "tabu_search",
+  "simulated_annealing",
+  "threshold_accepting",
+  "great_deluge",
+  "differential_evolution",
+  "particle_swarm",
+  "genetic_algorithm",
+  "evolution_strategy",
+  "cross_entropy",
+  "tpe",
+  "rbf_surrogate",
+  "knn_ucb",
+  "adaptive_random"
+] as const;
+export type OptimizationAlgorithm = typeof optimizationAlgorithms[number];
+
+export type OptimizationSettings = {
+  parameter_space: Record<string, number[]>;
+  algorithms: OptimizationAlgorithm[];
+  start_date: string;
+  end_date: string;
+  lookback_period: string;
+  holding_period: string;
+  repetitions: number;
+  evaluation_budget: number;
+  seed: number;
+};
+
+export type OptimizationParameters = BacktestParameters & OptimizationSettings;
+
+export type BacktestOptimization = {
+  id: number;
+  project_id: number;
+  version: number;
+  workflow_workspace_id: number;
+  workflow_instance_id: number | null;
+  state: string;
+  error: string | null;
+  parameters: OptimizationParameters;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BacktestOptimizationPage = {
+  items: BacktestOptimization[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type OptimizationOutput = {
+  name: OptimizationAlgorithm;
+  filename: string;
+  size: number;
+  modified_at: string;
+};
+
 export type BatchResearchItemRequest = {
-  parameters: Record<string, unknown>;
+  parameters: BacktestParameters;
+};
+
+export type SensitivityCase = {
+  params: StrategyParameters;
+  commission: number;
+};
+
+export type SensitivityParameters = BacktestParameters & {
+  analysis_type: "fee_analysis" | "sensitivity";
+  cases: SensitivityCase[];
+};
+
+export type SensitivityOutput = {
+  name: "results";
+  filename: string;
+  size: number;
+  modified_at: string;
 };
 
 export type BatchResearchRequest = {
-  analysis_type: string;
+  analysis_type: "fee_analysis" | "sensitivity";
   project_id: number;
   version: number;
   description: string;
   items: BatchResearchItemRequest[];
 };
 
-export type BatchResearchItem = {
-  id: number;
-  workflow_workspace_id: number;
-  workflow_instance_id: number | null;
-  state: string;
-  parameters: Record<string, unknown>;
-  error: string | null;
-  metrics: Record<string, number | null> | null;
-  result_error: string | null;
-};
-
 export type BatchResearchListItem = {
   id: number;
-  analysis_type: string;
+  analysis_type: "fee_analysis" | "sensitivity";
   analysis_type_label: string;
   project_id: number;
   version: number;
   description: string;
+  workflow_workspace_id: number;
+  workflow_instance_id: number | null;
   state: string;
   requested_count: number;
   completed_count: number;
   failed_count: number;
+  error: string | null;
+  parameters: SensitivityParameters;
   created_at: string;
+  updated_at: string;
 };
 
-export type BatchResearchResponse = BatchResearchListItem & {
-  error: string | null;
-  items: BatchResearchItem[];
-};
+export type BatchResearchResponse = BatchResearchListItem;
 
 export type BatchResearchPage = {
   items: BatchResearchListItem[];

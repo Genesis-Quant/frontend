@@ -1,4 +1,4 @@
-export type WorkflowApplication = "query" | "factor" | "backtest" | "incremental";
+export type WorkflowApplication = "query" | "factor" | "backtest" | "optimization" | "sensitivity" | "incremental";
 
 export type WorkflowTaskInformation = {
   task_instance_id: number | null;
@@ -114,4 +114,4 @@ export type WorkflowListFilters = {
   state?: "active" | "success" | "failure";
 };
 
-export const terminalStates = new Set(["SUCCESS", "FAILURE", "STOP", "KILL", "FORCED_SUCCESS", "SUBMIT_FAILED", "AUTO_SAVE_FAILED"]);
+export const terminalStates = new Set(["SUCCESS", "FAILURE", "STOP", "KILL", "FORCED_SUCCESS", "SUBMIT_FAILED", "AUTO_SAVE_FAILED", "RESULT_FAILED"]);

@@ -40,3 +40,15 @@ export class BrowserDuckDb {
     await this.database.terminate();
   }
 }
+
+export function duckDbDateValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "number" || typeof value === "bigint") {
+    const number = Number(value);
+    const milliseconds = Math.abs(number) > 10_000_000_000_000 ? number / 1000 : number;
+    const date = new Date(milliseconds);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  }
+  return String(value).slice(0, 10);
+}

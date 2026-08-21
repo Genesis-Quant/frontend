@@ -1,6 +1,6 @@
 import { client } from "@/assets/lib/request";
 import { isFactorQuery, type DslCatalog } from "@/types/factor";
-import { callbackNames, callbackParameters, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName } from "@/types/backtest";
+import { callbackNames, callbackParameters, type BacktestOptimization, type BacktestOptimizationPage, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName, type OptimizationAlgorithm, type OptimizationOutput, type OptimizationSettings, type SensitivityOutput } from "@/types/backtest";
 import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 
 export function validCallback(callback: CallbackName, source: string) {
@@ -171,10 +171,16 @@ export const backtestApi = {
   catalog: () => client.get<DslCatalog>("/backtest/dsl/catalog", { timeout: 30000 }),
   outputs: (workflowInstanceId: number) => client.get<BacktestOutput[]>(`/backtest/workflows/${workflowInstanceId}/outputs`),
   output: (workflowInstanceId: number, name: BacktestOutputName) => client.getBinary(`/backtest/workflows/${workflowInstanceId}/outputs/${name}`),
+  listOptimizations: (projectId: number, version: number, page = 1, pageSize = 20) => client.get<BacktestOptimizationPage>(`/backtest/projects/${projectId}/versions/${version}/optimizations`, { params: { page, page_size: pageSize } }),
+  createOptimization: (projectId: number, version: number, settings: OptimizationSettings) => client.post<BacktestOptimization>(`/backtest/projects/${projectId}/versions/${version}/optimizations`, settings, { timeout: 30000 }),
+  getOptimization: (optimizationId: number) => client.get<BacktestOptimization>(`/backtest/optimizations/${optimizationId}`),
+  optimizationOutputs: (optimizationId: number) => client.get<OptimizationOutput[]>(`/backtest/optimizations/${optimizationId}/outputs`),
+  optimizationOutput: (optimizationId: number, name: OptimizationAlgorithm) => client.getBinary(`/backtest/optimizations/${optimizationId}/outputs/${name}`),
   listBatchResearch: (projectId: number, version: number, analysisType: "fee_analysis" | "sensitivity", page = 1, pageSize = 20) => client.get<BatchResearchPage>("/backtest/batch-research", { params: { project_id: projectId, version, analysis_type: analysisType, page, page_size: pageSize } }),
   createBatchResearch: (request: BatchResearchRequest) => client.post<BatchResearchResponse>("/backtest/batch-research", request, { timeout: 120000 }),
   getBatchResearch: (researchId: number) => client.get<BatchResearchResponse>(`/backtest/batch-research/${researchId}`),
-  calculateBatchResearch: (researchId: number) => client.post<BatchResearchResponse>(`/backtest/batch-research/${researchId}/results`, undefined, { timeout: 120000 }),
+  batchResearchOutputs: (researchId: number) => client.get<SensitivityOutput[]>(`/backtest/batch-research/${researchId}/outputs`),
+  batchResearchOutput: (researchId: number, name: "results") => client.getBinary(`/backtest/batch-research/${researchId}/outputs/${name}`),
   createFeeAnalysis: (projectId: number, version: number, rates: number[]) => client.post<BatchResearchResponse>(`/backtest/projects/${projectId}/versions/${version}/fee-analysis`, { rates }, { timeout: 120000 })
 };
 

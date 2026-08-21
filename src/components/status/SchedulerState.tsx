@@ -17,7 +17,8 @@ const schedulerStateLabels: Record<string, string> = {
   SUBMIT_FAILED: "FAILED",
   AUTO_SAVE_PENDING: "SAVING",
   AUTO_SAVE_FAILED: "SAVE FAILED",
-  RESULT_PENDING: "GENERATING"
+  RESULT_PENDING: "RESULT PENDING",
+  RESULT_FAILED: "RESULT FAILED"
 };
 
 export function schedulerStateLabel(state: string) { return schedulerStateLabels[state] ?? state; }

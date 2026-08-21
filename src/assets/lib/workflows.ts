@@ -1,7 +1,7 @@
 import { client } from "@/assets/lib/request";
 import { terminalStates, type WorkflowActionResponse, type WorkflowAttemptInformation, type WorkflowAttemptListPage, type WorkflowListFilters, type WorkflowStatusInformation, type WorkflowTasks, type WorkflowWorkspaceListPage, type WorkflowWorkspaceStatus } from "@/types/workflow";
 
-export const workflowApplicationNames = { query: "Query", factor: "Factor", backtest: "Backtest", incremental: "Incremental" } as const;
+export const workflowApplicationNames = { query: "Query", factor: "Factor", backtest: "Backtest", optimization: "参数调优", sensitivity: "敏感性分析", incremental: "Incremental" } as const;
 export type WorkflowResultPhase = "idle" | "running" | "failure" | "success";
 
 export function resolveWorkflowResultPhase(running: boolean, workflowInstanceId: number | null, state: string): WorkflowResultPhase {

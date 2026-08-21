@@ -9,10 +9,12 @@ const applicationClasses: Record<WorkflowApplication, string> = {
   query: "border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300",
   factor: "border-violet-500/35 bg-violet-500/15 text-violet-700 dark:text-violet-300",
   backtest: "border-orange-500/35 bg-orange-500/15 text-orange-700 dark:text-orange-300",
+  optimization: "border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300",
+  sensitivity: "border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-amber-300",
   incremental: "border-teal-500/35 bg-teal-500/15 text-teal-700 dark:text-teal-300"
 };
 
-const applicationPaths: Partial<Record<WorkflowApplication, string>> = { query: "/query", factor: "/factor", backtest: "/backtest" };
+const applicationPaths: Partial<Record<WorkflowApplication, string>> = { query: "/query", factor: "/factor", backtest: "/backtest", optimization: "/backtest", sensitivity: "/backtest" };
 
 export default function WorkflowApplicationBadge({ application, className, linkToProject, projectId }: { application: WorkflowApplication; className?: string; linkToProject: boolean; projectId: number | null }) {
   const path = applicationPaths[application];
