@@ -12,19 +12,31 @@ export class FactorAnalytics {
   private constructor(
     private readonly database: BrowserDuckDb,
     private readonly informationFile: string,
-    private readonly groupsFile: string
+    private readonly groupsFile: string,
+    private readonly parameters: FactorAnalysisParameters
   ) {}
 
-  static async create(workflowInstanceId: number, files: { information: ArrayBuffer; groups: ArrayBuffer }) {
+  static async create(
+    workflowInstanceId: number,
+    files: { information: ArrayBuffer; groups: ArrayBuffer },
+    parameters: FactorAnalysisParameters
+  ) {
     const informationFile = `factor-${workflowInstanceId}-information.parquet`;
     const groupsFile = `factor-${workflowInstanceId}-groups.parquet`;
     const database = await BrowserDuckDb.create({ [informationFile]: files.information, [groupsFile]: files.groups });
-    return new FactorAnalytics(database, informationFile, groupsFile);
+    return new FactorAnalytics(database, informationFile, groupsFile, parameters);
   }
 
-  async metrics(parameters: FactorAnalysisParameters): Promise<FactorMetrics> {
+  async metrics(): Promise<FactorMetrics> {
     const metrics: FactorMetrics = {};
-    const rows = await this.rows(factorMetricsSql(this.informationFile, this.groupsFile, parameters.factor_columns, parameters.return_columns, parameters.n_groups));
+    const rows = await this.rows(factorMetricsSql(
+      this.informationFile,
+      this.groupsFile,
+      this.parameters.factor_columns,
+      this.parameters.return_columns,
+      this.parameters.return_specs,
+      this.parameters.n_groups
+    ));
     for (const row of rows) {
       const factor = String(row.factor_name);
       const returnColumn = String(row.return_column);
@@ -64,14 +76,21 @@ export class FactorAnalytics {
   async longShortSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<LongShortPoint[]> {
     const low = identifier(`${factor}_${returnColumn}_group0`);
     const high = identifier(`${factor}_${returnColumn}_group${nGroups - 1}`);
+    const spec = this.returnSpec(returnColumn);
+    const realized = spec.kind === "log" ? "exp(raw_value) - 1" : "raw_value";
+    const cumulative = spec.periods !== 1
+      ? "NULL::DOUBLE"
+      : spec.kind === "log"
+        ? "exp(sum(raw_value) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) - 1"
+        : "exp(sum(ln(1 + raw_value)) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) - 1";
     const rows = await this.rows(`
       WITH daily AS (
-        SELECT time, ${high} - ${low} AS value
+        SELECT time, ${high} - ${low} AS raw_value
         FROM read_parquet(${literal(this.groupsFile)})
         ${dateFilter(range)}
       )
-      SELECT time, value,
-        exp(sum(ln(1 + value)) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) - 1 AS cumulative
+      SELECT time, ${realized} AS value,
+        ${cumulative} AS cumulative
       FROM daily
       ORDER BY time
     `);
@@ -79,9 +98,15 @@ export class FactorAnalytics {
   }
 
   async groupSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<GroupPoint[]> {
+    const spec = this.returnSpec(returnColumn);
     const columns = Array.from({ length: nGroups }, (_, group) => {
       const source = identifier(`${factor}_${returnColumn}_group${group}`);
-      return `exp(sum(ln(1 + ${source})) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) AS ${identifier(`group_${group + 1}`)}`;
+      const cumulative = spec.periods !== 1
+        ? "NULL::DOUBLE"
+        : spec.kind === "log"
+          ? `exp(sum(${source}) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))`
+          : `exp(sum(ln(1 + ${source})) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))`;
+      return `${cumulative} AS ${identifier(`group_${group + 1}`)}`;
     });
     const rows = await this.rows(`SELECT time, ${columns.join(", ")} FROM read_parquet(${literal(this.groupsFile)}) ${dateFilter(range)} ORDER BY time`);
     return rows.map((row) => ({
@@ -91,9 +116,11 @@ export class FactorAnalytics {
   }
 
   async groupStatistics(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<GroupStatistic[]> {
+    const spec = this.returnSpec(returnColumn);
     const statements = Array.from({ length: nGroups }, (_, group) => {
       const source = identifier(`${factor}_${returnColumn}_group${group}`);
-      return `SELECT ${literal(`Group ${group + 1}`)} AS group_name, count(${source}) AS observations, avg(${source}) AS mean, stddev_samp(${source}) AS std FROM read_parquet(${literal(this.groupsFile)}) ${dateFilter(range)}`;
+      const realized = spec.kind === "log" ? `exp(${source}) - 1` : source;
+      return `SELECT ${literal(`Group ${group + 1}`)} AS group_name, count(${source}) AS observations, avg(${realized}) AS mean, stddev_samp(${realized}) AS std FROM read_parquet(${literal(this.groupsFile)}) ${dateFilter(range)}`;
     });
     const rows = await this.rows(statements.join(" UNION ALL "));
     return rows.map((row) => {
@@ -129,15 +156,29 @@ export class FactorAnalytics {
   private async rows(sql: string): Promise<Record<string, unknown>[]> {
     return this.database.rows(sql);
   }
+
+  private returnSpec(returnColumn: string) {
+    return this.parameters.return_specs[returnColumn];
+  }
 }
 
-function factorMetricsSql(informationFile: string, groupsFile: string, factors: string[], returnColumns: string[], nGroups: number) {
+function factorMetricsSql(
+  informationFile: string,
+  groupsFile: string,
+  factors: string[],
+  returnColumns: string[],
+  returnSpecs: FactorAnalysisParameters["return_specs"],
+  nGroups: number
+) {
   const pairs = factors.flatMap((factor) => returnColumns.map((returnColumn) => ({ factor, returnColumn })));
   const information = pairs.map(({ factor, returnColumn }) => `SELECT ${literal(factor)} AS factor_name, ${literal(returnColumn)} AS return_column, ${identifier(`${factor}_${returnColumn}_ic`)} AS ic, ${identifier(`${factor}_${returnColumn}_rank_ic`)} AS rank_ic FROM read_parquet(${literal(informationFile)})`).join(" UNION ALL ");
   const returns = pairs.map(({ factor, returnColumn }) => {
     const low = identifier(`${factor}_${returnColumn}_group0`);
     const high = identifier(`${factor}_${returnColumn}_group${nGroups - 1}`);
-    return `SELECT ${literal(factor)} AS factor_name, ${literal(returnColumn)} AS return_column, time, ${high} - ${low} AS value FROM read_parquet(${literal(groupsFile)}) WHERE ${high} IS NOT NULL AND ${low} IS NOT NULL`;
+    const spec = returnSpecs[returnColumn];
+    const spread = `${high} - ${low}`;
+    const value = spec.kind === "log" ? `exp(${spread}) - 1` : spread;
+    return `SELECT ${literal(factor)} AS factor_name, ${literal(returnColumn)} AS return_column, time, ${value} AS value, ${spec.periods === 1 ? "true" : "false"} AS eligible FROM read_parquet(${literal(groupsFile)}) WHERE ${high} IS NOT NULL AND ${low} IS NOT NULL`;
   }).join(" UNION ALL ");
   return `
     WITH information_values AS (${information}),
@@ -151,7 +192,7 @@ function factorMetricsSql(informationFile: string, groupsFile: string, factors: 
       FROM information_values GROUP BY factor_name, return_column
     ), nav AS (
       SELECT *, exp(sum(ln(1 + value)) OVER (PARTITION BY factor_name, return_column ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) AS wealth
-      FROM (${returns})
+      FROM (${returns}) WHERE eligible
     ), drawdown AS (
       SELECT *, wealth / nullif(max(wealth) OVER (PARTITION BY factor_name, return_column ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) - 1 AS drawdown
       FROM nav
@@ -165,7 +206,7 @@ function factorMetricsSql(informationFile: string, groupsFile: string, factors: 
       return_summary.annual_volatility,
       CASE WHEN return_summary.annual_volatility > 0 THEN (power(return_summary.growth, 252.0 / return_summary.return_observations) - 1) / return_summary.annual_volatility END AS sharpe,
       return_summary.max_drawdown
-    FROM information_metrics JOIN return_summary USING (factor_name, return_column)
+    FROM information_metrics LEFT JOIN return_summary USING (factor_name, return_column)
   `;
 }
 

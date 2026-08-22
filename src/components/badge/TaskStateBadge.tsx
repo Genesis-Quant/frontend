@@ -5,7 +5,7 @@ import { cn } from "@/assets/lib/utils";
 import { StatusBadge } from "@/components/badge/StatusBadge";
 import { schedulerStateLabel, schedulerStateTone } from "@/components/status/SchedulerState";
 
-const runningStates = new Set(["RUNNING_EXECUTION", "DISPATCH"]);
+const runningStates = new Set(["RUNNING_EXECUTION", "DISPATCH", "RETRYING"]);
 const queuedStates = new Set(["CREATED", "QUEUED", "SUBMITTING", "SUBMITTED", "AUTO_SAVE_PENDING", "RESULT_PENDING", "SUBMITTED_SUCCESS", "WAITING", "WAIT_TO_RUN", "SERIAL_WAIT", "DELAY_EXECUTION", "READY_BLOCK", "BLOCK"]);
 const pausedStates = new Set(["READY_PAUSE", "PAUSE"]);
 const stoppingStates = new Set(["READY_STOP", "NEED_FAULT_TOLERANCE"]);

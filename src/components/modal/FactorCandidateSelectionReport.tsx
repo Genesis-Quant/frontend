@@ -5,7 +5,7 @@ import { factorApi } from "@/assets/lib/factor";
 import { FactorAnalytics, type GroupStatistic, type InformationPoint, type LongShortPoint } from "@/assets/lib/factorAnalysis";
 import { formatDateTime } from "@/assets/lib/dateTime";
 import { errorMessage } from "@/assets/lib/utils";
-import type { FactorVersion, FactorVersionListItem } from "@/types/factor";
+import { normalizeAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
@@ -216,13 +216,17 @@ function CorrelationMatrixCard({ description, matrix, title }: { description: st
 
 async function loadCandidate(projectId: number, versionNumber: number): Promise<CandidateTarget> {
   const version = await factorApi.getVersion(projectId, versionNumber);
-  const parameters = version.parameters;
+  const parameters = normalizeAnalysisParameters(version.parameters);
   const factorName = parameters.factor_columns.at(-1);
   const returnColumn = parameters.return_columns[0];
   if (!factorName || !returnColumn) throw new Error(`v${version.version} 缺少因子或收益列，无法生成优选报告`);
   if (version.workflow_instance_id === null) throw new Error(`v${version.version} 尚未产生分析结果`);
   const [informationBuffer, groupBuffer] = await Promise.all([factorApi.output(version.workflow_instance_id, "information_coefficient"), factorApi.output(version.workflow_instance_id, "group_returns")]);
-  const analytics = await FactorAnalytics.create(version.workflow_instance_id, { information: informationBuffer, groups: groupBuffer });
+  const analytics = await FactorAnalytics.create(
+    version.workflow_instance_id,
+    { information: informationBuffer, groups: groupBuffer },
+    parameters
+  );
   try {
     const [information, longShort, groupStatistics] = await Promise.all([analytics.informationSeries(factorName, returnColumn), analytics.longShortSeries(factorName, returnColumn, parameters.n_groups), analytics.groupStatistics(factorName, returnColumn, parameters.n_groups)]);
     return { factorName, groupStatistics, information, label: `v${version.version}`, longShort, version };

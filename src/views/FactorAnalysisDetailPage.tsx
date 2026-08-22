@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import IconLoaderCircle from "~icons/lucide/loader-circle";
 
@@ -19,7 +19,7 @@ import FactorAnalysisResultsPanel from "@/components/panel/FactorAnalysisResults
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import ExecutionQueuePanel from "@/components/panel/ExecutionQueuePanel";
 import TaskLogPanel from "@/components/panel/TaskLogPanel";
-import { canNormalizeFactorAnalysisParameters, defaultAnalysisParameters, isFactorAnalysisParameters, normalizeAnalysisParameters, type DslCatalog, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import { defaultAnalysisParameters, isFactorAnalysisParameters, normalizeAnalysisParameters, type DslCatalog, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 import { useAppStore } from "@/store";
@@ -69,8 +69,8 @@ export default function FactorAnalysisDetailPage() {
   const queueVersionsRequest = useRef(0);
   const queueItemsRef = useRef(queueItems);
   const displayedWorkflowInstanceId = currentVersion ? currentVersion.workflow_instance_id : workflowInstanceId;
-  const displayedParameters = useMemo(() => normalizeAnalysisParameters(currentVersion?.parameters ?? parameters), [currentVersion, parameters]);
-  const resultParameters = useMemo(() => normalizeAnalysisParameters(currentVersion?.parameters ?? project?.draft?.parameters ?? parameters), [currentVersion, parameters, project?.draft?.parameters]);
+  const displayedParameters = currentVersion?.parameters ?? parameters;
+  const resultParameters = displayedParameters;
   const displayedState = currentVersion ? currentVersion.saved ? "SUCCESS" : "IDLE" : workflowState;
   const displayedWorkflowError = currentVersion ? null : workflowError;
   const readOnly = currentVersion !== null;
@@ -159,17 +159,21 @@ export default function FactorAnalysisDetailPage() {
       const latestVersion = nextProject.latest_version === null
         ? null
         : await factorApi.getVersion(projectId, nextProject.latest_version);
+      const draftParameters = normalizeAnalysisParameters(nextProject.draft.parameters);
+      const normalizedLatestVersion = latestVersion === null
+        ? null
+        : { ...latestVersion, parameters: normalizeAnalysisParameters(latestVersion.parameters) };
       if (requestId !== loadRequest.current) return;
       setProject(nextProject);
       setVersions(nextVersions);
-      setCurrentVersion(latestVersion);
+      setCurrentVersion(normalizedLatestVersion);
       setCatalog(nextCatalog);
       setStopping(false);
-      setSelectedVersion(latestVersion?.version ?? null);
+      setSelectedVersion(normalizedLatestVersion?.version ?? null);
       setWorkflowInstanceId(null);
       setWorkflowState("IDLE");
       setWorkflowError(null);
-      setParameters(normalizeAnalysisParameters(nextProject.draft.parameters));
+      setParameters(draftParameters);
       setWorkflowInstanceId(nextProject.draft.workflow_instance_id);
       setWorkflowState(nextProject.draft.state);
       setWorkflowError(nextProject.draft.error);
@@ -189,8 +193,9 @@ export default function FactorAnalysisDetailPage() {
       setWorkflowState("SUBMITTED_SUCCESS");
       setSelectedVersion(null);
       const refreshed = await factorApi.getProject(projectId);
+      const refreshedParameters = normalizeAnalysisParameters(refreshed.draft.parameters);
       setProject(refreshed);
-      if (refreshed.draft) setParameters(normalizeAnalysisParameters(refreshed.draft.parameters));
+      setParameters(refreshedParameters);
       setWorkflowState(refreshed.draft?.state ?? "SUBMITTED_SUCCESS");
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setSubmitting(false); }
@@ -229,7 +234,7 @@ export default function FactorAnalysisDetailPage() {
       const [nextProject, nextVersions] = await Promise.all([factorApi.getProject(projectId), factorApi.listVersions(projectId)]);
       setProject(nextProject);
       setVersions(nextVersions);
-      setCurrentVersion(saved);
+      setCurrentVersion({ ...saved, parameters: normalizeAnalysisParameters(saved.parameters) });
       setSelectedVersion(saved.version);
       setSaveOpen(false);
       setRemark("");
@@ -311,7 +316,7 @@ export default function FactorAnalysisDetailPage() {
     setError("");
     try {
       const updated = await factorApi.updateVersion(projectId, selectedVersion, versionTitle.trim());
-      setCurrentVersion(updated);
+      setCurrentVersion({ ...updated, parameters: normalizeAnalysisParameters(updated.parameters) });
       setVersions((current) => current.map((version) => version.version === updated.version ? { ...version, saved: updated.saved, is_current: updated.is_current, workflow_instance_id: updated.workflow_instance_id, remark: updated.remark } : version));
       setRenameVersionOpen(false);
     } catch (reason) { setError(errorMessage(reason)); }
@@ -331,16 +336,18 @@ export default function FactorAnalysisDetailPage() {
       setDeleteVersionOpen(false);
       if (nextProject.latest_version !== null) {
         const nextVersion = await factorApi.getVersion(projectId, nextProject.latest_version);
-        setCurrentVersion(nextVersion);
+        const nextDraftParameters = normalizeAnalysisParameters(nextProject.draft.parameters);
+        setCurrentVersion({ ...nextVersion, parameters: normalizeAnalysisParameters(nextVersion.parameters) });
         setSelectedVersion(nextVersion.version);
-        setParameters(normalizeAnalysisParameters(nextProject.draft.parameters));
+        setParameters(nextDraftParameters);
         setWorkflowInstanceId(null);
         setWorkflowState("IDLE");
         setWorkflowError(null);
       } else if (nextProject.draft) {
+        const nextDraftParameters = normalizeAnalysisParameters(nextProject.draft.parameters);
         setCurrentVersion(null);
         setSelectedVersion(null);
-        setParameters(normalizeAnalysisParameters(nextProject.draft.parameters));
+        setParameters(nextDraftParameters);
         setWorkflowInstanceId(nextProject.draft.workflow_instance_id);
         setWorkflowState(nextProject.draft.state);
         setWorkflowError(nextProject.draft.error);
@@ -369,8 +376,12 @@ export default function FactorAnalysisDetailPage() {
     }
     try {
       const nextVersion = await factorApi.getVersion(projectId, version);
+      const normalizedVersion = {
+        ...nextVersion,
+        parameters: normalizeAnalysisParameters(nextVersion.parameters)
+      };
       if (requestId !== versionRequest.current) return;
-      setCurrentVersion(nextVersion);
+      setCurrentVersion(normalizedVersion);
       setSelectedVersion(version);
     } catch (reason) {
       if (requestId === versionRequest.current) setError(errorMessage(reason));
@@ -437,7 +448,7 @@ export default function FactorAnalysisDetailPage() {
     />
     <VersionCompareDialog currentVersion={currentVersion} currentVersionNumber={currentVersion?.version ?? project.draft.version} kind="factor" loadVersion={(version) => factorApi.getVersion(projectId, version)} open={compareOpen} projectTitle={project.title} versions={versions} onOpenChange={setCompareOpen} />
     <FactorCandidateSelectionReport open={candidateReportOpen} onOpenChange={setCandidateReportOpen} projectId={projectId} projectTitle={project.title} versions={versions.filter((version) => version.saved)} />
-    <RequestBodyDialog editable={!readOnly} endpoint={`/api/v1/factor/projects/${projectId}/analyses`} open={parametersOpen} value={displayedParameters} validate={(value) => canNormalizeFactorAnalysisParameters(value) ? null : "因子分析参数结构不完整。"} onApply={(value) => setParameters(normalizeAnalysisParameters(value))} onClose={() => setParametersOpen(false)} />
+    <RequestBodyDialog editable={!readOnly} endpoint={`/api/v1/factor/projects/${projectId}/analyses`} open={parametersOpen} value={displayedParameters} validate={(value) => isFactorAnalysisParameters(value) ? null : "因子分析参数结构不完整。"} onApply={(value) => setParameters(normalizeAnalysisParameters(value))} onClose={() => setParametersOpen(false)} />
     <TaskLogModal open={logsOpen} workflowInstanceId={displayedWorkflowInstanceId} taskInstanceId={logTaskInstanceId} onOpenChange={setLogsOpen} />
     <RenameDialog description="项目名称会同步更新到项目列表和研究页面。" error={renameProjectOpen ? error : undefined} inputId="factor-project-title" label="项目名称" maxLength={128} open={renameProjectOpen} submitting={renaming} title="重命名项目" value={projectTitle} onOpenChange={setRenameProjectOpen} onRename={renameProject} onValue={setProjectTitle} />
     <RenameDialog description={`修改 v${selectedVersion ?? ""} 的显示名称，不影响版本参数和结果。`} error={renameVersionOpen ? error : undefined} inputId="factor-version-title" label="版本名称" maxLength={512} open={renameVersionOpen} submitting={renaming} title={`重命名版本 v${selectedVersion ?? ""}`} value={versionTitle} onOpenChange={setRenameVersionOpen} onRename={renameVersion} onValue={setVersionTitle} />

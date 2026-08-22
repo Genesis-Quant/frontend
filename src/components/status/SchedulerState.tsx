@@ -15,6 +15,7 @@ const schedulerStateLabels: Record<string, string> = {
   NEED_FAULT_TOLERANCE: "RECOVERING",
   FORCED_SUCCESS: "FORCED",
   SUBMIT_FAILED: "FAILED",
+  RETRYING: "RETRYING",
   AUTO_SAVE_PENDING: "SAVING",
   AUTO_SAVE_FAILED: "SAVE FAILED",
   RESULT_PENDING: "RESULT PENDING",
@@ -34,7 +35,7 @@ const schedulerStateToneClasses: Record<SchedulerStateTone, string> = {
 };
 
 const successStates = new Set(["SUCCESS", "FORCED_SUCCESS"]);
-const runningStates = new Set(["RUNNING_EXECUTION", "DISPATCH"]);
+const runningStates = new Set(["RUNNING_EXECUTION", "DISPATCH", "RETRYING"]);
 const queuedStates = new Set([
   "CREATED",
   "QUEUED",

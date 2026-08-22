@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { mergeChartRanges } from "@/assets/lib/chart";
-import { stockPoolCode, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import { normalizeAnalysisParameters, stockPoolCode, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { BacktestParameters, BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
 import type { BacktestChartRanges, FactorChartRanges } from "@/types/chart";
 import { Button } from "@/ui/button";
@@ -57,7 +57,10 @@ export default function VersionCompareDialog({ currentVersion, currentVersionNum
     setError("");
     try {
       const [left, right] = await Promise.all([currentVersion ?? loadVersion(currentVersionNumber), loadVersion(selected.version)]);
-      setResult({ left, right });
+      setResult({
+        left: normalizeCompareVersion(kind, left),
+        right: normalizeCompareVersion(kind, right)
+      });
       onOpenChange(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -99,8 +102,10 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
   const [rightFactorRanges, setRightFactorRanges] = useState<FactorChartRanges>();
   const [leftBacktestRanges, setLeftBacktestRanges] = useState<BacktestChartRanges>();
   const [rightBacktestRanges, setRightBacktestRanges] = useState<BacktestChartRanges>();
-  const leftFactors = kind === "factor" && Array.isArray((left.parameters as Partial<FactorAnalysisParameters>).factor_columns) ? (left.parameters as FactorAnalysisParameters).factor_columns : [];
-  const rightFactors = kind === "factor" && Array.isArray((right.parameters as Partial<FactorAnalysisParameters>).factor_columns) ? (right.parameters as FactorAnalysisParameters).factor_columns : [];
+  const leftFactorParameters = kind === "factor" ? left.parameters as FactorAnalysisParameters : null;
+  const rightFactorParameters = kind === "factor" ? right.parameters as FactorAnalysisParameters : null;
+  const leftFactors = leftFactorParameters?.factor_columns ?? [];
+  const rightFactors = rightFactorParameters?.factor_columns ?? [];
   const [leftFactor, setLeftFactor] = useState(leftFactors[0] ?? "");
   const [rightFactor, setRightFactor] = useState(rightFactors[0] ?? "");
   const factorRanges = useMemo(() => mergeFactorRanges(leftFactorRanges, rightFactorRanges), [leftFactorRanges, rightFactorRanges]);
@@ -127,11 +132,11 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
       ? <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <ResultColumn accent="border-l-sky-500">
           <FactorTabs factor={leftFactor} factors={leftFactors} onChange={setLeftFactor} />
-          {left.workflow_instance_id && leftFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={left.parameters as FactorAnalysisParameters} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} /></Suspense> : <MissingResult />}
+          {left.workflow_instance_id && leftFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={leftFactorParameters!} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} /></Suspense> : <MissingResult />}
         </ResultColumn>
         <ResultColumn accent="border-l-amber-500">
           <FactorTabs factor={rightFactor} factors={rightFactors} onChange={setRightFactor} />
-          {right.workflow_instance_id && rightFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={right.parameters as FactorAnalysisParameters} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} /></Suspense> : <MissingResult />}
+          {right.workflow_instance_id && rightFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={rightFactorParameters!} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} /></Suspense> : <MissingResult />}
         </ResultColumn>
       </div>
       : null}
@@ -176,6 +181,12 @@ function MissingResult() { return <div className="grid min-h-72 place-items-cent
 function FactorTabs({ factor, factors, onChange }: { factor: string; factors: string[]; onChange: (value: string) => void }) {
   if (!factors.length) return null;
   return <Tabs className="mb-4" value={factor} onValueChange={onChange}><TabsList>{factors.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}</TabsList></Tabs>;
+}
+
+function normalizeCompareVersion(kind: "factor" | "backtest", version: CompareVersion): CompareVersion {
+  return kind === "factor"
+    ? { ...version, parameters: normalizeAnalysisParameters(version.parameters) } as FactorVersion
+    : version;
 }
 
 function factorSummary(parameters: FactorAnalysisParameters): string[][] {

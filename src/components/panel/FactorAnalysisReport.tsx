@@ -61,6 +61,9 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [decayLoading, setDecayLoading] = useState(false);
   const [error, setError] = useState("");
   const rangePoints = useMemo(() => timeline.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic })), [timeline]);
+  const returnSpecsKey = JSON.stringify(parameters.return_specs);
+  const returnPeriods = parameters.return_specs[returnColumn]?.periods ?? 1;
+  const groupReturnPeriods = parameters.return_specs[groupReturnColumn]?.periods ?? 1;
 
   useEffect(() => {
     if (!parameters.return_columns.includes(icReturnColumn)) setIcReturnColumn(firstReturnColumn);
@@ -80,13 +83,17 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
           factorApi.output(workflowInstanceId, "information_coefficient"),
           factorApi.output(workflowInstanceId, "group_returns")
         ]);
-        session = await FactorAnalytics.create(workflowInstanceId, { information: informationBuffer, groups: groupBuffer });
+        session = await FactorAnalytics.create(
+          workflowInstanceId,
+          { information: informationBuffer, groups: groupBuffer },
+          parameters
+        );
         if (cancelled) {
           await session.close();
           return;
         }
         analytics.current = session;
-        const calculated = await session.metrics(parameters);
+        const calculated = await session.metrics();
         if (cancelled) return;
         setMetrics(calculated);
       } catch (reason) {
@@ -101,7 +108,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       if (analytics.current === session) analytics.current = null;
       session?.close().catch(() => undefined);
     };
-  }, [factorColumnsKey, parameters.n_groups, returnColumnsKey, workflowInstanceId]);
+  }, [factorColumnsKey, parameters.n_groups, returnColumnsKey, returnSpecsKey, workflowInstanceId]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -220,7 +227,8 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
 
     <ReportCard title="收益分析">
       <CardToolbar><ReturnSelector value={returnColumn} options={parameters.return_columns} onChange={setReturnColumn} /></CardToolbar>
-      <MetricGrid items={returnMetrics(longShort)} />
+      <OverlappingReturnNotice periods={returnPeriods} />
+      <MetricGrid items={returnMetrics(longShort, returnPeriods === 1)} />
       <ChartPanel title="多空收益与累计收益">
         <SeriesContent loading={returnLoading} count={longShort.length} height={350}>{longShort.length >= 8 && <EChart option={longShortOption(longShort, theme, chartRanges?.longShort)} height={350} />}</SeriesContent>
       </ChartPanel>
@@ -228,6 +236,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
 
     <ReportCard title="分组分析">
       <CardToolbar><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
+      <OverlappingReturnNotice periods={groupReturnPeriods} />
       <SummaryTiles items={groupStatistics.map((item) => [item.group, `${format(item.mean, "percent")} / p=${format(item.pValue)}`])} />
       <ChartPanel title="分组平均收益与显著性 p 值">
         <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
@@ -248,6 +257,13 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   </section>;
 }
 
+function OverlappingReturnNotice({ periods }: { periods: number }) {
+  if (periods <= 1) return null;
+  return <div className="mx-4 mt-3 rounded-md border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-muted-foreground">
+    当前收益列覆盖 {periods} 个交易期，相邻观测存在重叠；保留 IC 和单期分组统计，不计算累计净值、年化收益、波动率及 Sharpe。
+  </div>;
+}
+
 function informationMetrics(rows: InformationPoint[], type: IcType) {
   const rank = type === "RankIC";
   const values = rows.map((row) => rank ? row.rankIc : row.ic).filter((value): value is number => value !== null);
@@ -262,17 +278,17 @@ function informationMetrics(rows: InformationPoint[], type: IcType) {
   ];
 }
 
-function returnMetrics(rows: LongShortPoint[]) {
+function returnMetrics(rows: LongShortPoint[], compoundable: boolean) {
   const values = rows.map((row) => row.value).filter((value): value is number => value !== null);
-  const cumulative = rows.at(-1)?.cumulative ?? null;
+  const cumulative = compoundable ? rows.at(-1)?.cumulative ?? null : null;
   const annualReturn = cumulative === null || !values.length || 1 + cumulative <= 0 ? null : (1 + cumulative) ** (252 / values.length) - 1;
-  const annualVolatility = populationStd(values) * Math.sqrt(252);
+  const annualVolatility = compoundable ? populationStd(values) * Math.sqrt(252) : null;
   return [
     ["多空累计收益", format(cumulative, "percent")],
     ["多空年化收益", format(annualReturn, "percent")],
     ["多空夏普", format(annualReturn !== null && annualVolatility ? annualReturn / annualVolatility : null)],
-    ["多空最大回撤", format(maxDrawdown(rows), "percent")],
-    ["多空年化波动", format(annualVolatility || null, "percent")],
+    ["多空最大回撤", format(compoundable ? maxDrawdown(rows) : null, "percent")],
+    ["多空年化波动", format(annualVolatility, "percent")],
     ["多空收益均值", format(mean(values), "percent")],
     ["多空收益标准差", format(sampleStd(values), "percent")]
   ];

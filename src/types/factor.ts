@@ -21,15 +21,26 @@ export type QueryParameters = {
 
 export type FactorQuery = QueryParameters & DslDocument;
 
+export type FactorReturnSpec = {
+  kind: "simple" | "log";
+  periods: number;
+};
+
 export type FactorAnalysisParameters = {
   codes_query: FactorQuery | null;
   dataset_query: FactorQuery;
   factor_columns: string[];
   return_columns: string[];
+  return_specs: Record<string, FactorReturnSpec>;
   n_groups: number;
   preprocess: boolean;
   market_value_column: string;
 };
+
+type HistoricalFactorAnalysisParameters = Omit<
+  FactorAnalysisParameters,
+  "return_specs"
+> & { return_specs?: undefined };
 
 export function isFactorQuery(value: unknown): value is FactorQuery {
   if (!isRecord(value)) return false;
@@ -48,6 +59,21 @@ export function isFactorAnalysisParameters(value: unknown): value is FactorAnaly
     && isFactorQuery(value.dataset_query)
     && isStringArray(value.factor_columns)
     && isStringArray(value.return_columns)
+    && isReturnSpecs(value.return_specs, value.return_columns)
+    && typeof value.n_groups === "number"
+    && Number.isFinite(value.n_groups)
+    && typeof value.preprocess === "boolean"
+    && typeof value.market_value_column === "string";
+}
+
+function isHistoricalFactorAnalysisParameters(
+  value: unknown
+): value is HistoricalFactorAnalysisParameters {
+  if (!isRecord(value) || value.return_specs !== undefined) return false;
+  return (value.codes_query === null || isFactorQuery(value.codes_query))
+    && isFactorQuery(value.dataset_query)
+    && isStringArray(value.factor_columns)
+    && isStringArray(value.return_columns)
     && typeof value.n_groups === "number"
     && Number.isFinite(value.n_groups)
     && typeof value.preprocess === "boolean"
@@ -57,6 +83,8 @@ export function isFactorAnalysisParameters(value: unknown): value is FactorAnaly
 export function canNormalizeFactorAnalysisParameters(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return isFactorQuery(value.dataset_query)
+    && (value.return_specs === undefined
+      || isStringArray(value.return_columns) && isReturnSpecs(value.return_specs, value.return_columns))
     && typeof value.n_groups === "number"
     && Number.isFinite(value.n_groups)
     && typeof value.preprocess === "boolean"
@@ -94,6 +122,14 @@ export const marketValueFields: { label: string; value: MarketValueField }[] = [
 
 export const analysisReturnColumns = (maxLags: number) => Array.from({ length: maxLags }, (_, lag) => `ret${lag}`);
 export const analysisManagedFactors = ["circ_mv", "total_mv"];
+
+const oneDayLogReturnSpecs = (columns: string[]): Record<string, FactorReturnSpec> => Object.fromEntries(
+  columns.map((column) => [column, { kind: "log", periods: 1 }])
+);
+
+const historicalReturnSpecs = (columns: string[], datasetQuery: FactorQuery): Record<string, FactorReturnSpec> => Object.fromEntries(
+  columns.map((column) => [column, inferHistoricalReturnSpec(column, datasetQuery.derivatives[column])])
+);
 
 export type FactorWorkflowSummary = {
   id: number;
@@ -282,6 +318,7 @@ export const applyAnalysisSettings = (parameters: FactorAnalysisParameters, dsl:
     dataset_query: datasetQuery,
     factor_columns: factor ? [factor] : [],
     return_columns: returnColumns,
+    return_specs: oneDayLogReturnSpecs(returnColumns),
     n_groups: settings.nGroups,
     preprocess: parameters.preprocess,
     market_value_column: settings.marketValueField
@@ -311,6 +348,7 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
     },
     factor_columns: [],
     return_columns: [],
+    return_specs: {},
     n_groups: 5,
     preprocess: true,
     market_value_column: "circ_mv"
@@ -320,7 +358,19 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
 
 export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParameters {
   const defaults = defaultAnalysisParameters();
-  if (isFactorAnalysisParameters(value)) return structuredClone(value);
+  if (isFactorAnalysisParameters(value)) {
+    return structuredClone(value);
+  }
+  if (isHistoricalFactorAnalysisParameters(value)) {
+    const parameters = structuredClone(value);
+    return {
+      ...parameters,
+      return_specs: historicalReturnSpecs(
+        parameters.return_columns,
+        parameters.dataset_query
+      )
+    };
+  }
   if (!canNormalizeFactorAnalysisParameters(value)) return defaults;
 
   const input = value as Record<string, unknown>;
@@ -329,6 +379,9 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
   const returnColumns = validAnalysisReturnColumns(inputReturnColumns)
     ? inputReturnColumns
     : defaults.return_columns;
+  const returnSpecs = isReturnSpecs(input.return_specs, returnColumns)
+    ? input.return_specs
+    : historicalReturnSpecs(returnColumns, datasetQuery);
   const inputFactorColumns = input.factor_columns;
   const factorColumnsValid = validAnalysisFactorColumns(inputFactorColumns, datasetQuery, returnColumns, input.market_value_column as string);
   const factorColumns = factorColumnsValid
@@ -345,6 +398,7 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
     dataset_query: datasetQuery,
     factor_columns: factorColumns,
     return_columns: returnColumns,
+    return_specs: returnSpecs,
     n_groups: input.n_groups as number,
     preprocess: input.preprocess as boolean,
     market_value_column: input.market_value_column as string
@@ -385,6 +439,53 @@ function returnPriceField(parameters: FactorAnalysisParameters): PriceField {
   const division = isRecord(returnNode) && isRecord(returnNode.fields) ? returnNode.fields.col : undefined;
   const shiftedPrice = isRecord(division) && isRecord(division.fields) ? division.fields.left : undefined;
   return isRecord(shiftedPrice) && isRecord(shiftedPrice.fields) && shiftedPrice.fields.col === "close" ? "close" : "close_hfq";
+}
+
+function isReturnSpecs(value: unknown, returnColumns: string[]): value is Record<string, FactorReturnSpec> {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.length !== returnColumns.length || keys.some((key) => !returnColumns.includes(key))) return false;
+  return keys.every((key) => {
+    const spec = value[key];
+    return isRecord(spec)
+      && (spec.kind === "simple" || spec.kind === "log")
+      && typeof spec.periods === "number"
+      && Number.isInteger(spec.periods)
+      && spec.periods >= 1;
+  });
+}
+
+function inferHistoricalReturnSpec(column: string, node: DerivativeNode | undefined): FactorReturnSpec {
+  if (node?.op === "unary.pct_change") {
+    const periods = node.params.periods;
+    if (typeof periods === "number" && Number.isInteger(periods) && periods !== 0) {
+      return { kind: "simple", periods: Math.abs(periods) };
+    }
+  }
+  if (node?.op === "unary.log") {
+    const periods = returnExpressionPeriods(node.fields.col);
+    if (periods !== null) return { kind: "log", periods };
+  }
+  throw new Error(
+    `历史因子分析收益列 ${JSON.stringify(column)} 缺少 return_specs，且无法从收益 DSL 精确推断；请在展示参数中补充 kind 和 periods。`
+  );
+}
+
+function returnExpressionPeriods(value: unknown): number | null {
+  if (!isRecord(value) || value.op !== "binary.div" || !isRecord(value.fields)) return null;
+  const left = historicalShift(value.fields.left);
+  const right = historicalShift(value.fields.right);
+  if (left === null || right === null || left.column !== right.column) return null;
+  return Math.abs(left.periods - right.periods) || null;
+}
+
+function historicalShift(value: unknown): { column: string; periods: number } | null {
+  if (!isRecord(value) || value.op !== "unary.shift" || !isRecord(value.fields) || !isRecord(value.params)) return null;
+  const column = value.fields.col;
+  const periods = value.params.periods;
+  return typeof column === "string" && column.length > 0 && typeof periods === "number" && Number.isInteger(periods)
+    ? { column, periods }
+    : null;
 }
 
 function validAnalysisFactorColumns(value: unknown, datasetQuery: FactorQuery, returnColumns: string[], marketValueColumn: string): value is string[] {
