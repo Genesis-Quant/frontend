@@ -18,6 +18,7 @@ const BacktestDetailPage = lazy(() => import("@/views/BacktestDetailPage"));
 const ProfilePage = lazy(() => import("@/views/ProfilePage"));
 const RegisterPage = lazy(() => import("@/views/RegisterPage"));
 const WorkflowsPage = lazy(() => import("@/views/WorkflowsPage"));
+const DocsPage = lazy(() => import("@/views/DocsPage"));
 const McpPage = lazy(() => import("@/views/McpPage"));
 const AdminPage = lazy(() => import("@/views/AdminPage"));
 
@@ -47,8 +48,9 @@ export default function App() {
             <Route path="/backtest" element={<BacktestPage />} />
             <Route path="/backtest/projects/:projectId" element={<BacktestDetailPage />} />
             <Route path="/workflows" element={<WorkflowsPage />} />
+            <Route path="/docs" element={<DocsPage />} />
             <Route path="/mcp" element={<McpPage />} />
-            <Route path="/tutorial" element={<Navigate to={{ pathname: "/mcp", search: location.search, hash: location.hash }} replace />} />
+            <Route path="/tutorial" element={<Navigate to={{ pathname: "/docs", search: location.search, hash: location.hash }} replace />} />
             <Route path="/admin" element={user?.is_admin ? <AdminPage /> : <Navigate to="/" replace />} />
             <Route path="/profile" element={<ProfilePage />} />
           </Route>

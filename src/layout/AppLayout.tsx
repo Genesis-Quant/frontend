@@ -1,4 +1,4 @@
-import { BookOpenText, CandlestickChart, DatabaseZap, FlaskConical, Home, Menu, Moon, ShieldCheck, Sun, Workflow } from "lucide-react";
+import { BookOpenText, Bot, CandlestickChart, DatabaseZap, FlaskConical, Home, Menu, Moon, ShieldCheck, Sun, Workflow } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { Avatar, AvatarFallback } from "@/ui/avatar";
@@ -14,7 +14,8 @@ const navigation = [
   { id: "factor", label: "因子分析", path: "/factor", icon: FlaskConical },
   { id: "backtest", label: "策略回测", path: "/backtest", icon: CandlestickChart },
   { id: "workflows", label: "工作流", path: "/workflows", icon: Workflow },
-  { id: "mcp", label: "MCP", path: "/mcp", icon: BookOpenText }
+  { id: "docs", label: "使用文档", path: "/docs", icon: BookOpenText },
+  { id: "mcp", label: "MCP", path: "/mcp", icon: Bot }
 ];
 
 const adminNavigation = { id: "admin", label: "管理面板", path: "/admin", icon: ShieldCheck };
@@ -24,6 +25,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const active = activePage(location.pathname);
   const analysisWorkspace = isAnalysisWorkspace(location.pathname);
+  const documentationWorkspace = location.pathname.startsWith("/docs") || location.pathname.startsWith("/mcp");
   const theme = useAppStore((state) => state.theme);
   const setTheme = useAppStore((state) => state.setTheme);
   const user = useAppStore((state) => state.user);
@@ -56,7 +58,7 @@ export default function AppLayout() {
     </header>
     {active === "home"
       ? <Outlet />
-      : analysisWorkspace
+      : analysisWorkspace || documentationWorkspace
         ? <section className="min-h-[calc(100dvh-4rem)]"><Outlet /></section>
         : <section className="mx-auto min-h-[calc(100vh-4rem)] max-w-[1440px] px-3 py-5 sm:px-6 sm:py-8 lg:py-10"><Outlet /></section>}
   </main>;
@@ -67,6 +69,7 @@ function activePage(pathname: string) {
   if (pathname.startsWith("/factor")) return "factor";
   if (pathname.startsWith("/backtest")) return "backtest";
   if (pathname.startsWith("/workflows")) return "workflows";
+  if (pathname.startsWith("/docs")) return "docs";
   if (pathname.startsWith("/mcp")) return "mcp";
   if (pathname.startsWith("/admin")) return "admin";
   if (pathname.startsWith("/profile")) return "profile";

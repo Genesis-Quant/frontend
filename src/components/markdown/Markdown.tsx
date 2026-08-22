@@ -32,7 +32,7 @@ export default function Markdown({ content }: { content: string }) {
       <link href={githubMarkdownLight} media={theme === "light" ? "all" : "not all"} rel="stylesheet" />
       <link href={githubMarkdownDark} media={theme === "dark" ? "all" : "not all"} rel="stylesheet" />
     </>, document.head)}
-    <div className="markdown-body !bg-transparent [&_h2]:scroll-mt-24 [&_h3]:scroll-mt-24">
+    <div className="markdown-body !bg-transparent [&_h2]:scroll-mt-32 [&_h3]:scroll-mt-32">
       <ReactMarkdown components={components} rehypePlugins={[rehypeSlug]} remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   </>;
