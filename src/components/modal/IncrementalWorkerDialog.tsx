@@ -15,15 +15,17 @@ import type { AdminIncrementalWorker } from "@/types/admin";
 type IncrementalWorkerDialogProps = {
   error: string;
   open: boolean;
+  overwrite: boolean;
   selected: string[];
   submitting: boolean;
   workers: AdminIncrementalWorker[];
   onOpenChange: (open: boolean) => void;
+  onOverwriteChange: (overwrite: boolean) => void;
   onSelectedChange: (workers: string[]) => void;
   onSubmit: () => void;
 };
 
-export default function IncrementalWorkerDialog({ error, open, selected, submitting, workers, onOpenChange, onSelectedChange, onSubmit }: IncrementalWorkerDialogProps) {
+export default function IncrementalWorkerDialog({ error, open, overwrite, selected, submitting, workers, onOpenChange, onOverwriteChange, onSelectedChange, onSubmit }: IncrementalWorkerDialogProps) {
   const selectedNames = new Set(selected);
   const allSelected = workers.length > 0 && selected.length === workers.length;
 
@@ -66,11 +68,19 @@ export default function IncrementalWorkerDialog({ error, open, selected, submitt
         {!workers.length ? <p className="col-span-full py-8 text-center text-sm text-muted-foreground">没有可用的增量 Worker</p> : null}
       </div>
 
+      <label className="flex cursor-pointer items-start gap-3 border-t bg-muted/10 px-5 py-4">
+        <Checkbox className="mt-0.5" checked={overwrite} disabled={submitting} onCheckedChange={(value) => onOverwriteChange(value === true)} />
+        <span>
+          <span className="block text-sm font-medium text-foreground">覆盖指定 Worker 的完整历史区间</span>
+          <span className="mt-1 block text-xs leading-5 text-muted-foreground">忽略已有增量基线并从配置的起始日期重新抓取；相同主键会保留最新写入值。</span>
+        </span>
+      </label>
+
       {error ? <p className="border-t bg-destructive/5 px-5 py-3 text-sm text-destructive">{error}</p> : null}
 
       <DialogFooter className="border-t px-5 py-3">
         <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>取消</Button>
-        <Button disabled={submitting || selected.length === 0} onClick={onSubmit}>{submitting ? <Loader2 className="animate-spin" /> : <Play />}运行 {selected.length} 个 Worker</Button>
+        <Button disabled={submitting || selected.length === 0} onClick={onSubmit}>{submitting ? <Loader2 className="animate-spin" /> : <Play />}{overwrite ? "覆盖更新" : "增量更新"} {selected.length} 个 Worker</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;

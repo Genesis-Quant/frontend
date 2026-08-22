@@ -19,9 +19,9 @@ export const adminApi = {
     client.patch<ArenaUser>(`/admin/users/${userId}`, { is_admin: isAdmin }),
   ensureWorkflows: () =>
     client.post<AdminActionResponse>("/admin/workflows/ensure", null, { timeout: 120000 }),
-  runIncrementalUpdate: (workers?: string[], channel = "console") =>
+  runIncrementalUpdate: (workers?: string[], channel = "console", overwrite = false) =>
     client.post<IncrementalUpdateRun>(
       "/admin/incremental-update/runs",
-      workers ? { workers, channel } : { channel }
+      workers ? { workers, channel, overwrite } : { channel, overwrite }
     )
 };

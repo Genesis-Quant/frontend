@@ -106,6 +106,7 @@ export type IncrementalUpdateRun = {
   job_id: string;
   workers: string[];
   channel: string;
+  overwrite: boolean;
   workspace_id: number;
   workflow_instance_id: number;
   project_code: number;

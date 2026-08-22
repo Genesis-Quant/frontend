@@ -59,6 +59,7 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [action, setAction] = useState<Action>(null);
   const [incrementalDialogOpen, setIncrementalDialogOpen] = useState(false);
+  const [incrementalOverwrite, setIncrementalOverwrite] = useState(false);
   const [selectedIncrementalWorkers, setSelectedIncrementalWorkers] = useState<string[]>([]);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [deletingWorkspaceKey, setDeletingWorkspaceKey] = useState<string | null>(null);
@@ -99,6 +100,7 @@ export default function AdminPage() {
     setSelectedIncrementalWorkers(
       overview?.scheduler.incremental_workers.map((worker) => worker.name) ?? []
     );
+    setIncrementalOverwrite(false);
     setIncrementalDialogOpen(true);
   }
 
@@ -108,7 +110,11 @@ export default function AdminPage() {
     setError("");
     setNotice("");
     try {
-      const result = await adminApi.runIncrementalUpdate(selectedIncrementalWorkers);
+      const result = await adminApi.runIncrementalUpdate(
+        selectedIncrementalWorkers,
+        "console",
+        incrementalOverwrite
+      );
       setIncrementalDialogOpen(false);
       setNotice(`${result.message}，${result.workers.length} 个 Worker，Job ID：${result.job_id}`);
       await load(true);
@@ -222,10 +228,12 @@ export default function AdminPage() {
     <IncrementalWorkerDialog
       error={error}
       open={incrementalDialogOpen}
+      overwrite={incrementalOverwrite}
       selected={selectedIncrementalWorkers}
       submitting={action === "incremental"}
       workers={overview?.scheduler.incremental_workers ?? []}
       onOpenChange={setIncrementalDialogOpen}
+      onOverwriteChange={setIncrementalOverwrite}
       onSelectedChange={setSelectedIncrementalWorkers}
       onSubmit={runIncrementalUpdate}
     />
