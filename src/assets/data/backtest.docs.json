@@ -10,11 +10,38 @@
     ],
     "markdown": "### `backtest::getParams`\n\n```dolphindb\ngetParams()\n```\n\n返回 run_backtest 上传的只读策略参数字典。\n\n#### 返回\n\nSTRING → ANY 的策略参数字典。"
   },
+  "getParam": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "getParam(key)",
+        "name": "getParam",
+        "parameters": [
+          {
+            "full": "key",
+            "name": "key"
+          }
+        ]
+      }
+    ],
+    "markdown": "### `backtest::getParam`\n\n```dolphindb\ngetParam(key)\n```\n\n按名称读取 run_backtest 上传的单个策略参数。key 必须是非空标量 STRING 或 SYMBOL；参数不存在时立即抛错，不提供隐式默认值。\n\n#### 参数\n\n- `key`：策略参数名称。\n\n#### 返回\n\n该参数在 `parameters.params` 中对应的原始值。"
+  },
+  "getTradeDates": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "getTradeDates()",
+        "name": "getTradeDates",
+        "parameters": []
+      }
+    ],
+    "markdown": "### `backtest::getTradeDates`\n\n```dolphindb\ngetTradeDates()\n```\n\n返回当前回测实际传给插件的 message 中存在的交易日期。日期已去重并升序排列；子区间运行只返回该子区间的日期。该函数不额外查询或补齐交易所日历。\n\n#### 返回\n\n有序 DATE 向量。"
+  },
   "getHistoryData": {
     "url": "",
     "signatures": [
       {
-        "full": "getHistoryData(context, msg, filter=true)",
+        "full": "getHistoryData(context, msg, filter=true, start=NULL, end=NULL)",
         "name": "getHistoryData",
         "parameters": [
           {
@@ -30,11 +57,23 @@
             "name": "filter",
             "optional": true,
             "default": "true"
+          },
+          {
+            "full": "start=NULL",
+            "name": "start",
+            "optional": true,
+            "default": "NULL"
+          },
+          {
+            "full": "end=NULL",
+            "name": "end",
+            "optional": true,
+            "default": "NULL"
           }
         ]
       }
     ],
-    "markdown": "### `backtest::getHistoryData`\n\n```dolphindb\ngetHistoryData(context, msg, filter=true)\n```\n\n返回严格早于当前 onSnapshot 消息日期的 DSL 数据。\n\nfilter=true 读取 filters 后的数据，false 读取 filters 前的数据。\nmsg 只用于确定当前回调日期，合成快照字段使用 timestamp。\n\n#### 参数\n\n- `context`：当前 Backtest 策略上下文。\n- `msg`：当前 onSnapshot 的快照表；仅使用 timestamp[0] 确定当前交易日。\n- `filter=true`：true 读取 filters 后的数据，false 读取 filters 前的数据。\n\n#### 返回\n\n严格早于当前快照日期的 DSL 历史表；没有数据时返回空表。"
+    "markdown": "### `backtest::getHistoryData`\n\n```dolphindb\ngetHistoryData(context, msg, filter=true, start=NULL, end=NULL)\n```\n\n返回严格早于当前 onSnapshot 消息日期的 DSL 数据。\n\nfilter=true 读取 filters 后的数据，false 读取 filters 前的数据。start 和 end 可按闭区间进一步限制历史日期，但不会放宽严格历史边界。msg 只用于确定当前回调日期，合成快照字段使用 timestamp。\n\n#### 参数\n\n- `context`：当前 Backtest 策略上下文。\n- `msg`：当前 onSnapshot 的快照表；仅使用 timestamp[0] 确定当前交易日。\n- `filter=true`：true 读取 filters 后的数据，false 读取 filters 前的数据。\n- `start=NULL`：可选起始日期，包含该日；必须是 DATE 兼容的标量。\n- `end=NULL`：可选截止日期，包含该日；必须是 DATE 兼容的标量。即使晚于当前回调日，也不会返回当前日或未来数据。\n\nstart 晚于 end 时立即报错。\n\n#### 返回\n\n同时满足可选闭区间与严格历史边界的 DSL 历史表；没有数据时返回空表。"
   },
   "getLastData": {
     "url": "",
