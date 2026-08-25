@@ -15,6 +15,8 @@
 `getParam(key)` 读取单个必填参数；key 不存在时会直接报错。`getTradeDates()` 返回本次回测实际
 回放的有序交易日期，可在 `initialize` 中保存后用于日期判断。`getHistoryData` 的可选 `start`、
 `end` 参数可按闭区间缩小历史数据范围，但始终不会返回当前回调日或未来数据。
+`getIndustry()` 返回 Runtime 应用进程启动时加载到 Python 变量、与因子研究同源并使用 `.XSHG/.XSHE` 代码的行业字典，可在调用
+`factor::factorPreprocess` 前按历史表的 `code` 显式生成 `industry` 列。
 
 ## 编辑策略代码
 

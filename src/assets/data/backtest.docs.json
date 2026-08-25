@@ -26,6 +26,17 @@
     ],
     "markdown": "### `backtest::getParam`\n\n```dolphindb\ngetParam(key)\n```\n\n按名称读取 run_backtest 上传的单个策略参数。key 必须是非空标量 STRING 或 SYMBOL；参数不存在时立即抛错，不提供隐式默认值。\n\n#### 参数\n\n- `key`：策略参数名称。\n\n#### 返回\n\n该参数在 `parameters.params` 中对应的原始值。"
   },
+  "getIndustry": {
+    "url": "",
+    "signatures": [
+      {
+        "full": "getIndustry()",
+        "name": "getIndustry",
+        "parameters": []
+      }
+    ],
+    "markdown": "### `backtest::getIndustry`\n\n```dolphindb\ngetIndustry()\n```\n\n返回 Runtime 应用进程启动时加载到 Python 变量、与因子研究同源的股票行业映射。回测代码已经统一为 `.XSHG/.XSHE`；Runtime 不会自动向历史表添加行业列。\n\n```dolphindb\nindustries = getIndustry()\nhistory[\"industry\"] = industries[history[\"code\"]]\n```\n\n#### 返回\n\nSTRING → STRING 的代码到行业字典。该映射不是按历史日期变化的 point-in-time 行业分类。"
+  },
   "getTradeDates": {
     "url": "",
     "signatures": [

@@ -381,15 +381,23 @@ function groupStatisticsOption(rows: GroupStatistic[], theme: string, range?: Ch
 
 function groupOption(rows: GroupPoint[], theme: string, range?: ChartRange) {
   const names = Object.keys(rows[0]?.values ?? {});
-  const colors = ["#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e3a8a"];
   return baseOption(theme, rows.map((row) => row.time), names.map((name, index) => ({
     name,
     type: "line",
     data: rows.map((row) => row.values[name]),
     showSymbol: false,
     lineStyle: { width: index === 0 || index === names.length - 1 ? 2.2 : 1, opacity: index === 0 || index === names.length - 1 ? 1 : 0.5 },
-    color: colors[index % colors.length]
+    color: groupColor(index, names.length)
   })), range);
+}
+
+function groupColor(index: number, count: number) {
+  const start = [219, 234, 254];
+  const end = [30, 58, 138];
+  const ratio = count <= 1 ? 1 : index / (count - 1);
+  return `#${start.map((channel, channelIndex) => Math.round(
+    channel + (end[channelIndex] - channel) * ratio
+  ).toString(16).padStart(2, "0")).join("")}`;
 }
 
 function decayOption(rows: DecayPoint[], theme: string, range?: ChartRange) {
