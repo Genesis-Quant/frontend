@@ -142,7 +142,7 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
       : null}
     {kind === "backtest"
       ? <>
-      <Tabs value={activeTab} onValueChange={setActiveTab}><TabsList>{backtestTabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>)}</TabsList></Tabs>
+      <Tabs value={activeTab} onValueChange={setActiveTab}><TabsList scrollable>{backtestTabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>)}</TabsList></Tabs>
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <ResultColumn accent="border-l-sky-500">{left.workflow_instance_id ? <Suspense fallback={<ReportLoading />}><BacktestReport activeTab={activeTab} annualTradingDays={(left.parameters as BacktestParameters).annual_trading_days} chartRanges={backtestRanges} riskFreeRate={(left.parameters as BacktestParameters).risk_free_rate} showTabs={false} workflowInstanceId={left.workflow_instance_id} onActiveTabChange={setActiveTab} onChartRanges={setLeftBacktestRanges} /></Suspense> : <MissingResult />}</ResultColumn>
         <ResultColumn accent="border-l-amber-500">{right.workflow_instance_id ? <Suspense fallback={<ReportLoading />}><BacktestReport activeTab={activeTab} annualTradingDays={(right.parameters as BacktestParameters).annual_trading_days} chartRanges={backtestRanges} riskFreeRate={(right.parameters as BacktestParameters).risk_free_rate} showTabs={false} workflowInstanceId={right.workflow_instance_id} onActiveTabChange={setActiveTab} onChartRanges={setRightBacktestRanges} /></Suspense> : <MissingResult />}</ResultColumn>
@@ -180,7 +180,7 @@ function ReportLoading() { return <div className="grid min-h-72 place-items-cent
 function MissingResult() { return <div className="grid min-h-72 place-items-center text-sm text-muted-foreground">该版本尚未产生可对比结果</div>; }
 function FactorTabs({ factor, factors, onChange }: { factor: string; factors: string[]; onChange: (value: string) => void }) {
   if (!factors.length) return null;
-  return <Tabs className="mb-4" value={factor} onValueChange={onChange}><TabsList>{factors.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}</TabsList></Tabs>;
+  return <Tabs className="mb-4" value={factor} onValueChange={onChange}><TabsList scrollable>{factors.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}</TabsList></Tabs>;
 }
 
 function normalizeCompareVersion(kind: "factor" | "backtest", version: CompareVersion): CompareVersion {

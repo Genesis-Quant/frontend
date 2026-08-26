@@ -48,7 +48,7 @@ export default function AppLayout() {
         <Tabs value={active} className="hidden lg:block" onValueChange={(value) => {
           const destination = visibleNavigation.find(({ id }) => id === value);
           if (destination) navigate(destination.path);
-        }}><TabsList>{visibleNavigation.map(({ id, icon: Icon, label }) => <TabsTrigger aria-label={label} key={id} title={label} value={id}><Icon />{label}</TabsTrigger>)}</TabsList></Tabs>
+        }}><TabsList scrollable>{visibleNavigation.map(({ id, icon: Icon, label }) => <TabsTrigger aria-label={label} key={id} title={label} value={id}><Icon />{label}</TabsTrigger>)}</TabsList></Tabs>
 
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2"><Sun className="size-4 text-muted-foreground" /><Switch checked={theme === "dark"} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} /><Moon className="size-4 text-muted-foreground" /></div>

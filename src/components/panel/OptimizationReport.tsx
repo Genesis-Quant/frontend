@@ -44,7 +44,7 @@ export default function OptimizationReport({ data }: { data: OptimizationReportD
     <MethodTable data={data} />
 
     <Tabs value={selectedAlgorithm} onValueChange={(value) => setSelectedAlgorithm(value as OptimizationAlgorithm)}>
-      <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1">
+      <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1" scrollable>
         {data.methods.map((method) => <TabsTrigger className="h-8 flex-none px-3" key={method.algorithm} value={method.algorithm}>{optimizationAlgorithmLabels[method.algorithm]}</TabsTrigger>)}
       </TabsList>
     </Tabs>

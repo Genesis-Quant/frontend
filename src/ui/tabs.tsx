@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Tabs as TabsPrimitive } from "radix-ui"
 
 import { cn } from "@/assets/lib/utils"
+import { Button } from "@/ui/button"
 
 function Tabs({
   className,
@@ -25,16 +26,21 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex min-w-max flex-nowrap items-center justify-start rounded-lg p-[3px] text-muted-foreground group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:min-w-0 group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none",
+  "group/tabs-list flex w-fit min-w-0 flex-nowrap items-center justify-center gap-1 overflow-y-hidden rounded-lg p-[3px] text-muted-foreground [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none [&::-webkit-scrollbar]:hidden",
   {
     variants: {
       variant: {
         default: "bg-muted",
         line: "gap-1 bg-transparent"
+      },
+      scrollable: {
+        true: "overflow-x-auto",
+        false: ""
       }
     },
     defaultVariants: {
-      variant: "default"
+      variant: "default",
+      scrollable: false
     }
   }
 )
@@ -42,108 +48,90 @@ const tabsListVariants = cva(
 function TabsList({
   className,
   variant = "default",
+  scrollable = false,
+  children,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.List> &
   VariantProps<typeof tabsListVariants>) {
-  const { canScrollLeft, canScrollRight, listRef, overflow, scroll, update, viewportRef } = useTabScroll()
+  if (scrollable) {
+    return <ScrollableTabsList className={className} variant={variant} {...props}>{children}</ScrollableTabsList>
+  }
 
   return (
-    <div className="inline-flex max-w-full min-w-0 items-center gap-0.5 align-middle" data-slot="tabs-scroller">
-      {overflow ? <TabScrollButton direction="left" disabled={!canScrollLeft} variant={variant} onClick={() => scroll(-1)} /> : null}
-      <div
-        className="min-w-0 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        ref={viewportRef}
-        onScroll={update}
-      >
-        <TabsPrimitive.List
-          data-slot="tabs-list"
-          data-variant={variant}
-          ref={listRef}
-          className={cn(tabsListVariants({ variant }), className)}
-          {...props}
-        />
-      </div>
-      {overflow ? <TabScrollButton direction="right" disabled={!canScrollRight} variant={variant} onClick={() => scroll(1)} /> : null}
-    </div>
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      data-variant={variant}
+      className={cn(tabsListVariants({ variant, scrollable }), className)}
+      {...props}
+    >
+      {children}
+    </TabsPrimitive.List>
   )
 }
 
-type ScrollDirection = -1 | 1
-
-function useTabScroll() {
-  const viewportRef = React.useRef<HTMLDivElement>(null)
+function ScrollableTabsList({
+  className,
+  variant = "default",
+  children,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.List> &
+  Pick<VariantProps<typeof tabsListVariants>, "variant">) {
   const listRef = React.useRef<HTMLDivElement>(null)
-  const [state, setState] = React.useState({ canScrollLeft: false, canScrollRight: false, overflow: false })
+  const [state, setState] = React.useState({ left: false, right: false, overflow: false })
 
   const update = React.useCallback(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    if (listRef.current?.dataset.orientation === "vertical") {
-      setState({ canScrollLeft: false, canScrollRight: false, overflow: false })
-      return
-    }
-    const maximum = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    setState({
-      canScrollLeft: viewport.scrollLeft > 1,
-      canScrollRight: viewport.scrollLeft < maximum - 1,
+    const list = listRef.current
+    if (!list) return
+    const maximum = list.scrollWidth - list.clientWidth
+    const next = {
+      left: list.scrollLeft > 1,
+      right: list.scrollLeft < maximum - 1,
       overflow: maximum > 1
+    }
+    setState((current) => {
+      if (current.left === next.left && current.right === next.right && current.overflow === next.overflow) return current
+      return next
     })
   }, [])
 
-  React.useLayoutEffect(() => {
-    const viewport = viewportRef.current
+  React.useEffect(() => {
     const list = listRef.current
-    if (!viewport || !list) return undefined
+    if (!list) return undefined
+    update()
     const observer = new ResizeObserver(update)
-    observer.observe(viewport)
     observer.observe(list)
-    const frame = requestAnimationFrame(update)
+    Array.from(list.children).forEach((child) => observer.observe(child))
+    list.addEventListener("scroll", update, { passive: true })
+    window.addEventListener("resize", update)
     return () => {
-      cancelAnimationFrame(frame)
       observer.disconnect()
+      list.removeEventListener("scroll", update)
+      window.removeEventListener("resize", update)
     }
-  }, [update])
+  }, [children, update])
 
-  const scroll = React.useCallback((direction: ScrollDirection) => {
-    const viewport = viewportRef.current
+  const scroll = (direction: -1 | 1) => {
     const list = listRef.current
-    if (!viewport || !list) return
-    const listLeft = list.getBoundingClientRect().left
-    const rawOffsets = Array.from(list.querySelectorAll<HTMLElement>("[role='tab']"))
-      .map((tab) => tab.getBoundingClientRect().left - listLeft)
-    const origin = rawOffsets[0] ?? 0
-    const tabOffsets = rawOffsets.map((left) => left - origin)
-    const current = viewport.scrollLeft
-    const candidate = direction > 0
-      ? tabOffsets.find((left) => left > current + 1)
-      : tabOffsets.slice().reverse().find((left) => left < current - 1)
-    const boundary = direction > 0 ? viewport.scrollWidth - viewport.clientWidth : 0
-    viewport.scrollTo({ behavior: "smooth", left: candidate ?? boundary })
-  }, [])
+    if (!list) return
+    list.scrollBy({
+      behavior: "smooth",
+      left: direction * Math.max(120, list.clientWidth * 0.55)
+    })
+  }
 
-  return { ...state, listRef, scroll, update, viewportRef }
-}
-
-function TabScrollButton({ direction, disabled, onClick, variant }: {
-  direction: "left" | "right"
-  disabled: boolean
-  onClick: () => void
-  variant: "default" | "line" | null | undefined
-}) {
-  const Icon = direction === "left" ? ChevronLeft : ChevronRight
-  const label = direction === "left" ? "向左滚动一个标签" : "向右滚动一个标签"
-  return <button
-    aria-label={label}
-    className={cn(
-      "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-30",
-      variant === "line" ? "border bg-background/90 shadow-sm hover:bg-muted" : "bg-muted hover:bg-muted/75"
-    )}
-    disabled={disabled}
-    type="button"
-    onClick={onClick}
-  >
-    <Icon className="size-4" strokeWidth={2.25} />
-  </button>
+  return <div className={cn("flex min-w-0 max-w-full items-center gap-1 overflow-hidden", className)} data-slot="tabs-scroller">
+    {state.overflow ? <Button aria-label="向左滚动" className="size-7 shrink-0 rounded-[3px] p-0" disabled={!state.left} size="icon" type="button" variant="ghost" onClick={() => scroll(-1)}><ChevronLeft className="size-[15px]" /></Button> : null}
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      data-variant={variant}
+      className={cn(tabsListVariants({ variant, scrollable: true }), "min-w-0 flex-1 justify-start")}
+      ref={listRef}
+      {...props}
+    >
+      {children}
+    </TabsPrimitive.List>
+    {state.overflow ? <Button aria-label="向右滚动" className="size-7 shrink-0 rounded-[3px] p-0" disabled={!state.right} size="icon" type="button" variant="ghost" onClick={() => scroll(1)}><ChevronRight className="size-[15px]" /></Button> : null}
+  </div>
 }
 
 function TabsTrigger({

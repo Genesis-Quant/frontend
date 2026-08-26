@@ -189,7 +189,7 @@ export default function AdminPage() {
     <FeedbackMessage tone="success" value={notice} />
 
     <Tabs value={activeTab} onValueChange={changeTab} className="gap-4">
-      <div className="max-w-full pb-1"><TabsList>
+      <div className="max-w-full pb-1"><TabsList scrollable>
         <TabsTrigger value="overview"><Activity />概览</TabsTrigger>
         <TabsTrigger value="scheduler"><Server />调度管理</TabsTrigger>
         <TabsTrigger value="workflows"><Workflow />工作流运行</TabsTrigger>
