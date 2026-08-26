@@ -119,12 +119,12 @@ function ScrollableTabsList({
     })
   }
 
-  return <div className={cn("flex min-w-0 max-w-full items-center gap-1 overflow-hidden", className)} data-slot="tabs-scroller">
+  return <div className="inline-flex w-fit max-w-full min-w-0 self-start items-center gap-1 overflow-hidden" data-slot="tabs-scroller">
     {state.overflow ? <Button aria-label="向左滚动" className="size-7 shrink-0 rounded-[3px] p-0" disabled={!state.left} size="icon" type="button" variant="ghost" onClick={() => scroll(-1)}><ChevronLeft className="size-[15px]" /></Button> : null}
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant={variant}
-      className={cn(tabsListVariants({ variant, scrollable: true }), "tabs-scroll-viewport min-w-0 flex-1 justify-start")}
+      className={cn(tabsListVariants({ variant, scrollable: true }), "tabs-scroll-viewport min-w-0 flex-auto justify-start", className)}
       ref={listRef}
       {...props}
     >
