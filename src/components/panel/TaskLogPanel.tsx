@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import IconActivity from "~icons/lucide/activity";
 import IconClock3 from "~icons/lucide/clock-3";
 import IconLoaderCircle from "~icons/lucide/loader-circle";
@@ -19,6 +19,7 @@ import { terminalStates, type WorkflowTasks } from "@/types/workflow";
 const FETCH_SIZE = 10_000;
 const DEFAULT_PAGE_SIZE = 500;
 const LOG_PAGE_SIZE_OPTIONS = [100, 500, 1000];
+const LOG_BOTTOM_THRESHOLD = 24;
 
 type TaskLogPanelProps = {
   className?: string;
@@ -37,7 +38,8 @@ export default function TaskLogPanel({ className, reserveCloseButton = false, ta
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const nextLineRef = useRef(0);
   const logRef = useRef<HTMLDivElement>(null);
-  const previousTotalPagesRef = useRef(1);
+  const followLatestRef = useRef(true);
+  const resetScrollRef = useRef(false);
   const selectionRef = useRef(`${workflowInstanceId}:${taskInstanceId}`);
   const refreshInFlightRef = useRef<string | null>(null);
   selectionRef.current = `${workflowInstanceId}:${taskInstanceId}`;
@@ -54,8 +56,28 @@ export default function TaskLogPanel({ className, reserveCloseButton = false, ta
     setMessage("");
     setPage(1);
     nextLineRef.current = 0;
-    previousTotalPagesRef.current = 1;
+    followLatestRef.current = true;
+    resetScrollRef.current = false;
   }, []);
+
+  const changePage = useCallback((value: number) => {
+    followLatestRef.current = false;
+    resetScrollRef.current = true;
+    setPage(value);
+  }, []);
+
+  const changePageSize = useCallback((value: number) => {
+    followLatestRef.current = false;
+    resetScrollRef.current = true;
+    setPage(1);
+    setPageSize(value);
+  }, []);
+
+  const updateFollowLatest = useCallback(() => {
+    const viewport = logRef.current;
+    if (!viewport) return;
+    followLatestRef.current = safePage === totalPages && isLogAtBottom(viewport);
+  }, [safePage, totalPages]);
 
   const loadWorkflow = useCallback(async () => {
     if (!workflowInstanceId) return null;
@@ -140,13 +162,20 @@ export default function TaskLogPanel({ className, reserveCloseButton = false, ta
     }, 2500);
     return () => window.clearInterval(timer);
   }, [loadLogs, loadWorkflow, taskInstanceId, workflowInstanceId]);
-  useEffect(() => {
-    const previousTotalPages = previousTotalPagesRef.current;
-    if (totalPages > previousTotalPages && safePage === previousTotalPages) setPage(totalPages);
-    previousTotalPagesRef.current = totalPages;
-  }, [safePage, totalPages]);
+  useEffect(() => { if (followLatestRef.current && safePage !== totalPages) setPage(totalPages); }, [safePage, totalPages]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
-  useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0; }, [pageSize, safePage]);
+  useLayoutEffect(() => {
+    const viewport = logRef.current;
+    if (!viewport) return;
+    if (followLatestRef.current && safePage === totalPages) {
+      viewport.scrollTop = viewport.scrollHeight;
+      return;
+    }
+    if (!resetScrollRef.current) return;
+    viewport.scrollTop = 0;
+    resetScrollRef.current = false;
+    followLatestRef.current = safePage === totalPages && isLogAtBottom(viewport);
+  }, [safePage, totalPages, visibleMessage]);
 
   return <section aria-label={title} className={cn("flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-sm", className)}>
     <header className={cn("flex shrink-0 items-start justify-between gap-5 border-b px-5 py-4", reserveCloseButton && "pr-14")}>
@@ -154,7 +183,7 @@ export default function TaskLogPanel({ className, reserveCloseButton = false, ta
       <Button disabled={loading || !workflowInstanceId} size="sm" variant="outline" onClick={refresh}>{loading ? <IconLoaderCircle className="animate-spin" /> : <IconRefreshCw />}刷新</Button>
     </header>
     <div className="grid shrink-0 grid-cols-2 border-b bg-muted/15 sm:grid-cols-4"><TaskMeta icon={<IconActivity width={13} height={13} />} label="状态" value={<SchedulerState state={task?.state ?? "LOADING"} />} /><TaskMeta icon={<IconTerminal width={13} height={13} />} label="Task" value={task?.name ?? "—"} /><TaskMeta icon={<IconServer width={13} height={13} />} label="Worker" value={task?.host ?? "—"} /><TaskMeta icon={<IconClock3 width={13} height={13} />} label="耗时" value={formatDuration(task?.duration_seconds)} /></div>
-    <div className="flex min-h-0 flex-1 flex-col bg-muted/20 text-foreground"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2 font-mono text-[10px] tracking-[0.1em] text-muted-foreground"><span>{task?.name ?? "TASK"} / {resolvedTaskInstanceId ?? "—"}</span><span>{lines.length.toLocaleString("zh-CN")} LINES</span></div><div className="min-h-0 flex-1 overflow-auto" ref={logRef}>{taskLogContent(loading, workflow, visibleMessage, (safePage - 1) * pageSize, error, creating, taskUnavailable)}</div>{error ? <div className="shrink-0 border-t border-destructive/20 bg-destructive/5 px-4 py-2.5 text-xs text-destructive">{error}</div> : null}<footer className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-3 border-t px-4 py-2"><div className="text-[10px] text-muted-foreground"><p>{taskLogFooter(creating, taskUnavailable)}</p><p className="mt-0.5">共 {lines.length.toLocaleString("zh-CN")} 行</p></div>{lines.length > 0 ? <AppPagination page={safePage} pageSize={pageSize} pageSizeOptions={LOG_PAGE_SIZE_OPTIONS} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={(value) => { setPage(1); setPageSize(value); }} /> : null}</footer></div>
+    <div className="flex min-h-0 flex-1 flex-col bg-muted/20 text-foreground"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2 font-mono text-[10px] tracking-[0.1em] text-muted-foreground"><span>{task?.name ?? "TASK"} / {resolvedTaskInstanceId ?? "—"}</span><span>{lines.length.toLocaleString("zh-CN")} LINES</span></div><div className="min-h-0 flex-1 overflow-auto" ref={logRef} onScroll={updateFollowLatest}>{taskLogContent(loading, workflow, visibleMessage, (safePage - 1) * pageSize, error, creating, taskUnavailable)}</div>{error ? <div className="shrink-0 border-t border-destructive/20 bg-destructive/5 px-4 py-2.5 text-xs text-destructive">{error}</div> : null}<footer className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-3 border-t px-4 py-2"><div className="text-[10px] text-muted-foreground"><p>{taskLogFooter(creating, taskUnavailable)}</p><p className="mt-0.5">共 {lines.length.toLocaleString("zh-CN")} 行</p></div>{lines.length > 0 ? <AppPagination page={safePage} pageSize={pageSize} pageSizeOptions={LOG_PAGE_SIZE_OPTIONS} totalPages={totalPages} onPageChange={changePage} onPageSizeChange={changePageSize} /> : null}</footer></div>
   </section>;
 }
 
@@ -186,4 +215,8 @@ function splitLogLines(message: string) {
   const lines = message.replace(/\r\n?/g, "\n").split("\n");
   if (lines.at(-1) === "") lines.pop();
   return lines;
+}
+
+function isLogAtBottom(viewport: HTMLDivElement) {
+  return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= LOG_BOTTOM_THRESHOLD;
 }

@@ -2,6 +2,7 @@ import { MoreHorizontal, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
+import { factorMetricDescription } from "@/assets/lib/metricDefinitions";
 import ProjectDataTable, { type ProjectTableColumn } from "@/components/table/ProjectDataTable";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -29,13 +30,13 @@ type FactorProjectTableProps = {
 export default function FactorProjectTable({ loading, onDelete, onOpen, onPage, onPageSize, onSearch, onSort, page, pageSize, projects, search, sortBy, sortOrder, total }: FactorProjectTableProps) {
   const columns = useMemo<ProjectTableColumn<FactorProjectListItem, FactorProjectSortField>[]>(() => [
     { id: "id", label: "ID", size: 80, sortKey: "id", value: (project) => project.id, className: "px-5 font-mono text-xs text-muted-foreground" },
-    { id: "title", label: "名称", size: 260, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="font-medium group-hover:underline">{project.title}</span> },
+    { id: "title", label: "名称", size: 260, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="block truncate font-medium group-hover:underline" title={project.title}>{project.title}</span> },
     { id: "latest_version", label: "最新版本", size: 112, sortKey: "latest_version", value: (project) => project.latest_version, cell: (project) => <Badge className="tabular-nums" variant="secondary">{project.latest_version ? `v${project.latest_version}` : "—"}</Badge> },
-    metricColumn("ic_mean", "IC 均值"),
-    metricColumn("rank_ic_mean", "RankIC 均值"),
-    metricColumn("ic_ir", "ICIR"),
-    metricColumn("long_short_cumulative_return", "多空收益", true),
-    metricColumn("long_short_sharpe", "多空夏普"),
+    metricColumn("ic_mean", "IC 均值", factorMetricDescription("icMean")),
+    metricColumn("rank_ic_mean", "Rank IC 均值", factorMetricDescription("rankIcMean")),
+    metricColumn("ic_ir", "ICIR（未年化）", factorMetricDescription("icIr")),
+    metricColumn("long_short_annual_return", "多空年化收益", factorMetricDescription("annualReturn"), true),
+    metricColumn("long_short_sharpe", "多空年化 Sharpe", factorMetricDescription("sharpe")),
     { id: "updated_at", label: "更新时间", size: 170, sortKey: "updated_at", value: (project) => project.updated_at, cell: (project) => <span className="text-muted-foreground">{formatDateTime(project.updated_at)}</span> },
     { id: "actions", label: "操作", size: 72, value: (project) => project.id, align: "right", cell: (project) => <ProjectActions onDelete={() => onDelete(project)} /> }
   ], [onDelete]);
@@ -43,8 +44,8 @@ export default function FactorProjectTable({ loading, onDelete, onOpen, onPage, 
   return <ProjectDataTable columns={columns} emptyMessage="暂无研究项目" loading={loading} rows={projects} onOpen={onOpen} pagination={{ page, pageSize, total, onPageChange: onPage, onPageSizeChange: onPageSize }} search={{ value: search, onChange: onSearch, placeholder: "搜索项目名称或 ID" }} sorting={{ field: sortBy, order: sortOrder, onChange: onSort }} />;
 }
 
-function metricColumn(id: Exclude<FactorProjectSortField, "id" | "title" | "latest_version" | "updated_at">, label: string, percent = false): ProjectTableColumn<FactorProjectListItem, FactorProjectSortField> {
-  return { id, label, size: 116, sortKey: id, value: (project) => project.latest_metric?.[id], align: "right", className: "tabular-nums", cell: (project) => formatMetric(project.latest_metric?.[id], percent) };
+function metricColumn(id: Exclude<FactorProjectSortField, "id" | "title" | "latest_version" | "updated_at">, label: string, description: string, percent = false): ProjectTableColumn<FactorProjectListItem, FactorProjectSortField> {
+  return { id, label, description, size: 132, sortKey: id, value: (project) => project.latest_metric?.[id], align: "right", className: "tabular-nums", cell: (project) => formatMetric(project.latest_metric?.[id], percent) };
 }
 
 function ProjectActions({ onDelete }: { onDelete: () => void }) {

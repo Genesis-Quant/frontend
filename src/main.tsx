@@ -5,5 +5,6 @@ import App from "@/App";
 import "@/assets/styles/tailwind.css";
 import "@/assets/styles/base.less";
 import "@/assets/styles/transition.less";
+import { TooltipProvider } from "@/ui/tooltip";
 
-createRoot(document.getElementById("root")!).render(<BrowserRouter><App /></BrowserRouter>);
+createRoot(document.getElementById("root")!).render(<TooltipProvider><BrowserRouter><App /></BrowserRouter></TooltipProvider>);

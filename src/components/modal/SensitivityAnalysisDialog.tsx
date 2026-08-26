@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Grid2X2, Loader2, RefreshCw, SlidersHorizontal, Table2, Trash2, X } from "lucide-react";
 
 import { backtestApi, canDeleteBacktestAnalysis } from "@/assets/lib/backtest";
+import { backtestMetricDescription } from "@/assets/lib/metricDefinitions";
 import { SensitivityAnalytics, type SensitivityResultRow } from "@/assets/lib/sensitivity";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
 import EChart from "@/components/chart/EChart";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
+import { MetricLabel } from "@/components/mark/MetricLabel";
 import { AnalysisHistoryItem, AnalysisHistoryPanel } from "@/components/panel/AnalysisHistoryPanel";
 import SchedulerState from "@/components/status/SchedulerState";
 import type { BacktestParameters, BatchResearchListItem, BatchResearchResponse, StrategyParameters } from "@/types/backtest";
@@ -32,7 +34,7 @@ type ParameterDefinition = {
 };
 type DimensionDraft = { path: string; values: string };
 type SensitivityDimension = { kind: ParameterKind; label: string; path: string; values: Scalar[] };
-type SensitivityMetric = { format: "number" | "percent"; key: keyof SensitivityResultRow["metrics"]; label: string };
+type SensitivityMetric = { description: string; format: "number" | "percent"; key: keyof SensitivityResultRow["metrics"]; label: string };
 type SensitivityPoint = SensitivityResultRow;
 type StrategyGridItem = { parameters: StrategyParameters };
 
@@ -45,19 +47,19 @@ type SensitivityAnalysisDialogProps = {
   version: number | null;
 };
 
-const SENSITIVITY_METRICS: SensitivityMetric[] = [
-  { key: "totalReturn", label: "累计收益", format: "percent" },
-  { key: "cagr", label: "年化收益", format: "percent" },
-  { key: "sharpe", label: "夏普比率", format: "number" },
-  { key: "volatility", label: "年化波动", format: "percent" },
-  { key: "maxDrawdown", label: "最大回撤", format: "percent" },
-  { key: "winRate", label: "胜率", format: "percent" },
-  { key: "calmar", label: "卡玛比率", format: "number" }
-];
+function sensitivityMetrics(annualTradingDays: number): SensitivityMetric[] { return [
+  { key: "totalReturn", label: "累计收益", format: "percent", description: backtestMetricDescription("totalReturn", annualTradingDays) },
+  { key: "cagr", label: "年化收益", format: "percent", description: backtestMetricDescription("annualReturn", annualTradingDays) },
+  { key: "sharpe", label: "年化 Sharpe", format: "number", description: backtestMetricDescription("sharpe", annualTradingDays) },
+  { key: "volatility", label: "年化波动", format: "percent", description: backtestMetricDescription("annualVolatility", annualTradingDays) },
+  { key: "maxDrawdown", label: "最大回撤", format: "percent", description: backtestMetricDescription("maxDrawdown", annualTradingDays) },
+  { key: "winRate", label: "日胜率", format: "percent", description: backtestMetricDescription("dailyWinRate", annualTradingDays) },
+  { key: "calmar", label: "Calmar 比率", format: "number", description: backtestMetricDescription("calmar", annualTradingDays) }
+]; }
 
 export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange, open, projectId, projectTitle, version }: SensitivityAnalysisDialogProps) {
   const definitions = useMemo(() => parameterDefinitions(baseParameters.params), [baseParameters.params]);
-  const metrics = SENSITIVITY_METRICS;
+  const metrics = useMemo(() => sensitivityMetrics(baseParameters.annual_trading_days), [baseParameters.annual_trading_days]);
   const [drafts, setDrafts] = useState<DimensionDraft[]>([]);
   const [description, setDescription] = useState("");
   const [batch, setBatch] = useState<BatchResearchResponse | null>(null);
@@ -313,13 +315,13 @@ function SensitivityReport({ metrics, results }: { metrics: SensitivityMetric[];
   }, [fixedDimension, fixedValue]);
   if (!selectedMetric || !first) return <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">没有可展示的敏感性指标。</div>;
   const chart = isHeatmap && second ? heatmapOption(visibleResults, first, second, selectedMetric) : lineOption(visibleResults, lineDimension ?? first, selectedMetric);
-  return <div className="space-y-5"><div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3"><div><div className="text-xs text-muted-foreground">分析维度</div><div className="mt-1 font-medium">{dimensions.length} 个参数</div></div><div><div className="text-xs text-muted-foreground">有效组合</div><div className="mt-1 font-medium tabular-nums">{results.filter((item) => item.status === "SUCCESS").length} / {results.length}</div></div><div><div className="text-xs text-muted-foreground">当前指标</div><div className="mt-1 font-medium">{selectedMetric.label}</div></div></div>
+  return <div className="space-y-5"><div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-3"><div><div className="text-xs text-muted-foreground">分析维度</div><div className="mt-1 font-medium">{dimensions.length} 个参数</div></div><div><div className="text-xs text-muted-foreground">有效组合</div><div className="mt-1 font-medium tabular-nums">{results.filter((item) => item.status === "SUCCESS").length} / {results.length}</div></div><div><div className="text-xs text-muted-foreground">当前指标</div><MetricLabel className="mt-1 font-medium" description={selectedMetric.description}>{selectedMetric.label}</MetricLabel></div></div>
     <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-4"><div className="w-56 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">结果指标</div><Select value={selectedMetric.key} onValueChange={(value) => setMetricKey(value as SensitivityMetric["key"])}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{metrics.map((metric) => <SelectItem key={metric.key} value={metric.key}>{metric.label}</SelectItem>)}</SelectContent></Select></div>{second ? <div className="flex flex-wrap items-end gap-3"><Tabs value={mode} onValueChange={(value) => { const next = value as typeof mode; setMode(next); const dimension = next === "fix-first" ? first : next === "fix-second" ? second : undefined; setFixedValue(dimension ? serializeValue(dimension.values[0]) : ""); }}><TabsList><TabsTrigger value="heatmap"><Grid2X2 />二维热力图</TabsTrigger><TabsTrigger value="fix-first">固定 {first.label}</TabsTrigger><TabsTrigger value="fix-second">固定 {second.label}</TabsTrigger></TabsList></Tabs>{fixedDimension && !isHeatmap ? <div className="w-48 space-y-1.5"><div className="text-xs font-medium text-muted-foreground">{fixedDimension.label}</div><Select value={fixedValue} onValueChange={setFixedValue}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{fixedDimension.values.map((value) => <SelectItem key={serializeValue(value)} value={serializeValue(value)}>{formatSensitivityValue(value)}</SelectItem>)}</SelectContent></Select></div> : null}</div> : null}</div>
-    <div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">{isHeatmap ? `${first.label} × ${second?.label} · ${selectedMetric.label}` : `${lineDimension?.label ?? first.label} 敏感性 · ${selectedMetric.label}`}</div><EChart height={360} option={chart} /></div><SensitivityTable dimensions={dimensions} metric={selectedMetric} results={visibleResults} />{results.some((item) => item.error) ? <SensitivityErrors dimensions={dimensions} results={results} /> : null}</div>;
+    <div className="rounded-md border bg-card p-3"><MetricLabel className="mb-2 text-sm font-medium" description={selectedMetric.description}>{isHeatmap ? `${first.label} × ${second?.label} · ${selectedMetric.label}` : `${lineDimension?.label ?? first.label} 敏感性 · ${selectedMetric.label}`}</MetricLabel><EChart height={360} option={chart} /></div><SensitivityTable dimensions={dimensions} metric={selectedMetric} results={visibleResults} />{results.some((item) => item.error) ? <SensitivityErrors dimensions={dimensions} results={results} /> : null}</div>;
 }
 
 function SensitivityTable({ dimensions, metric, results }: { dimensions: SensitivityDimension[]; metric: SensitivityMetric; results: SensitivityPoint[] }) {
-  return <div className="rounded-md border bg-card"><div className="flex items-center gap-2 border-b px-4 py-3"><Table2 className="size-4 text-primary" /><span className="text-sm font-medium">参数组合明细</span><span className="text-xs text-muted-foreground">{results.length} 条</span></div><Table><TableHeader><TableRow><TableHead>组合</TableHead><TableHead className="text-right">{metric.label}</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{results.map((item) => <TableRow key={item.caseIndex}><TableCell><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">{dimensions.map((dimension) => <span key={dimension.path}><span className="text-muted-foreground">{dimension.label}：</span>{formatSensitivityValue(getStrategyParameter(item.params, dimension.path))}</span>)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetricValue(item.metrics[metric.key], metric.format)}</TableCell><TableCell><SchedulerState state={item.status} /></TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="rounded-md border bg-card"><div className="flex items-center gap-2 border-b px-4 py-3"><Table2 className="size-4 text-primary" /><span className="text-sm font-medium">参数组合明细</span><span className="text-xs text-muted-foreground">{results.length} 条</span></div><Table><TableHeader><TableRow><TableHead>组合</TableHead><TableHead className="text-right"><MetricLabel description={metric.description}>{metric.label}</MetricLabel></TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{results.map((item) => <TableRow key={item.caseIndex}><TableCell><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">{dimensions.map((dimension) => <span key={dimension.path}><span className="text-muted-foreground">{dimension.label}：</span>{formatSensitivityValue(getStrategyParameter(item.params, dimension.path))}</span>)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetricValue(item.metrics[metric.key], metric.format)}</TableCell><TableCell><SchedulerState state={item.status} /></TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
 function SensitivityErrors({ dimensions, results }: { dimensions: SensitivityDimension[]; results: SensitivityPoint[] }) {

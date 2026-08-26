@@ -77,6 +77,7 @@ export type OptimizationWindowSelection = {
 };
 
 export type OptimizationReportData = {
+  annualTradingDays: number;
   methods: OptimizationMethodMetric[];
   runs: OptimizationRunMetric[];
   meanPaths: OptimizationMeanPathPoint[];
@@ -151,6 +152,7 @@ export class OptimizationAnalytics {
     `);
     const runs = runRows.map(runMetric);
     return {
+      annualTradingDays,
       methods: methodMetrics(runs),
       runs,
       meanPaths: meanPathRows.map((row) => ({

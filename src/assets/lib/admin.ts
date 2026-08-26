@@ -6,6 +6,7 @@ import type {
   AdminUserList,
   IncrementalUpdateRun
 } from "@/types/admin";
+import type { WorkflowListFilters, WorkflowWorkspaceListPage } from "@/types/workflow";
 
 export const adminApi = {
   overview: () => client.get<AdminOverview>("/admin/overview"),
@@ -17,6 +18,8 @@ export const adminApi = {
   users: () => client.get<AdminUserList>("/admin/users"),
   updateUser: (userId: number, isAdmin: boolean) =>
     client.patch<ArenaUser>(`/admin/users/${userId}`, { is_admin: isAdmin }),
+  workflows: (filters: WorkflowListFilters) =>
+    client.get<WorkflowWorkspaceListPage>("/admin/workflows", { params: filters }),
   ensureWorkflows: () =>
     client.post<AdminActionResponse>("/admin/workflows/ensure", null, { timeout: 120000 }),
   runIncrementalUpdate: (workers?: string[], channel = "console", overwrite = false) =>

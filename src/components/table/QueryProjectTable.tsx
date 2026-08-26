@@ -29,7 +29,7 @@ type QueryProjectTableProps = {
 export default function QueryProjectTable({ loading, onDelete, onOpen, onPage, onPageSize, onSearch, onSort, page, pageSize, projects, search, sortBy, sortOrder, total }: QueryProjectTableProps) {
   const columns = useMemo<ProjectTableColumn<QueryProjectListItem, QueryProjectSortField>[]>(() => [
     { id: "id", label: "ID", size: 80, sortKey: "id", value: (project) => project.id, className: "px-5 font-mono text-xs text-muted-foreground" },
-    { id: "title", label: "名称", size: 320, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="font-medium group-hover:underline">{project.title}</span> },
+    { id: "title", label: "名称", size: 320, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="block truncate font-medium group-hover:underline" title={project.title}>{project.title}</span> },
     { id: "state", label: "状态", size: 160, sortKey: "state", value: (project) => project.current?.state ?? "IDLE", cell: (project) => <SchedulerState state={project.current?.state ?? "IDLE"} /> },
     { id: "workflow_instance_id", label: "Workflow ID", size: 150, sortKey: "workflow_instance_id", value: (project) => project.current?.workflow_instance_id, className: "font-mono text-sm text-muted-foreground" },
     { id: "updated_at", label: "更新时间", size: 190, sortKey: "updated_at", value: (project) => project.updated_at, cell: (project) => <span className="text-muted-foreground">{formatDateTime(project.updated_at)}</span> },

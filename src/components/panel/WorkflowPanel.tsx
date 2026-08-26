@@ -2,6 +2,7 @@ import { Activity, ChevronDown, ChevronRight, Clock3, Eye, Loader2, RefreshCw, S
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { adminApi } from "@/assets/lib/admin";
 import { formatDateTime } from "@/assets/lib/dateTime";
 import { cn } from "@/assets/lib/utils";
 import { formatDuration, resolveDurationSeconds, workflowsApi } from "@/assets/lib/workflows";
@@ -23,7 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 type StateFilter = "all" | "active" | "success" | "failure";
 type SelectedTask = { workflowInstanceId: number; taskInstanceId: number };
 
-export default function WorkflowPanel({ onTotalChange, showUsername = false }: { onTotalChange?: (total: number) => void; showUsername?: boolean }) {
+export default function WorkflowPanel({ adminScope = false, onTotalChange, showUsername = false }: { adminScope?: boolean; onTotalChange?: (total: number) => void; showUsername?: boolean }) {
   const userId = useAppStore((store) => store.user?.id);
   const [result, setResult] = useState<WorkflowWorkspaceListPage | null>(null);
   const [page, setPage] = useState(1);
@@ -50,7 +51,8 @@ export default function WorkflowPanel({ onTotalChange, showUsername = false }: {
     background ? setRefreshing(true) : setLoading(true);
     setError("");
     try {
-      const nextResult = await workflowsApi.list({ page, page_size: pageSize, application: application === "all" ? undefined : application, state: state === "all" ? undefined : state });
+      const listWorkflows = adminScope ? adminApi.workflows : workflowsApi.list;
+      const nextResult = await listWorkflows({ page, page_size: pageSize, application: application === "all" ? undefined : application, state: state === "all" ? undefined : state });
       if (requestId !== loadRequest.current) return;
       setResult(nextResult);
       onTotalChange?.(nextResult.total);
@@ -62,7 +64,7 @@ export default function WorkflowPanel({ onTotalChange, showUsername = false }: {
         setRefreshing(false);
       }
     }
-  }, [application, onTotalChange, page, pageSize, state]);
+  }, [adminScope, application, onTotalChange, page, pageSize, state]);
 
   const loadAttempts = useCallback(async (workspaceId: number, pageNumber = 1) => {
     const generation = attemptLoadGeneration.current;

@@ -4,7 +4,9 @@ import { BarChart3, CheckCircle2, Loader2, MinusCircle, ShieldAlert, XCircle } f
 import { factorApi } from "@/assets/lib/factor";
 import { FactorAnalytics, type GroupStatistic, type InformationPoint, type LongShortPoint } from "@/assets/lib/factorAnalysis";
 import { formatDateTime } from "@/assets/lib/dateTime";
+import { factorMetricDescription } from "@/assets/lib/metricDefinitions";
 import { errorMessage } from "@/assets/lib/utils";
+import { MetricLabel } from "@/components/mark/MetricLabel";
 import { normalizeAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -20,6 +22,7 @@ type CandidateTarget = {
   information: InformationPoint[];
   label: string;
   longShort: LongShortPoint[];
+  returnPeriods: number;
   version: FactorVersion;
 };
 
@@ -189,7 +192,7 @@ function CandidateReportPanel({ result }: { result: CandidateReportResult }) {
     </div>
     <div className="rounded-md border bg-card">
       <div className="border-b px-4 py-3"><div className="font-medium">候选证据向量</div><div className="mt-1 text-xs text-muted-foreground">预测性、稳定性、收益风险、冗余和支配关系一起判断，不按单一指标排序。</div></div>
-      <Table><TableHeader><TableRow><TableHead>建议</TableHead><TableHead>候选</TableHead><TableHead className="text-right">Rank IC</TableHead><TableHead className="text-right">Rank IC IR</TableHead><TableHead className="text-right">IC IR</TableHead><TableHead className="text-right">单调性</TableHead><TableHead className="text-right">多空年化</TableHead><TableHead className="text-right">多空回撤</TableHead><TableHead className="text-right">最大相关</TableHead><TableHead className="text-right">支配数</TableHead></TableRow></TableHeader><TableBody>{result.evidences.map((item) => <TableRow key={item.candidate.label}><TableCell><RecommendationBadge value={item.recommendation} /></TableCell><TableCell><div className="max-w-56 truncate font-medium" title={labelCandidate(item)}>{labelCandidate(item)}</div><div className="text-xs text-muted-foreground">{item.candidate.version.remark || "无备注"}</div></TableCell><MetricCell value={item.rankIcMean} /><MetricCell value={item.rankIcIr} /><MetricCell value={item.icIr} /><MetricCell value={item.monotonicity} /><MetricCell kind="percent" value={item.longShortAnnual ?? item.longShortCumulative} /><MetricCell kind="percent" value={item.maxDrawdown} /><MetricCell value={item.maxAbsCorrelation} /><TableCell className="text-right tabular-nums">{item.dominanceCount}</TableCell></TableRow>)}</TableBody></Table>
+      <Table><TableHeader><TableRow><TableHead>建议</TableHead><TableHead>候选</TableHead><MetricHead description={factorMetricDescription("rankIcMean")}>Rank IC</MetricHead><MetricHead description={factorMetricDescription("rankIcIr")}>Rank IC IR（未年化）</MetricHead><MetricHead description={factorMetricDescription("icIr")}>IC IR（未年化）</MetricHead><MetricHead description={factorMetricDescription("monotonicity")}>单调性</MetricHead><MetricHead description={factorMetricDescription("annualReturn")}>多空年化收益</MetricHead><MetricHead description={factorMetricDescription("maxDrawdown")}>多空回撤</MetricHead><MetricHead description={factorMetricDescription("correlation")}>最大相关</MetricHead><MetricHead description={factorMetricDescription("dominance")}>支配数</MetricHead></TableRow></TableHeader><TableBody>{result.evidences.map((item) => <TableRow key={item.candidate.label}><TableCell><RecommendationBadge value={item.recommendation} /></TableCell><TableCell><div className="max-w-56 truncate font-medium" title={labelCandidate(item)}>{labelCandidate(item)}</div><div className="text-xs text-muted-foreground">{item.candidate.version.remark || "无备注"}</div></TableCell><MetricCell value={item.rankIcMean} /><MetricCell value={item.rankIcIr} /><MetricCell value={item.icIr} /><MetricCell value={item.monotonicity} /><MetricCell kind="percent" value={item.longShortAnnual} /><MetricCell kind="percent" value={item.maxDrawdown} /><MetricCell value={item.maxAbsCorrelation} /><TableCell className="text-right tabular-nums">{item.dominanceCount}</TableCell></TableRow>)}</TableBody></Table>
     </div>
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><CorrelationMatrixCard description="衡量候选排序预测能力是否同涨同跌，作为暴露冗余的代理。" matrix={result.rankIcCorrelation} title="Rank IC 时序相关矩阵" /><CorrelationMatrixCard description="衡量多空收益路径是否重复；高度相关时优先保留回撤更小、Rank IC 更稳的候选。" matrix={result.longShortCorrelation} title="多空收益相关矩阵" /></div>
     <div className="rounded-md border bg-muted/20 p-4"><div className="flex items-center gap-2 font-medium"><ShieldAlert className="size-4 text-amber-500" />冗余与选择偏差提示</div><div className="mt-2 text-sm leading-6 text-muted-foreground">相关矩阵基于各版本输出的 Rank IC 和多空收益时序计算；候选数量越多，单一最高收益越容易带有选择偏差，因此报告不会只按单一指标排序。</div></div>
@@ -208,6 +211,10 @@ function RecommendationBadge({ value }: { value: Recommendation }) {
 
 function MetricCell({ kind = "decimal", value }: { kind?: "decimal" | "percent"; value: number | null }) {
   return <TableCell className="text-right tabular-nums">{formatNumber(value, kind === "percent")}</TableCell>;
+}
+
+function MetricHead({ children, description }: { children: string; description: string }) {
+  return <TableHead className="text-right"><MetricLabel description={description}>{children}</MetricLabel></TableHead>;
 }
 
 function CorrelationMatrixCard({ description, matrix, title }: { description: string; matrix: CorrelationMatrix; title: string }) {
@@ -229,7 +236,7 @@ async function loadCandidate(projectId: number, versionNumber: number): Promise<
   );
   try {
     const [information, longShort, groupStatistics] = await Promise.all([analytics.informationSeries(factorName, returnColumn), analytics.longShortSeries(factorName, returnColumn, parameters.n_groups), analytics.groupStatistics(factorName, returnColumn, parameters.n_groups)]);
-    return { factorName, groupStatistics, information, label: `v${version.version}`, longShort, version };
+    return { factorName, groupStatistics, information, label: `v${version.version}`, longShort, returnPeriods: parameters.return_specs[returnColumn]?.periods ?? 1, version };
   } finally {
     await analytics.close();
   }
@@ -259,7 +266,7 @@ function candidateStats(candidate: CandidateTarget): CandidateStats {
     icIr: informationRatio(icValues),
     icMean: mean(icValues),
     icSeries: seriesMap(candidate.information, "ic"),
-    longShortAnnual: annualizedReturn(cumulative, observations, 252),
+    longShortAnnual: candidate.returnPeriods === 1 ? annualizedReturn(cumulative, observations, 252) : null,
     longShortCumulative: cumulative,
     longShortMean: mean(longShortValues),
     longShortSeries: new Map(candidate.longShort.flatMap((row) => row.value === null ? [] : [[row.time, row.value] as [string, number]])),

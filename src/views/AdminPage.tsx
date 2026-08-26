@@ -189,7 +189,7 @@ export default function AdminPage() {
     <FeedbackMessage tone="success" value={notice} />
 
     <Tabs value={activeTab} onValueChange={changeTab} className="gap-4">
-      <div className="overflow-x-auto pb-1"><TabsList>
+      <div className="max-w-full pb-1"><TabsList>
         <TabsTrigger value="overview"><Activity />概览</TabsTrigger>
         <TabsTrigger value="scheduler"><Server />调度管理</TabsTrigger>
         <TabsTrigger value="workflows"><Workflow />工作流运行</TabsTrigger>
@@ -220,7 +220,7 @@ export default function AdminPage() {
         </div>
       </TabsContent>
 
-      <TabsContent value="workflows" className="space-y-4"><div><h2 className="text-lg font-semibold">工作流运行</h2><p className="mt-1 text-sm text-muted-foreground">按工作空间查看全部用户的当前运行，并展开追溯每次提交与执行记录。</p></div><WorkflowPanel showUsername /></TabsContent>
+      <TabsContent value="workflows" className="space-y-4"><div><h2 className="text-lg font-semibold">工作流运行</h2><p className="mt-1 text-sm text-muted-foreground">按工作空间查看全部用户的当前运行，并展开追溯每次提交与执行记录。</p></div><WorkflowPanel adminScope showUsername /></TabsContent>
       <TabsContent value="storage"><OutputStorageCard deletingWorkspaceKey={deletingWorkspaceKey} loading={storageLoading} storage={outputStorage} onDelete={deleteOrphanWorkspace} /></TabsContent>
       <TabsContent value="users"><AdminUsers currentUserId={currentUser?.id} loading={loading} updatingUserId={updatingUserId} users={users} onUpdate={updateUser} /></TabsContent>
     </Tabs>

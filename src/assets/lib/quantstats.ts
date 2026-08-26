@@ -237,7 +237,7 @@ export function drawdownDetails(drawdown: DrawdownPoint[]) {
 }
 
 export function rollingSharpe(rows: DatedReturn[], riskFreeRate = 0, rollingPeriod = 126, periodsPerYear = 252) {
-  const returns = prepareReturns(rows.map((row) => row.value), riskFreeRate, rollingPeriod);
+  const returns = prepareReturns(rows.map((row) => row.value), riskFreeRate, periodsPerYear);
   const result: RollingPoint[] = [];
   for (let index = rollingPeriod - 1; index < returns.length; index += 1) {
     const window = returns.slice(index - rollingPeriod + 1, index + 1);

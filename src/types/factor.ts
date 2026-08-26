@@ -182,7 +182,7 @@ export type FactorProjectListItem = {
   updated_at: string;
 };
 
-export type FactorProjectSortField = "id" | "title" | "latest_version" | "ic_mean" | "rank_ic_mean" | "ic_ir" | "long_short_cumulative_return" | "long_short_sharpe" | "updated_at";
+export type FactorProjectSortField = "id" | "title" | "latest_version" | "ic_mean" | "rank_ic_mean" | "ic_ir" | "long_short_cumulative_return" | "long_short_annual_return" | "long_short_sharpe" | "updated_at";
 
 export type FactorProjectPage = {
   all_total: number;
