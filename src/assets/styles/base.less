@@ -89,6 +89,19 @@
   background: var(--scrollbar-thumb-hover);
 }
 
+// Tabs retain horizontal scrolling for wheel, touch and arrow controls while
+// suppressing the browser-native scrollbar in every supported engine.
+.tabs-scroll-viewport {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.tabs-scroll-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 html {
   min-width: 320px;
   min-height: 100%;

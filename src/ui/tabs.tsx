@@ -26,7 +26,7 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  "group/tabs-list flex w-fit min-w-0 flex-nowrap items-center justify-center gap-1 overflow-y-hidden rounded-lg p-[3px] text-muted-foreground [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none [&::-webkit-scrollbar]:hidden",
+  "group/tabs-list flex w-fit min-w-0 flex-nowrap items-center justify-center gap-1 overflow-y-hidden rounded-lg p-[3px] text-muted-foreground group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none",
   {
     variants: {
       variant: {
@@ -124,7 +124,7 @@ function ScrollableTabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant={variant}
-      className={cn(tabsListVariants({ variant, scrollable: true }), "min-w-0 flex-1 justify-start")}
+      className={cn(tabsListVariants({ variant, scrollable: true }), "tabs-scroll-viewport min-w-0 flex-1 justify-start")}
       ref={listRef}
       {...props}
     >
