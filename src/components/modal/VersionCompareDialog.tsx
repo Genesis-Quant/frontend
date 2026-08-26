@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { mergeChartRanges } from "@/assets/lib/chart";
-import { normalizeAnalysisParameters, stockPoolCode, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import { normalizeAnalysisParameters, stockPoolLabel, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { BacktestParameters, BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
 import type { BacktestChartRanges, FactorChartRanges } from "@/types/chart";
 import { Button } from "@/ui/button";
@@ -191,7 +191,7 @@ function normalizeCompareVersion(kind: "factor" | "backtest", version: CompareVe
 
 function factorSummary(parameters: FactorAnalysisParameters): string[][] {
   if (!parameters.dataset_query || !Array.isArray(parameters.factor_columns) || !Array.isArray(parameters.return_columns)) return [["状态", "尚未执行"]];
-  const pool = stockPools.find((item) => item.value === stockPoolCode(parameters))?.label ?? stockPoolCode(parameters);
+  const pool = stockPoolLabel(parameters);
   return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["股票池", pool], ["回溯周期", parameters.dataset_query.lookback], ["分组数量", String(parameters.n_groups)], ["因子", parameters.factor_columns.join(", ") || "—"], ["收益列", parameters.return_columns.join(", ") || "—"]];
 }
 

@@ -1,6 +1,7 @@
 import { client } from "@/assets/lib/request";
 import { isFactorQuery, type DslCatalog } from "@/types/factor";
-import { callbackNames, callbackParameters, type BacktestOptimization, type BacktestOptimizationPage, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName, type OptimizationAlgorithm, type OptimizationOutput, type OptimizationSettings, type SensitivityOutput } from "@/types/backtest";
+import { callbackNames, callbackParameters, type BacktestOptimization, type BacktestOptimizationPage, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestProjectSortField, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName, type OptimizationAlgorithm, type OptimizationOutput, type OptimizationSettings, type SensitivityOutput } from "@/types/backtest";
+import type { ProjectListParams } from "@/types/project";
 import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 
@@ -161,7 +162,7 @@ export function isBacktestParameters(value: unknown): value is BacktestParameter
 }
 
 export const backtestApi = {
-  listProjects: (page = 1, pageSize = 20) => client.get<BacktestProjectPage>("/backtest/projects", { params: { page, page_size: pageSize } }),
+  listProjects: (params: ProjectListParams<BacktestProjectSortField> = {}) => client.get<BacktestProjectPage>("/backtest/projects", { params }),
   createProject: (title: string) => client.post<BacktestProject>("/backtest/projects", { title }),
   getProject: (projectId: number) => client.get<BacktestProject>(`/backtest/projects/${projectId}`),
   updateProject: (projectId: number, title: string) => client.patch<BacktestProject>(`/backtest/projects/${projectId}`, { title }),

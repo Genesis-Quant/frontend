@@ -1,10 +1,11 @@
 import { client } from "@/assets/lib/request";
 import { BrowserDuckDb } from "@/assets/lib/duckdb";
 import type { FactorQuery } from "@/types/factor";
-import type { QueryCatalog, QueryOutput, QueryProject, QueryProjectPage, QueryWorkflowSubmitted } from "@/types/query";
+import type { ProjectListParams } from "@/types/project";
+import type { QueryCatalog, QueryOutput, QueryProject, QueryProjectPage, QueryProjectSortField, QueryWorkflowSubmitted } from "@/types/query";
 
 export const queryApi = {
-  listProjects: (page = 1, pageSize = 20) => client.get<QueryProjectPage>("/query/projects", { params: { page, page_size: pageSize } }),
+  listProjects: (params: ProjectListParams<QueryProjectSortField> = {}) => client.get<QueryProjectPage>("/query/projects", { params }),
   createProject: (title: string) => client.post<QueryProject>("/query/projects", { title }),
   getProject: (projectId: number) => client.get<QueryProject>(`/query/projects/${projectId}`),
   deleteProject: (projectId: number) => client.delete<{ id: number }>(`/query/projects/${projectId}`),

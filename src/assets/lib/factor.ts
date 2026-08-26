@@ -6,13 +6,15 @@ import type {
   FactorOutput,
   FactorProject,
   FactorProjectPage,
+  FactorProjectSortField,
   FactorVersion,
   FactorVersionListItem
 } from "@/types/factor";
+import type { ProjectListParams } from "@/types/project";
 import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 
 export const factorApi = {
-  listProjects: (page = 1, pageSize = 20) => client.get<FactorProjectPage>("/factor/projects", { params: { page, page_size: pageSize } }),
+  listProjects: (params: ProjectListParams<FactorProjectSortField> = {}) => client.get<FactorProjectPage>("/factor/projects", { params }),
   createProject: (title: string) => client.post<FactorProject>("/factor/projects", { title }),
   getProject: (projectId: number) => client.get<FactorProject>(`/factor/projects/${projectId}`),
   updateProject: (projectId: number, title: string) => client.patch<FactorProject>(`/factor/projects/${projectId}`, { title }),

@@ -1,23 +1,54 @@
-import { Loader2, MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
-import { ProjectTableState } from "@/components/table/ProjectTableState";
+import ProjectDataTable, { type ProjectTableColumn } from "@/components/table/ProjectDataTable";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Card, CardContent } from "@/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
-import type { FactorProjectListItem } from "@/types/factor";
+import type { FactorProjectListItem, FactorProjectSortField } from "@/types/factor";
+import type { ProjectSortOrder } from "@/types/project";
 
-type FactorProjectTableProps = { loading: boolean; projects: FactorProjectListItem[]; onDelete: (project: FactorProjectListItem) => void; onOpen: (project: FactorProjectListItem) => void };
+type FactorProjectTableProps = {
+  loading: boolean;
+  onDelete: (project: FactorProjectListItem) => void;
+  onOpen: (project: FactorProjectListItem) => void;
+  onPage: (page: number) => void;
+  onPageSize: (pageSize: number) => void;
+  onSearch: (search: string) => void;
+  onSort: (field: FactorProjectSortField, order: ProjectSortOrder) => void;
+  page: number;
+  pageSize: number;
+  projects: FactorProjectListItem[];
+  search: string;
+  sortBy: FactorProjectSortField;
+  sortOrder: ProjectSortOrder;
+  total: number;
+};
 
-export default function FactorProjectTable({ loading, projects, onDelete, onOpen }: FactorProjectTableProps) {
-  return <Card className="overflow-hidden py-0 shadow-sm"><CardContent className="p-0"><Table className="min-w-[1200px] table-fixed"><TableHeader><TableRow><TableHead className="w-20 px-5">ID</TableHead><TableHead className="w-[260px] px-4">名称</TableHead><TableHead className="w-28 px-4">最新版本</TableHead><TableHead className="w-28 px-3 text-right">IC 均值</TableHead><TableHead className="w-28 px-3 text-right">RankIC 均值</TableHead><TableHead className="w-24 px-3 text-right">ICIR</TableHead><TableHead className="w-28 px-3 text-right">多空收益</TableHead><TableHead className="w-24 px-3 text-right">多空夏普</TableHead><TableHead className="w-40 px-3">更新时间</TableHead><TableHead className="w-16 px-3 text-right">操作</TableHead></TableRow></TableHeader><TableBody>{projects.map((project) => <FactorProjectRow key={project.id} project={project} onOpen={() => onOpen(project)} onDelete={() => onDelete(project)} />)}{loading ? <ProjectTableState colSpan={10}><Loader2 className="animate-spin" />正在加载...</ProjectTableState> : null}{!loading && !projects.length ? <ProjectTableState colSpan={10}>暂无研究项目</ProjectTableState> : null}</TableBody></Table></CardContent></Card>;
+export default function FactorProjectTable({ loading, onDelete, onOpen, onPage, onPageSize, onSearch, onSort, page, pageSize, projects, search, sortBy, sortOrder, total }: FactorProjectTableProps) {
+  const columns = useMemo<ProjectTableColumn<FactorProjectListItem, FactorProjectSortField>[]>(() => [
+    { id: "id", label: "ID", size: 80, sortKey: "id", value: (project) => project.id, className: "px-5 font-mono text-xs text-muted-foreground" },
+    { id: "title", label: "名称", size: 260, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="font-medium group-hover:underline">{project.title}</span> },
+    { id: "latest_version", label: "最新版本", size: 112, sortKey: "latest_version", value: (project) => project.latest_version, cell: (project) => <Badge className="tabular-nums" variant="secondary">{project.latest_version ? `v${project.latest_version}` : "—"}</Badge> },
+    metricColumn("ic_mean", "IC 均值"),
+    metricColumn("rank_ic_mean", "RankIC 均值"),
+    metricColumn("ic_ir", "ICIR"),
+    metricColumn("long_short_cumulative_return", "多空收益", true),
+    metricColumn("long_short_sharpe", "多空夏普"),
+    { id: "updated_at", label: "更新时间", size: 170, sortKey: "updated_at", value: (project) => project.updated_at, cell: (project) => <span className="text-muted-foreground">{formatDateTime(project.updated_at)}</span> },
+    { id: "actions", label: "操作", size: 72, value: (project) => project.id, align: "right", cell: (project) => <ProjectActions onDelete={() => onDelete(project)} /> }
+  ], [onDelete]);
+
+  return <ProjectDataTable columns={columns} emptyMessage="暂无研究项目" loading={loading} rows={projects} onOpen={onOpen} pagination={{ page, pageSize, total, onPageChange: onPage, onPageSizeChange: onPageSize }} search={{ value: search, onChange: onSearch, placeholder: "搜索项目名称或 ID" }} sorting={{ field: sortBy, order: sortOrder, onChange: onSort }} />;
 }
 
-function FactorProjectRow({ onDelete, onOpen, project }: { onDelete: () => void; onOpen: () => void; project: FactorProjectListItem }) {
-  const metric = project.latest_metric;
-  return <TableRow className="group cursor-pointer" onClick={onOpen}><TableCell className="px-5 py-4 font-mono text-xs text-muted-foreground">{project.id}</TableCell><TableCell className="px-4 py-4 font-medium group-hover:underline">{project.title}</TableCell><TableCell className="px-4 py-4"><Badge variant="secondary" className="tabular-nums">{project.latest_version ? `v${project.latest_version}` : "—"}</Badge></TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{formatMetric(metric?.ic_mean)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{formatMetric(metric?.rank_ic_mean)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{formatMetric(metric?.ic_ir)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{formatMetric(metric?.long_short_cumulative_return, true)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{formatMetric(metric?.long_short_sharpe)}</TableCell><TableCell className="px-3 py-4 text-muted-foreground">{formatDateTime(project.updated_at)}</TableCell><TableCell className="px-3 py-4 text-right" onClick={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="项目操作" size="icon-sm" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>;
+function metricColumn(id: Exclude<FactorProjectSortField, "id" | "title" | "latest_version" | "updated_at">, label: string, percent = false): ProjectTableColumn<FactorProjectListItem, FactorProjectSortField> {
+  return { id, label, size: 116, sortKey: id, value: (project) => project.latest_metric?.[id], align: "right", className: "tabular-nums", cell: (project) => formatMetric(project.latest_metric?.[id], percent) };
+}
+
+function ProjectActions({ onDelete }: { onDelete: () => void }) {
+  return <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="项目操作" size="icon-sm" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>;
 }
 
 function formatMetric(value: number | null | undefined, percent = false) { if (value === null || value === undefined) return "—"; return percent ? `${(value * 100).toFixed(2)}%` : value.toFixed(4); }

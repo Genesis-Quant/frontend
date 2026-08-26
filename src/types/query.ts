@@ -1,5 +1,7 @@
 import type { DslCatalog, DslDocument, FactorQuery } from "@/types/factor";
 
+export type QueryProjectSortField = "id" | "title" | "state" | "workflow_instance_id" | "updated_at";
+
 export type QueryWorkflowSummary = {
   workspace_id: number;
   workflow_instance_id: number | null;
@@ -25,6 +27,7 @@ export type QueryProjectListItem = {
 };
 
 export type QueryProjectPage = {
+  all_total: number;
   items: QueryProjectListItem[];
   page: number;
   page_size: number;

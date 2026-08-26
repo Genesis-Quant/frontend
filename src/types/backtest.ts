@@ -58,6 +58,7 @@ export type BacktestProjectListItem = {
 };
 
 export type BacktestProjectPage = {
+  all_total: number;
   items: BacktestProjectListItem[];
   page: number;
   page_size: number;
@@ -83,7 +84,7 @@ export type BacktestVersion = {
 
 export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "saved" | "is_current" | "remark" | "workflow_instance_id" | "created_at">;
 
-export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "return_summary" | "daily_trading_statistics" | "engine_stat";
+export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "daily_trading_statistics";
 export type BacktestOutput = { name: BacktestOutputName; filename: string; size: number; modified_at: string };
 
 export const optimizationAlgorithms = [
@@ -121,6 +122,8 @@ export type OptimizationSettings = {
   evaluation_budget: number;
   seed: number;
 };
+
+export type BacktestProjectSortField = "id" | "title" | "latest_version" | "totalReturn" | "annualReturn" | "sharpeRatio" | "annualVolatility" | "maxDrawdown" | "dailyWinningRate" | "updated_at";
 
 export type OptimizationParameters = BacktestParameters & OptimizationSettings;
 

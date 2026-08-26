@@ -464,8 +464,7 @@ function validAnalysisContract(parameters: FactorAnalysisParameters, catalog: Ds
     .map(([name]) => name);
   const outputs = new Set([...parameters.dataset_query.factors, ...numericDerivatives]);
   const derivatives = new Set(numericDerivatives);
-  return parameters.codes_query !== null
-    && parameters.factor_columns.length > 0
+  return parameters.factor_columns.length > 0
     && parameters.factor_columns.every((column) => outputs.has(column))
     && parameters.return_columns.length > 0
     && parameters.return_columns.every((column) => derivatives.has(column));

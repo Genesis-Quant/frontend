@@ -48,7 +48,7 @@ export default function StockCodesField({ className, codes, disabled = false, on
 
     let active = true;
     setLoadingProjects(true);
-    queryApi.listProjects(1, 100)
+    queryApi.listProjects({ page: 1, page_size: 100 })
       .then((page) => { if (active) setProjects(page.items); })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); })
       .finally(() => { if (active) setLoadingProjects(false); });

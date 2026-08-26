@@ -56,7 +56,7 @@ export default function ProjectCompareDialog({ kind, onOpenChange, open, title }
     setLoadingVersions({ left: false, right: false });
     setComparing(false);
     setLoadingProjects(true);
-    (kind === "factor" ? factorApi.listProjects(1, 100) : backtestApi.listProjects(1, 100))
+    (kind === "factor" ? factorApi.listProjects({ page: 1, page_size: 100 }) : backtestApi.listProjects({ page: 1, page_size: 100 }))
       .then((response) => {
         if (disposed) return;
         setProjects(response.items.map(({ id, latest_version, title }) => ({ id, latest_version, title })));

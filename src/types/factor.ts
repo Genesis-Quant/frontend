@@ -91,19 +91,22 @@ export function canNormalizeFactorAnalysisParameters(value: unknown): boolean {
     && typeof value.market_value_column === "string";
 }
 
-export type StockPoolCode = "000016.SH" | "000300.SH" | "000905.SH" | "000852.SH";
+export type StockPoolCode = "ALL" | "000016.SH" | "000300.SH" | "000905.SH" | "000852.SH";
+type IndexStockPoolCode = Exclude<StockPoolCode, "ALL">;
+export type StockPoolSelection = StockPoolCode | "CUSTOM";
 export type PriceField = "close" | "close_hfq";
 export type MarketValueField = "circ_mv" | "total_mv";
 
 export type FactorAnalysisSettings = {
-  stockPool: StockPoolCode;
+  stockPool: StockPoolSelection;
   priceField: PriceField;
   marketValueField: MarketValueField;
   nGroups: number;
   maxLags: number;
 };
 
-export const stockPools: { label: string; value: StockPoolCode; factor: string }[] = [
+export const stockPools: { label: string; value: StockPoolCode; factor: string | null }[] = [
+  { label: "全市场", value: "ALL", factor: null },
   { label: "上证 50", value: "000016.SH", factor: "weight_000016SH" },
   { label: "沪深 300", value: "000300.SH", factor: "weight_000300SH" },
   { label: "中证 500", value: "000905.SH", factor: "weight_000905SH" },
@@ -179,7 +182,10 @@ export type FactorProjectListItem = {
   updated_at: string;
 };
 
+export type FactorProjectSortField = "id" | "title" | "latest_version" | "ic_mean" | "rank_ic_mean" | "ic_ir" | "long_short_cumulative_return" | "long_short_sharpe" | "updated_at";
+
 export type FactorProjectPage = {
+  all_total: number;
   items: FactorProjectListItem[];
   page: number;
   page_size: number;
@@ -245,8 +251,9 @@ export type FactorOutput = {
   modified_at: string;
 };
 
-export const stockPoolQuery = (stockPool: StockPoolCode, startDate: string, endDate: string): FactorQuery => {
-  const factor = stockPools.find((item) => item.value === stockPool)?.factor ?? stockPools[1].factor;
+export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string, endDate: string): FactorQuery => {
+  const factor = stockPools.find((item) => item.value === stockPool)?.factor;
+  if (!factor) throw new Error(`不支持的指数股票池：${stockPool}`);
   return {
     start_date: startDate,
     end_date: endDate,
@@ -265,10 +272,35 @@ export const stockPoolQuery = (stockPool: StockPoolCode, startDate: string, endD
   };
 };
 
-export const stockPoolCode = (parameters: FactorAnalysisParameters): StockPoolCode => {
-  const member = parameters.codes_query?.derivatives.stock_pool_member ?? parameters.dataset_query.derivatives.stock_pool_member;
-  const factor = isRecord(member) && isRecord(member.fields) ? member.fields.left : undefined;
-  return stockPools.find((item) => item.factor === factor)?.value ?? "000300.SH";
+export const stockPoolCode = (parameters: FactorAnalysisParameters): StockPoolSelection => {
+  if (parameters.codes_query !== null && validAnalysisCodesQuery(parameters.codes_query)) {
+    const codesFactor = managedStockPoolFactor(parameters.codes_query);
+    const datasetFactor = managedStockPoolFactor(parameters.dataset_query);
+    const configured = stockPools.find((item) => item.factor !== null && item.factor === codesFactor)?.value;
+    if (
+      configured
+      && datasetFactor === codesFactor
+      && parameters.codes_query.start_date === parameters.dataset_query.start_date
+      && parameters.codes_query.end_date === parameters.dataset_query.end_date
+      && parameters.dataset_query.codes.length === 0
+      && parameters.dataset_query.filters.includes("stock_pool_member")
+    ) return configured;
+  }
+  if (
+    parameters.codes_query === null
+    && parameters.dataset_query.codes.length === 0
+    && !("stock_pool_member" in parameters.dataset_query.derivatives)
+    && !parameters.dataset_query.factors.includes("stock_pool_member")
+    && !parameters.dataset_query.filters.includes("stock_pool_member")
+  ) return "ALL";
+  return "CUSTOM";
+};
+
+export const stockPoolLabel = (parameters: FactorAnalysisParameters): string => {
+  const code = stockPoolCode(parameters);
+  return code === "CUSTOM"
+    ? "自定义股票池"
+    : stockPools.find((item) => item.value === code)?.label ?? code;
 };
 
 export const analysisSettings = (parameters: FactorAnalysisParameters): FactorAnalysisSettings => ({
@@ -295,26 +327,41 @@ export const applyAnalysisSettings = (parameters: FactorAnalysisParameters, dsl:
   const configuredFactor = parameters.factor_columns.length === 1 ? parameters.factor_columns[0] : "";
   const outputs = new Set([...dsl.factors, ...Object.keys(dsl.derivatives)]);
   const factor = outputs.has(configuredFactor) ? configuredFactor : Object.keys(dsl.derivatives).at(-1) ?? dsl.factors.at(-1) ?? "";
-  const poolFactor = stockPools.find((item) => item.value === settings.stockPool)?.factor ?? stockPools[1].factor;
+  const customPool = settings.stockPool === "CUSTOM";
+  const poolFactor = customPool ? null : stockPools.find((item) => item.value === settings.stockPool)?.factor ?? null;
+  const poolDerivatives: Record<string, DerivativeNode> = {};
+  const poolFilters: string[] = [];
+  if (customPool) {
+    const member = parameters.dataset_query.derivatives.stock_pool_member;
+    if (member) poolDerivatives.stock_pool_member = member;
+    if (parameters.dataset_query.filters.includes("stock_pool_member")) poolFilters.push("stock_pool_member");
+  } else if (poolFactor) {
+    poolDerivatives.stock_pool_member = {
+      type: "DIRECT",
+      op: "binary.gt",
+      fields: { left: poolFactor, right: 0 },
+      params: {}
+    };
+    poolFilters.push("stock_pool_member");
+  }
   const returnColumns = analysisReturnColumns(settings.maxLags);
   const datasetQuery = {
     ...parameters.dataset_query,
-    codes: [],
+    codes: customPool ? parameters.dataset_query.codes : [],
     factors: [...dsl.factors],
     derivatives: {
-      stock_pool_member: {
-        type: "DIRECT" as const,
-        op: "binary.gt",
-        fields: { left: poolFactor, right: 0 },
-        params: {}
-      },
+      ...poolDerivatives,
       ...dsl.derivatives,
       ...forwardReturnDerivatives(settings.priceField, settings.maxLags)
     },
-    filters: ["stock_pool_member", ...dsl.filters]
+    filters: [...poolFilters, ...dsl.filters]
   };
   return {
-    codes_query: stockPoolQuery(settings.stockPool, datasetQuery.start_date, datasetQuery.end_date),
+    codes_query: settings.stockPool === "CUSTOM"
+      ? parameters.codes_query
+      : settings.stockPool === "ALL"
+        ? null
+        : stockPoolQuery(settings.stockPool, datasetQuery.start_date, datasetQuery.end_date),
     dataset_query: datasetQuery,
     factor_columns: factor ? [factor] : [],
     return_columns: returnColumns,
@@ -388,11 +435,13 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
     ? inputFactorColumns
     : defaults.factor_columns;
   const inputCodesQuery = input.codes_query;
-  const codesQuery = validAnalysisCodesQuery(inputCodesQuery)
-    ? inputCodesQuery
-    : isFactorQuery(inputCodesQuery)
+  const codesQuery = inputCodesQuery === null
+    ? null
+    : validAnalysisCodesQuery(inputCodesQuery)
       ? inputCodesQuery
-      : stockPoolQuery("000300.SH", datasetQuery.start_date, datasetQuery.end_date);
+      : isFactorQuery(inputCodesQuery)
+        ? inputCodesQuery
+        : stockPoolQuery("000300.SH", datasetQuery.start_date, datasetQuery.end_date);
   const parameters: FactorAnalysisParameters = {
     codes_query: codesQuery,
     dataset_query: datasetQuery,
@@ -508,10 +557,6 @@ function validAnalysisReturnColumns(value: unknown): value is string[] {
 function validAnalysisCodesQuery(value: unknown): value is FactorQuery {
   if (!isFactorQuery(value)) return false;
   const derivativeNames = Object.keys(value.derivatives);
-  const member = value.derivatives.stock_pool_member;
-  if (!isRecord(member) || !isRecord(member.fields) || !isRecord(member.params)) return false;
-  const fieldNames = Object.keys(member.fields);
-  const factor = member.fields.left;
   return [
     isZeroLookback(value.lookback),
     value.codes.length === 0,
@@ -520,15 +565,26 @@ function validAnalysisCodesQuery(value: unknown): value is FactorQuery {
     derivativeNames[0] === "stock_pool_member",
     value.filters.length === 1,
     value.filters[0] === "stock_pool_member",
-    member.type === "DIRECT",
-    member.op === "binary.gt",
-    fieldNames.length === 2,
-    fieldNames.includes("left"),
-    fieldNames.includes("right"),
-    member.fields.right === 0,
-    Object.keys(member.params).length === 0,
-    stockPools.some((pool) => pool.factor === factor)
+    managedStockPoolFactor(value) !== null
   ].every(Boolean);
+}
+
+function managedStockPoolFactor(query: FactorQuery): string | null {
+  const member = query.derivatives.stock_pool_member;
+  if (!isRecord(member) || !isRecord(member.fields) || !isRecord(member.params)) return null;
+  const fieldNames = Object.keys(member.fields);
+  const factor = member.fields.left;
+  return member.type === "DIRECT"
+    && member.op === "binary.gt"
+    && fieldNames.length === 2
+    && fieldNames.includes("left")
+    && fieldNames.includes("right")
+    && member.fields.right === 0
+    && Object.keys(member.params).length === 0
+    && typeof factor === "string"
+    && stockPools.some((pool) => pool.factor === factor)
+    ? factor
+    : null;
 }
 
 function isZeroLookback(value: string) {

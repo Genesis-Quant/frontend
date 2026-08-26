@@ -26,7 +26,7 @@ export default function SecondaryQueryPage() {
     setLoading(true);
     setError("");
     try {
-      const page = await queryApi.listProjects(1, 100);
+      const page = await queryApi.listProjects({ page: 1, page_size: 100 });
       const successful = page.items.filter((source) => source.current?.state === "SUCCESS" && source.current.workflow_instance_id !== null);
       setSources(successful);
       setSelectedSources((current) => {

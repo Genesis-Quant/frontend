@@ -22,11 +22,10 @@ const tableTabs = [
   { value: "daily_portfolios", label: "组合资产" },
   { value: "daily_trading_statistics", label: "交易统计" }
 ] as const;
-const unsupportedTableNames = new Set<BacktestTableName>(["daily_trading_statistics"]);
 
 type MetricFormat = "decimal" | "percent" | "integer" | "currency";
 type Metric = { label: string; value: number | null; format?: MetricFormat };
-type BacktestOutputState = "available" | "missing" | "unsupported";
+type BacktestOutputState = "available" | "missing";
 
 type BacktestReportProps = {
   activeTab?: string;
@@ -181,18 +180,17 @@ function ReportLoading() { return <div className="grid min-h-80 place-items-cent
 
 function BacktestTabLabel({ availableOutputs, tab }: { availableOutputs: ReadonlySet<string> | null; tab: typeof tableTabs[number] }) {
   const outputState = backtestOutputState(tab.value, availableOutputs);
-  const stateLabel = outputState === "unsupported" ? "不可用" : outputState === "missing" ? "未生成" : "";
+  const stateLabel = outputState === "missing" ? "未生成" : "";
   return <>{tab.label}{stateLabel ? <span className="ml-1 text-[10px] text-muted-foreground">{stateLabel}</span> : null}</>;
 }
 
-function UnavailableBacktestOutput({ name, outputState }: { name: BacktestTableName; outputState: Exclude<BacktestOutputState, "available"> }) {
+function UnavailableBacktestOutput({ name }: { name: BacktestTableName }) {
   const label = tableTabs.find((tab) => tab.value === name)?.label ?? name;
-  const unsupported = outputState === "unsupported";
   return <div className="grid min-h-64 place-items-center rounded-md border border-dashed bg-muted/15 px-6 py-10 text-center">
     <div className="max-w-md">
       <CircleAlert className="mx-auto size-5 text-muted-foreground" />
-      <p className="mt-3 text-sm font-medium">{unsupported ? `当前插件不支持${label}` : `本次运行未生成${label}`}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{unsupported ? "当前运行节点的 DolphinDB Backtest 插件不支持对应结果接口，其他回测结果不受影响。" : "该工作流没有可用的结果文件，可能未请求该输出或历史产物已不再保留。"}</p>
+      <p className="mt-3 text-sm font-medium">本次运行未生成{label}</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">该工作流没有可用的结果文件，可能未请求该输出或历史产物已不再保留。</p>
     </div>
   </div>;
 }
@@ -231,7 +229,7 @@ function DrawdownTable({ rows }: { rows: DrawdownPeriod[] }) {
 }
 
 function renderParquetContent({ data, download, error, loading, name, onPage, onPageSize, onQuery, outputState, page, pageSize, query }: { data: BacktestTablePage | null; download: { fileName: string; loadRows: () => Promise<Record<string, unknown>[]> }; error: string; loading: boolean; name: BacktestTableName; onPage: (page: number) => void; onPageSize: (pageSize: number) => void; onQuery: (query: ParquetTableQuery) => void; outputState: BacktestOutputState; page: number; pageSize: number; query: ParquetTableQuery }): ReactNode {
-  if (outputState !== "available") return <UnavailableBacktestOutput name={name} outputState={outputState} />;
+  if (outputState !== "available") return <UnavailableBacktestOutput name={name} />;
   if (loading && !data) return <div className="grid min-h-64 place-items-center rounded-md border bg-card"><Loader2 className="animate-spin text-primary" /></div>;
   if (error) return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>;
   if (!data) return null;
@@ -266,7 +264,7 @@ function formatMetric(value: number | null | undefined, format: MetricFormat = "
 function isBacktestTableName(value: string): value is BacktestTableName { return tableTabs.some((tab) => tab.value === value); }
 function backtestOutputState(name: BacktestTableName | null, availableOutputs: ReadonlySet<string> | null): BacktestOutputState {
   if (!name || !availableOutputs || availableOutputs.has(name)) return "available";
-  return unsupportedTableNames.has(name) ? "unsupported" : "missing";
+  return "missing";
 }
 function createTableRequestKey(workflowInstanceId: number, name: BacktestTableName | null, startDate: string, endDate: string, page: number, pageSize: number, query: ParquetTableQuery) { return name ? `${workflowInstanceId}:${name}:${startDate}:${endDate}:${page}:${pageSize}:${JSON.stringify(query)}` : ""; }
 function average(values: number[]) { return values.reduce((sum, value) => sum + value, 0) / values.length; }

@@ -15,7 +15,7 @@ import {
   type FactorQuery,
   type MarketValueField,
   type PriceField,
-  type StockPoolCode
+  type StockPoolSelection
 } from "@/types/factor";
 
 const DslEditor = lazy(() => import("@/components/editor/DslEditor"));
@@ -33,8 +33,12 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
   const dsl = analysisDsl(parameters);
   const editorDsl = factorQueryDsl(parameters);
   const settings = analysisSettings(parameters);
+  const stockPoolOptions = settings.stockPool === "CUSTOM"
+    ? [{ label: "自定义股票池", value: "CUSTOM" }, ...stockPools]
+    : stockPools;
 
-  function updateStockPool(stockPool: StockPoolCode) {
+  function updateStockPool(stockPool: StockPoolSelection) {
+    if (stockPool === "CUSTOM") return;
     onChange(applyAnalysisSettings(parameters, dsl, { ...settings, stockPool }));
   }
 
@@ -52,7 +56,7 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
   return <div className="space-y-5">
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="股票池" value={settings.stockPool} options={stockPools} disabled={readOnly} onChange={(value) => updateStockPool(value as StockPoolCode)} />
+        <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="股票池" value={settings.stockPool} options={stockPoolOptions} disabled={readOnly} onChange={(value) => updateStockPool(value as StockPoolSelection)} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="价格字段" value={settings.priceField} options={priceFields} disabled={readOnly} onChange={(priceField) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, priceField: priceField as PriceField }))} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="市值字段" value={settings.marketValueField} options={marketValueFields} disabled={readOnly} onChange={(marketValueField) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, marketValueField: marketValueField as MarketValueField }))} />
         <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="分组数量" value={settings.nGroups} min={2} disabled={readOnly} onChange={(nGroups) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, nGroups }))} />

@@ -1,23 +1,55 @@
-import { Activity, Loader2, MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
-import { ProjectTableState } from "@/components/table/ProjectTableState";
+import ProjectDataTable, { type ProjectTableColumn } from "@/components/table/ProjectDataTable";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Card, CardContent } from "@/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
-import type { BacktestProjectListItem } from "@/types/backtest";
+import type { BacktestProjectListItem, BacktestProjectSortField } from "@/types/backtest";
+import type { ProjectSortOrder } from "@/types/project";
 
-type BacktestProjectTableProps = { loading: boolean; projects: BacktestProjectListItem[]; onDelete: (project: BacktestProjectListItem) => void; onOpen: (project: BacktestProjectListItem) => void };
+type BacktestProjectTableProps = {
+  loading: boolean;
+  onDelete: (project: BacktestProjectListItem) => void;
+  onOpen: (project: BacktestProjectListItem) => void;
+  onPage: (page: number) => void;
+  onPageSize: (pageSize: number) => void;
+  onSearch: (search: string) => void;
+  onSort: (field: BacktestProjectSortField, order: ProjectSortOrder) => void;
+  page: number;
+  pageSize: number;
+  projects: BacktestProjectListItem[];
+  search: string;
+  sortBy: BacktestProjectSortField;
+  sortOrder: ProjectSortOrder;
+  total: number;
+};
 
-export default function BacktestProjectTable({ loading, projects, onDelete, onOpen }: BacktestProjectTableProps) {
-  return <Card className="overflow-hidden py-0 shadow-sm"><CardContent className="p-0"><Table className="min-w-[1260px] table-fixed"><TableHeader><TableRow><TableHead className="w-20 px-5">ID</TableHead><TableHead className="w-[260px] px-4">名称</TableHead><TableHead className="w-28 px-4">最新版本</TableHead><TableHead className="w-28 px-3 text-right">累计收益</TableHead><TableHead className="w-28 px-3 text-right">年化收益</TableHead><TableHead className="w-28 px-3 text-right">夏普比率</TableHead><TableHead className="w-28 px-3 text-right">年化波动</TableHead><TableHead className="w-28 px-3 text-right">最大回撤</TableHead><TableHead className="w-24 px-3 text-right">日胜率</TableHead><TableHead className="w-40 px-3">更新时间</TableHead><TableHead className="w-16 px-3 text-right">操作</TableHead></TableRow></TableHeader><TableBody>{projects.map((project) => <BacktestProjectRow key={project.id} project={project} onOpen={() => onOpen(project)} onDelete={() => onDelete(project)} />)}{loading ? <ProjectTableState colSpan={11}><Loader2 className="animate-spin" />正在加载...</ProjectTableState> : null}{!loading && !projects.length ? <ProjectTableState colSpan={11}><Activity className="size-4" />暂无回测项目</ProjectTableState> : null}</TableBody></Table></CardContent></Card>;
+export default function BacktestProjectTable({ loading, onDelete, onOpen, onPage, onPageSize, onSearch, onSort, page, pageSize, projects, search, sortBy, sortOrder, total }: BacktestProjectTableProps) {
+  const columns = useMemo<ProjectTableColumn<BacktestProjectListItem, BacktestProjectSortField>[]>(() => [
+    { id: "id", label: "ID", size: 80, sortKey: "id", value: (project) => project.id, className: "px-5 font-mono text-xs text-muted-foreground" },
+    { id: "title", label: "名称", size: 260, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="font-medium group-hover:underline">{project.title}</span> },
+    { id: "latest_version", label: "最新版本", size: 112, sortKey: "latest_version", value: (project) => project.latest_version, cell: (project) => <Badge variant="secondary">{project.latest_version ? `v${project.latest_version}` : "—"}</Badge> },
+    summaryColumn("totalReturn", "累计收益", true),
+    summaryColumn("annualReturn", "年化收益", true),
+    summaryColumn("sharpeRatio", "夏普比率"),
+    summaryColumn("annualVolatility", "年化波动", true),
+    summaryColumn("maxDrawdown", "最大回撤", true),
+    summaryColumn("dailyWinningRate", "日胜率", true),
+    { id: "updated_at", label: "更新时间", size: 170, sortKey: "updated_at", value: (project) => project.updated_at, cell: (project) => <span className="text-muted-foreground">{formatDateTime(project.updated_at)}</span> },
+    { id: "actions", label: "操作", size: 72, value: (project) => project.id, align: "right", cell: (project) => <ProjectActions onDelete={() => onDelete(project)} /> }
+  ], [onDelete]);
+
+  return <ProjectDataTable columns={columns} emptyMessage="暂无回测项目" loading={loading} rows={projects} onOpen={onOpen} pagination={{ page, pageSize, total, onPageChange: onPage, onPageSizeChange: onPageSize }} search={{ value: search, onChange: onSearch, placeholder: "搜索项目名称或 ID" }} sorting={{ field: sortBy, order: sortOrder, onChange: onSort }} />;
 }
 
-function BacktestProjectRow({ onDelete, onOpen, project }: { onDelete: () => void; onOpen: () => void; project: BacktestProjectListItem }) {
-  return <TableRow className="group cursor-pointer" onClick={onOpen}><TableCell className="px-5 py-4 font-mono text-xs text-muted-foreground">{project.id}</TableCell><TableCell className="px-4 py-4 font-medium group-hover:underline">{project.title}</TableCell><TableCell className="px-4 py-4"><Badge variant="secondary">{project.latest_version ? `v${project.latest_version}` : "—"}</Badge></TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{percent(project.latest_summary?.totalReturn)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{percent(project.latest_summary?.annualReturn)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{decimal(project.latest_summary?.sharpeRatio)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{percent(project.latest_summary?.annualVolatility)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{percent(project.latest_summary?.maxDrawdown)}</TableCell><TableCell className="px-3 py-4 text-right tabular-nums">{percent(project.latest_summary?.dailyWinningRate)}</TableCell><TableCell className="px-3 py-4 text-muted-foreground">{formatDateTime(project.updated_at)}</TableCell><TableCell className="px-3 py-4 text-right" onClick={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="项目操作" size="icon-sm" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>;
+function summaryColumn(id: Exclude<BacktestProjectSortField, "id" | "title" | "latest_version" | "updated_at">, label: string, percent = false): ProjectTableColumn<BacktestProjectListItem, BacktestProjectSortField> {
+  return { id, label, size: 116, sortKey: id, value: (project) => project.latest_summary?.[id], align: "right", className: "tabular-nums", cell: (project) => formatSummary(project.latest_summary?.[id], percent) };
 }
 
-function percent(value: number | null | undefined) { return value === null || value === undefined ? "—" : `${(value * 100).toFixed(2)}%`; }
-function decimal(value: number | null | undefined) { return value === null || value === undefined ? "—" : value.toFixed(3); }
+function ProjectActions({ onDelete }: { onDelete: () => void }) {
+  return <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="项目操作" size="icon-sm" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>;
+}
+
+function formatSummary(value: number | null | undefined, percent = false) { if (value === null || value === undefined) return "—"; return percent ? `${(value * 100).toFixed(2)}%` : value.toFixed(3); }
