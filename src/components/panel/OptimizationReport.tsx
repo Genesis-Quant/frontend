@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { optimizationAlgorithmLabels, type OptimizationReportData } from "@/assets/lib/optimization";
-import { backtestMetricDescription } from "@/assets/lib/metricDefinitions";
 import EChart from "@/components/chart/EChart";
-import { MetricLabel } from "@/components/mark/MetricLabel";
 import { useAppStore } from "@/store";
 import type { OptimizationAlgorithm } from "@/types/backtest";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -32,10 +30,10 @@ export default function OptimizationReport({ data }: { data: OptimizationReportD
 
   return <div className="space-y-4">
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <MetricCard description={backtestMetricDescription("sharpe", data.annualTradingDays)} label="平均年化 Sharpe 最高" value={bestSharpe ? optimizationAlgorithmLabels[bestSharpe.algorithm] : "—"} detail={formatNumber(bestSharpe?.meanSharpe)} />
-      <MetricCard description={backtestMetricDescription("totalReturn", data.annualTradingDays)} label="平均累计收益最高" value={bestReturn ? optimizationAlgorithmLabels[bestReturn.algorithm] : "—"} detail={formatPercent(bestReturn?.meanReturn)} />
-      <MetricCard description="本次报告中实际产生有效结果的调优算法数量。" label="调优算法" value={`${data.methods.length}`} detail="种" />
-      <MetricCard description="所有算法和重复次数产生的样本外净值路径总数。" label="样本外净值路径" value={`${data.runs.length}`} detail="条" />
+      <MetricCard label="平均年化 Sharpe 最高" value={bestSharpe ? optimizationAlgorithmLabels[bestSharpe.algorithm] : "—"} detail={formatNumber(bestSharpe?.meanSharpe)} />
+      <MetricCard label="平均累计收益最高" value={bestReturn ? optimizationAlgorithmLabels[bestReturn.algorithm] : "—"} detail={formatPercent(bestReturn?.meanReturn)} />
+      <MetricCard label="调优算法" value={`${data.methods.length}`} detail="种" />
+      <MetricCard label="样本外净值路径" value={`${data.runs.length}`} detail="条" />
     </div>
 
     <Card className="gap-3 rounded-md py-4">
@@ -53,43 +51,43 @@ export default function OptimizationReport({ data }: { data: OptimizationReportD
 
     {selectedMethod && <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <SmallMetric description={backtestMetricDescription("sharpe", data.annualTradingDays)} label="平均年化 Sharpe" value={formatNumber(selectedMethod.meanSharpe)} />
-        <SmallMetric description={backtestMetricDescription("sharpeDeviation", data.annualTradingDays)} label="Sharpe 标准差" value={formatNumber(selectedMethod.sharpeDeviation)} />
-        <SmallMetric description={backtestMetricDescription("totalReturn", data.annualTradingDays)} label="平均累计收益" value={formatPercent(selectedMethod.meanReturn)} />
-        <SmallMetric description={backtestMetricDescription("maxDrawdown", data.annualTradingDays)} label="平均最大回撤" value={formatPercent(selectedMethod.meanMaxDrawdown)} />
-        <SmallMetric description={backtestMetricDescription("positivePathRate", data.annualTradingDays)} label="正收益路径" value={formatPercent(selectedMethod.positiveRate)} />
+        <SmallMetric label="平均年化 Sharpe" value={formatNumber(selectedMethod.meanSharpe)} />
+        <SmallMetric label="Sharpe 标准差" value={formatNumber(selectedMethod.sharpeDeviation)} />
+        <SmallMetric label="平均累计收益" value={formatPercent(selectedMethod.meanReturn)} />
+        <SmallMetric label="平均最大回撤" value={formatPercent(selectedMethod.meanMaxDrawdown)} />
+        <SmallMetric label="正收益路径" value={formatPercent(selectedMethod.positiveRate)} />
       </div>
       <Card className="gap-3 rounded-md py-4">
         <CardHeader className="px-4"><CardTitle className="text-sm font-medium">{optimizationAlgorithmLabels[selectedAlgorithm]} · 全部重复净值路径</CardTitle></CardHeader>
         <CardContent className="px-4"><EChart height={360} option={repetitionOption} /></CardContent>
       </Card>
-      <RunTable annualTradingDays={data.annualTradingDays} runs={selectedRuns} />
+      <RunTable runs={selectedRuns} />
       <SelectionTable rows={selectedSelections} />
     </>}
   </div>;
 }
 
-function MetricCard({ description, detail, label, value }: { description: string; detail: string; label: string; value: string }) {
-  return <Card className="gap-2 rounded-md border-l-2 border-l-primary/70 py-4"><CardContent className="px-4"><MetricLabel className="text-xs text-muted-foreground" description={description}>{label}</MetricLabel><div className="mt-2 flex items-baseline gap-2"><span className="truncate text-base font-semibold">{value}</span><span className="font-mono text-xs tabular-nums text-muted-foreground">{detail}</span></div></CardContent></Card>;
+function MetricCard({ detail, label, value }: { detail: string; label: string; value: string }) {
+  return <Card className="gap-2 rounded-md border-l-2 border-l-primary/70 py-4"><CardContent className="px-4"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-2 flex items-baseline gap-2"><span className="truncate text-base font-semibold">{value}</span><span className="font-mono text-xs tabular-nums text-muted-foreground">{detail}</span></div></CardContent></Card>;
 }
 
-function SmallMetric({ description, label, value }: { description: string; label: string; value: string }) {
-  return <div className="rounded-md border bg-card px-4 py-3 shadow-sm"><MetricLabel className="text-xs text-muted-foreground" description={description}>{label}</MetricLabel><p className="mt-2 font-mono text-lg font-semibold tabular-nums">{value}</p></div>;
+function SmallMetric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-md border bg-card px-4 py-3 shadow-sm"><div className="text-xs text-muted-foreground">{label}</div><p className="mt-2 font-mono text-lg font-semibold tabular-nums">{value}</p></div>;
 }
 
 function MethodTable({ data }: { data: OptimizationReportData }) {
-  return <div className="max-h-96 overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur"><TableRow><TableHead>调优算法</TableHead><TableHead className="text-right">重复</TableHead><MetricHead description={backtestMetricDescription("totalReturn", data.annualTradingDays)}>平均累计收益</MetricHead><MetricHead description={backtestMetricDescription("annualReturn", data.annualTradingDays)}>平均年化收益</MetricHead><MetricHead description={backtestMetricDescription("sharpe", data.annualTradingDays)}>平均年化 Sharpe</MetricHead><MetricHead description={backtestMetricDescription("sharpeDeviation", data.annualTradingDays)}>Sharpe 标准差</MetricHead><MetricHead description={backtestMetricDescription("annualVolatility", data.annualTradingDays)}>平均年化波动</MetricHead><MetricHead description={backtestMetricDescription("maxDrawdown", data.annualTradingDays)}>平均最大回撤</MetricHead><MetricHead description={backtestMetricDescription("positivePathRate", data.annualTradingDays)}>正收益占比</MetricHead></TableRow></TableHeader><TableBody>{data.methods.map((method, index) => <TableRow key={method.algorithm}><TableCell className="font-medium"><span className="mr-2 inline-block size-2 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />{optimizationAlgorithmLabels[method.algorithm]}</TableCell><TableCell className="text-right tabular-nums">{method.repetitions}</TableCell><NumberCell value={method.meanReturn} percent /><NumberCell value={method.meanAnnualReturn} percent /><NumberCell value={method.meanSharpe} /><NumberCell value={method.sharpeDeviation} /><NumberCell value={method.meanVolatility} percent /><NumberCell value={method.meanMaxDrawdown} percent /><NumberCell value={method.positiveRate} percent /></TableRow>)}</TableBody></Table></div>;
+  return <div className="max-h-96 overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur"><TableRow><TableHead>调优算法</TableHead><TableHead className="text-right">重复</TableHead><MetricHead>平均累计收益</MetricHead><MetricHead>平均年化收益</MetricHead><MetricHead>平均年化 Sharpe</MetricHead><MetricHead>Sharpe 标准差</MetricHead><MetricHead>平均年化波动</MetricHead><MetricHead>平均最大回撤</MetricHead><MetricHead>正收益占比</MetricHead></TableRow></TableHeader><TableBody>{data.methods.map((method, index) => <TableRow key={method.algorithm}><TableCell className="font-medium"><span className="mr-2 inline-block size-2 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />{optimizationAlgorithmLabels[method.algorithm]}</TableCell><TableCell className="text-right tabular-nums">{method.repetitions}</TableCell><NumberCell value={method.meanReturn} percent /><NumberCell value={method.meanAnnualReturn} percent /><NumberCell value={method.meanSharpe} /><NumberCell value={method.sharpeDeviation} /><NumberCell value={method.meanVolatility} percent /><NumberCell value={method.meanMaxDrawdown} percent /><NumberCell value={method.positiveRate} percent /></TableRow>)}</TableBody></Table></div>;
 }
 
-function RunTable({ annualTradingDays, runs }: { annualTradingDays: number; runs: OptimizationReportData["runs"] }) {
-  return <div className="max-h-80 overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead>重复</TableHead><TableHead className="text-right">交易日</TableHead><MetricHead description={backtestMetricDescription("totalReturn", annualTradingDays)}>累计收益</MetricHead><MetricHead description={backtestMetricDescription("annualReturn", annualTradingDays)}>年化收益</MetricHead><MetricHead description={backtestMetricDescription("sharpe", annualTradingDays)}>年化 Sharpe</MetricHead><MetricHead description={backtestMetricDescription("annualVolatility", annualTradingDays)}>年化波动</MetricHead><MetricHead description={backtestMetricDescription("maxDrawdown", annualTradingDays)}>最大回撤</MetricHead></TableRow></TableHeader><TableBody>{runs.map((run) => <TableRow key={run.repetition}><TableCell>第 {run.repetition} 次</TableCell><TableCell className="text-right tabular-nums">{run.observations}</TableCell><NumberCell value={run.totalReturn} percent /><NumberCell value={run.annualReturn} percent /><NumberCell value={run.sharpe} /><NumberCell value={run.volatility} percent /><NumberCell value={run.maxDrawdown} percent /></TableRow>)}</TableBody></Table></div>;
+function RunTable({ runs }: { runs: OptimizationReportData["runs"] }) {
+  return <div className="max-h-80 overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead>重复</TableHead><TableHead className="text-right">交易日</TableHead><MetricHead>累计收益</MetricHead><MetricHead>年化收益</MetricHead><MetricHead>年化 Sharpe</MetricHead><MetricHead>年化波动</MetricHead><MetricHead>最大回撤</MetricHead></TableRow></TableHeader><TableBody>{runs.map((run) => <TableRow key={run.repetition}><TableCell>第 {run.repetition} 次</TableCell><TableCell className="text-right tabular-nums">{run.observations}</TableCell><NumberCell value={run.totalReturn} percent /><NumberCell value={run.annualReturn} percent /><NumberCell value={run.sharpe} /><NumberCell value={run.volatility} percent /><NumberCell value={run.maxDrawdown} percent /></TableRow>)}</TableBody></Table></div>;
 }
 
 function SelectionTable({ rows }: { rows: OptimizationReportData["selections"] }) {
-  return <Card className="gap-3 rounded-md py-4"><CardHeader className="px-4"><CardTitle className="text-sm font-medium">滚动窗口参数选择</CardTitle></CardHeader><CardContent className="px-4"><div className="max-h-[420px] overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead>重复</TableHead><TableHead>窗口</TableHead><TableHead>训练区间</TableHead><TableHead>持有区间</TableHead><MetricHead description="调优算法在对应样本内窗口中使用的年化 Sharpe 目标值；年化交易日数来自当前回测参数。">训练年化 Sharpe</MetricHead><TableHead className="text-right">评估组合</TableHead><TableHead>初始参数</TableHead><TableHead>最终参数</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => { const initial = parameterText(row.initialParams); const selected = parameterText(row.selectedParams); return <TableRow key={`${row.repetition}-${row.window}`}><TableCell>{row.repetition}</TableCell><TableCell>{row.window}</TableCell><TableCell>{row.trainingStart} → {row.trainingEnd}</TableCell><TableCell>{row.holdingStart} → {row.holdingEnd}</TableCell><NumberCell value={row.trainingSharpe} /><TableCell className="text-right tabular-nums">{row.evaluationCount}</TableCell><TableCell className="max-w-72 truncate font-mono text-xs" title={initial}>{initial}</TableCell><TableCell className="max-w-72 truncate font-mono text-xs" title={selected}>{selected}</TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>;
+  return <Card className="gap-3 rounded-md py-4"><CardHeader className="px-4"><CardTitle className="text-sm font-medium">滚动窗口参数选择</CardTitle></CardHeader><CardContent className="px-4"><div className="max-h-[420px] overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead>重复</TableHead><TableHead>窗口</TableHead><TableHead>训练区间</TableHead><TableHead>持有区间</TableHead><MetricHead>训练年化 Sharpe</MetricHead><TableHead className="text-right">评估组合</TableHead><TableHead>初始参数</TableHead><TableHead>最终参数</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => { const initial = parameterText(row.initialParams); const selected = parameterText(row.selectedParams); return <TableRow key={`${row.repetition}-${row.window}`}><TableCell>{row.repetition}</TableCell><TableCell>{row.window}</TableCell><TableCell>{row.trainingStart} → {row.trainingEnd}</TableCell><TableCell>{row.holdingStart} → {row.holdingEnd}</TableCell><NumberCell value={row.trainingSharpe} /><TableCell className="text-right tabular-nums">{row.evaluationCount}</TableCell><TableCell className="max-w-72 truncate font-mono text-xs" title={initial}>{initial}</TableCell><TableCell className="max-w-72 truncate font-mono text-xs" title={selected}>{selected}</TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>;
 }
 
-function MetricHead({ children, description }: { children: string; description: string }) { return <TableHead className="text-right"><MetricLabel description={description}>{children}</MetricLabel></TableHead>; }
+function MetricHead({ children }: { children: string }) { return <TableHead className="text-right">{children}</TableHead>; }
 
 function NumberCell({ percent = false, value }: { percent?: boolean; value: number | null | undefined }) { return <TableCell className="text-right font-mono tabular-nums">{percent ? formatPercent(value) : formatNumber(value)}</TableCell>; }
 function formatNumber(value: number | null | undefined) { return value === null || value === undefined || !Number.isFinite(value) ? "—" : value.toFixed(3); }

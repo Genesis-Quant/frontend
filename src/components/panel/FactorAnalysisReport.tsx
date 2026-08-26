@@ -24,7 +24,7 @@ import type { FactorAnalysisParameters, FactorMetrics, FactorReturnSpec } from "
 import { Button } from "@/ui/button";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
-type DisplayMetric = { description: string; label: string; value: string };
+type DisplayMetric = { description?: string; label: string; value: string };
 
 type FactorAnalysisReportProps = {
   chartRanges?: FactorChartRanges;
@@ -241,11 +241,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     <ReportCard title="分组分析">
       <CardToolbar><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
       <OverlappingReturnNotice periods={groupReturnPeriods} />
-      <SummaryTiles items={groupStatistics.map((item) => ({
-        description: `${factorMetricDescription("groupMean", groupReturnPeriods)} ${factorMetricDescription("pValue")}`,
-        label: item.group,
-        value: `${format(item.mean, "percent")} / p=${format(item.pValue)}`
-      }))} />
+      <SummaryTiles items={groupStatistics.map((item) => ({ label: item.group, value: `${format(item.mean, "percent")} / p=${format(item.pValue)}` }))} />
       <ChartPanel title="分组平均收益与显著性 p 值">
         <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
       </ChartPanel>
@@ -280,11 +276,11 @@ function informationMetrics(rows: InformationPoint[], type: IcType, returnSpec: 
   const rawInformationRatio = average !== null && deviation ? average / deviation : null;
   const periods = returnSpec?.periods;
   return [
-    { label: `${type} 均值`, value: format(average), description: factorMetricDescription(rank ? "rankIcMean" : "icMean", periods) },
-    { label: `${type} 标准差`, value: format(deviation), description: factorMetricDescription(rank ? "rankIcStd" : "icStd", periods) },
+    { label: `${type} 均值`, value: format(average) },
+    { label: `${type} 标准差`, value: format(deviation) },
     { label: `${type} IR（年化）`, value: format(annualizeFactorInformationRatio(rawInformationRatio, returnSpec)), description: factorMetricDescription(rank ? "rankIcIr" : "icIr", periods, rawInformationRatio) },
-    { label: `${type} > 0 占比`, value: format(ratio(values, (value) => value > 0), "percent"), description: factorMetricDescription("icPositiveRatio", periods) },
-    { label: `${type} > 0.03 占比`, value: format(ratio(values, (value) => value > 0.03), "percent"), description: factorMetricDescription("icThresholdRatio", periods) }
+    { label: `${type} > 0 占比`, value: format(ratio(values, (value) => value > 0), "percent") },
+    { label: `${type} > 0.03 占比`, value: format(ratio(values, (value) => value > 0.03), "percent") }
   ];
 }
 
@@ -295,13 +291,13 @@ function returnMetrics(rows: LongShortPoint[], periods: number): DisplayMetric[]
   const annualReturn = cumulative === null || !values.length || 1 + cumulative <= 0 ? null : (1 + cumulative) ** (252 / values.length) - 1;
   const annualVolatility = compoundable ? populationStd(values) * Math.sqrt(252) : null;
   return [
-    { label: "多空累计收益", value: format(cumulative, "percent"), description: factorMetricDescription("cumulativeReturn", periods) },
-    { label: "多空年化收益", value: format(annualReturn, "percent"), description: factorMetricDescription("annualReturn", periods) },
-    { label: "多空年化 Sharpe", value: format(annualReturn !== null && annualVolatility ? annualReturn / annualVolatility : null), description: factorMetricDescription("sharpe", periods) },
-    { label: "多空最大回撤", value: format(compoundable ? maxDrawdown(rows) : null, "percent"), description: factorMetricDescription("maxDrawdown", periods) },
-    { label: "多空年化波动", value: format(annualVolatility, "percent"), description: factorMetricDescription("annualVolatility", periods) },
-    { label: "多空单期收益均值", value: format(mean(values), "percent"), description: factorMetricDescription("periodMean", periods) },
-    { label: "多空单期收益标准差", value: format(sampleStd(values), "percent"), description: factorMetricDescription("periodStd", periods) }
+    { label: "多空累计收益", value: format(cumulative, "percent") },
+    { label: "多空年化收益", value: format(annualReturn, "percent") },
+    { label: "多空年化 Sharpe", value: format(annualReturn !== null && annualVolatility ? annualReturn / annualVolatility : null) },
+    { label: "多空最大回撤", value: format(compoundable ? maxDrawdown(rows) : null, "percent") },
+    { label: "多空年化波动", value: format(annualVolatility, "percent") },
+    { label: "多空单期收益均值", value: format(mean(values), "percent") },
+    { label: "多空单期收益标准差", value: format(sampleStd(values), "percent") }
   ];
 }
 
@@ -309,21 +305,21 @@ function decaySummary(rows: DecayPoint[]): DisplayMetric[] {
   const rankPeak = peak(rows, "rankIcMean");
   const icPeak = peak(rows, "icMean");
   return [
-    { label: "Rank IC 峰值收益列", value: rankPeak?.label ?? "—", description: factorMetricDescription("decayPeak") },
-    { label: "Rank IC 峰值大小", value: format(rankPeak?.rankIcMean), description: factorMetricDescription("decayPeak") },
-    { label: "Rank IC 半衰期", value: halfLife(rows, "rankIcMean", rankPeak), description: factorMetricDescription("halfLife") },
-    { label: "IC 峰值收益列", value: icPeak?.label ?? "—", description: factorMetricDescription("decayPeak") },
-    { label: "IC 峰值大小", value: format(icPeak?.icMean), description: factorMetricDescription("decayPeak") },
-    { label: "IC 半衰期", value: halfLife(rows, "icMean", icPeak), description: factorMetricDescription("halfLife") }
+    { label: "Rank IC 峰值收益列", value: rankPeak?.label ?? "—" },
+    { label: "Rank IC 峰值大小", value: format(rankPeak?.rankIcMean) },
+    { label: "Rank IC 半衰期", value: halfLife(rows, "rankIcMean", rankPeak) },
+    { label: "IC 峰值收益列", value: icPeak?.label ?? "—" },
+    { label: "IC 峰值大小", value: format(icPeak?.icMean) },
+    { label: "IC 半衰期", value: halfLife(rows, "icMean", icPeak) }
   ];
 }
 
 function MetricGrid({ items }: { items: DisplayMetric[] }) {
-  return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><MetricLabel className="text-xs text-muted-foreground" description={item.description}>{item.label}</MetricLabel><div className="numeric mt-2 text-lg font-semibold tracking-tight">{item.value}</div></div>)}</div>;
+  return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><div className="text-xs text-muted-foreground">{item.label}</div>{item.description ? <MetricLabel className="numeric mt-2 text-lg font-semibold tracking-tight" description={item.description}>{item.value}</MetricLabel> : <div className="numeric mt-2 text-lg font-semibold tracking-tight">{item.value}</div>}</div>)}</div>;
 }
 
 function SummaryTiles({ items }: { items: DisplayMetric[] }) {
-  return <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><MetricLabel className="text-xs text-muted-foreground" description={item.description}>{item.label}</MetricLabel><div className="numeric mt-2 truncate text-sm font-semibold">{item.value}</div></div>)}</div>;
+  return <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><div className="text-xs text-muted-foreground">{item.label}</div><div className="numeric mt-2 truncate text-sm font-semibold">{item.value}</div></div>)}</div>;
 }
 
 function ReportCard({ children, title }: { children: React.ReactNode; title: string }) {

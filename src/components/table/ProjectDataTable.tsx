@@ -12,7 +12,6 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search, X } from "lucide-reac
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/assets/lib/utils";
-import { MetricHelp, MetricLabel } from "@/components/mark/MetricLabel";
 import { AppPagination } from "@/components/pagination/AppPagination";
 import { ProjectTableState } from "@/components/table/ProjectTableState";
 import { Button } from "@/ui/button";
@@ -27,7 +26,6 @@ export type ProjectTableColumn<TData, TSort extends string> = {
   align?: "left" | "right";
   cell?: (row: TData) => ReactNode;
   className?: string;
-  description?: string;
   id: TSort | "actions";
   label: string;
   size: number;
@@ -129,9 +127,8 @@ export default function ProjectDataTable<TData extends { id: number }, TSort ext
           if (!header.isPlaceholder) content = header.column.getCanSort()
             ? <div className={cn("flex w-full items-center gap-1 py-2", config.align === "right" && "justify-end")}>
                 <button className="inline-flex min-w-0 items-center gap-1.5 text-left transition-colors hover:text-foreground" title={`按${config.label}排序`} onClick={header.column.getToggleSortingHandler()}><span className="truncate">{config.label}</span>{sortingIcon(sorted)}</button>
-                <MetricHelp description={config.description} label={`查看${config.label}说明`} />
               </div>
-            : <MetricLabel className={cn("py-2", config.align === "right" && "justify-end text-right")} description={config.description} label={`查看${config.label}说明`}>{config.label}</MetricLabel>;
+            : <div className={cn("py-2", config.align === "right" && "text-right")}>{config.label}</div>;
           return <TableHead aria-sort={ariaSortValue(sorted)} className={cn("px-3", config.align === "right" && "text-right")} key={header.id} style={{ width: header.getSize() }}>{content}</TableHead>;
         })}</TableRow>)}
       </TableHeader>

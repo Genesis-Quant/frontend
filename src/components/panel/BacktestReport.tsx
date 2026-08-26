@@ -5,11 +5,9 @@ import { backtestApi } from "@/assets/lib/backtest";
 import { BacktestAnalytics, backtestTableTimeColumns, type BacktestTableName, type BacktestTablePage, type PortfolioPoint } from "@/assets/lib/backtestAnalysis";
 import { backtestTableConfigs } from "@/assets/lib/backtestTable";
 import { chartRange, chartRangeIncluding, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
-import { backtestMetricDescription } from "@/assets/lib/metricDefinitions";
 import { quantStatsReport, type DrawdownPeriod, type QuantStatsReport } from "@/assets/lib/quantstats";
 import DateRangeBar from "@/components/bar/DateRangeBar";
 import EChart from "@/components/chart/EChart";
-import { MetricLabel } from "@/components/mark/MetricLabel";
 import ParquetDataTable from "@/components/table/ParquetDataTable";
 import { useAppStore } from "@/store";
 import type { AxisFormat, BacktestChartRanges, ChartRange } from "@/types/chart";
@@ -26,7 +24,7 @@ const tableTabs = [
 ] as const;
 
 type MetricFormat = "decimal" | "percent" | "integer" | "currency";
-type Metric = { description: string; label: string; value: number | null; format?: MetricFormat };
+type Metric = { label: string; value: number | null; format?: MetricFormat };
 type BacktestOutputState = "available" | "missing";
 
 type BacktestReportProps = {
@@ -125,7 +123,7 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
     });
   }, [onChartRanges, report, selectedPortfolio]);
 
-  const overview = renderOverview({ annualTradingDays, chartRanges, error, loading, portfolio: selectedPortfolio, report, theme });
+  const overview = renderOverview({ chartRanges, error, loading, portfolio: selectedPortfolio, report, theme });
 
   const tableContent = tableName ? renderParquetContent({ data: tableData, download: { fileName: `backtest-${workflowInstanceId}-${tableName}.xlsx`, loadRows: () => loadRawTable(tableName) }, error: tableLoadedKey === tableRequestKey ? tableError : "", loading: tableLoading || tableLoadedKey !== tableRequestKey, name: tableName, outputState: tableOutputState, page: tablePage, pageSize: tablePageSize, query: tableQuery, onPage: setTablePage, onPageSize: (nextPageSize) => { setTablePage(1); setTablePageSize(nextPageSize); }, onQuery: (nextQuery) => { setTablePage(1); setTableQuery(nextQuery); } }) : null;
 
@@ -137,19 +135,19 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
   </Tabs>;
 }
 
-function ReportOverview({ annualTradingDays, chartRanges, portfolio, report, theme }: { annualTradingDays: number; chartRanges?: BacktestChartRanges; portfolio: PortfolioPoint[]; report: QuantStatsReport; theme: string }) {
+function ReportOverview({ chartRanges, portfolio, report, theme }: { chartRanges?: BacktestChartRanges; portfolio: PortfolioPoint[]; report: QuantStatsReport; theme: string }) {
   const returnMetrics = [
-    { label: "累计收益", value: report.totalReturn, format: "percent", description: backtestMetricDescription("totalReturn", annualTradingDays) },
-    { label: "年化收益", value: report.cagr, format: "percent", description: backtestMetricDescription("annualReturn", annualTradingDays) },
-    { label: "年化 Sharpe", value: report.sharpe, description: backtestMetricDescription("sharpe", annualTradingDays) },
-    { label: "年化波动", value: report.volatility, format: "percent", description: backtestMetricDescription("annualVolatility", annualTradingDays) }
+    { label: "累计收益", value: report.totalReturn, format: "percent" },
+    { label: "年化收益", value: report.cagr, format: "percent" },
+    { label: "年化 Sharpe", value: report.sharpe },
+    { label: "年化波动", value: report.volatility, format: "percent" }
   ] satisfies Metric[];
   const periods = [...report.drawdownPeriods].sort((left, right) => left.maxDrawdownPercent - right.maxDrawdownPercent);
   const drawdownMetrics = [
-    { label: "平均回撤", value: periods.length ? average(periods.map((row) => row.maxDrawdownPercent)) / 100 : null, format: "percent", description: backtestMetricDescription("averageDrawdown", annualTradingDays) },
-    { label: "平均回撤持续天数", value: periods.length ? average(periods.map((row) => row.days)) : null, format: "integer", description: backtestMetricDescription("averageDrawdownDays", annualTradingDays) },
-    { label: "恢复因子", value: report.recoveryFactor, description: backtestMetricDescription("recoveryFactor", annualTradingDays) },
-    { label: "收益/痛苦比率", value: report.gainToPainRatio, description: backtestMetricDescription("gainToPainRatio", annualTradingDays) }
+    { label: "平均回撤", value: periods.length ? average(periods.map((row) => row.maxDrawdownPercent)) / 100 : null, format: "percent" },
+    { label: "平均回撤持续天数", value: periods.length ? average(periods.map((row) => row.days)) : null, format: "integer" },
+    { label: "恢复因子", value: report.recoveryFactor },
+    { label: "收益/痛苦比率", value: report.gainToPainRatio }
   ] satisfies Metric[];
 
   return <div className="space-y-4">
@@ -157,8 +155,8 @@ function ReportOverview({ annualTradingDays, chartRanges, portfolio, report, the
       <MetricGrid metrics={returnMetrics} />
       <MetricGrid metrics={feeMetrics(portfolio)} />
       <ChartCard title="累计收益与总资产"><EChart height={360} option={portfolioOption(portfolio, report, theme, chartRanges)} /></ChartCard>
-      <ChartCard title={<MetricLabel description={backtestMetricDescription("rollingSharpe", annualTradingDays)}>滚动年化 Sharpe</MetricLabel>}><EChart height={340} option={rollingSharpeOption(report, theme, chartRanges?.rollingSharpe)} /></ChartCard>
-      <PerformanceTable annualTradingDays={annualTradingDays} report={report} />
+      <ChartCard title="滚动年化 Sharpe"><EChart height={340} option={rollingSharpeOption(report, theme, chartRanges?.rollingSharpe)} /></ChartCard>
+      <PerformanceTable report={report} />
     </ReportCard>
     <ReportCard title="回撤分析">
       <MetricGrid metrics={drawdownMetrics} />
@@ -168,16 +166,16 @@ function ReportOverview({ annualTradingDays, chartRanges, portfolio, report, the
   </div>;
 }
 
-function renderOverview({ annualTradingDays, chartRanges, error, loading, portfolio, report, theme }: { annualTradingDays: number; chartRanges?: BacktestChartRanges; error: string; loading: boolean; portfolio: PortfolioPoint[]; report: QuantStatsReport | null; theme: string }): ReactNode {
+function renderOverview({ chartRanges, error, loading, portfolio, report, theme }: { chartRanges?: BacktestChartRanges; error: string; loading: boolean; portfolio: PortfolioPoint[]; report: QuantStatsReport | null; theme: string }): ReactNode {
   if (loading) return <ReportLoading />;
   if (error) return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>;
   if (!report) return <div className="rounded-md border py-10 text-center text-sm text-muted-foreground">所选日期范围内暂无回测数据</div>;
-  return <ReportOverview annualTradingDays={annualTradingDays} chartRanges={chartRanges} portfolio={portfolio} report={report} theme={theme} />;
+  return <ReportOverview chartRanges={chartRanges} portfolio={portfolio} report={report} theme={theme} />;
 }
 
 function ReportCard({ children, title }: { children: ReactNode; title: string }) { return <Card className="rounded-md py-5 shadow-sm"><CardHeader className="px-5 pb-2"><CardTitle className="text-base font-semibold">{title}</CardTitle></CardHeader><CardContent className="space-y-4 px-5">{children}</CardContent></Card>; }
 function ChartCard({ children, title }: { children: ReactNode; title: ReactNode }) { return <Card className="rounded-md py-4 shadow-sm"><CardHeader className="px-4 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle></CardHeader><CardContent className="px-4">{children}</CardContent></Card>; }
-function MetricGrid({ metrics }: { metrics: Metric[] }) { return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{metrics.map((metric) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={metric.label}><MetricLabel className="text-xs text-muted-foreground" description={metric.description}>{metric.label}</MetricLabel><p className="mt-2 text-lg font-semibold tabular-nums tracking-tight">{formatMetric(metric.value, metric.format)}</p></div>)}</div>; }
+function MetricGrid({ metrics }: { metrics: Metric[] }) { return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{metrics.map((metric) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={metric.label}><div className="text-xs text-muted-foreground">{metric.label}</div><p className="mt-2 text-lg font-semibold tabular-nums tracking-tight">{formatMetric(metric.value, metric.format)}</p></div>)}</div>; }
 function ReportLoading() { return <div className="grid min-h-80 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><p className="mt-3 text-sm text-muted-foreground">DuckDB 正在读取回测结果...</p></div></div>; }
 
 function BacktestTabLabel({ availableOutputs, tab }: { availableOutputs: ReadonlySet<string> | null; tab: typeof tableTabs[number] }) {
@@ -197,37 +195,37 @@ function UnavailableBacktestOutput({ name }: { name: BacktestTableName }) {
   </div>;
 }
 
-function PerformanceTable({ annualTradingDays, report }: { annualTradingDays: number; report: QuantStatsReport }) {
+function PerformanceTable({ report }: { report: QuantStatsReport }) {
   const longestDrawdown = report.drawdownPeriods.length ? Math.max(...report.drawdownPeriods.map((row) => row.days)) : null;
   const rows = [
-    { label: "累计收益率", value: report.totalReturn, format: "percent", description: backtestMetricDescription("totalReturn", annualTradingDays) },
-    { label: "年化收益率", value: report.cagr, format: "percent", description: backtestMetricDescription("annualReturn", annualTradingDays) },
-    { label: "年化 Sharpe", value: report.sharpe, description: backtestMetricDescription("sharpe", annualTradingDays) },
-    { label: "最大回撤", value: report.maxDrawdown, format: "percent", description: backtestMetricDescription("maxDrawdown", annualTradingDays) },
-    { label: "年化 Sortino", value: report.sortino, description: backtestMetricDescription("sortino", annualTradingDays) },
-    { label: "年化波动率", value: report.volatility, format: "percent", description: backtestMetricDescription("annualVolatility", annualTradingDays) },
-    { label: "Calmar 比率", value: report.calmar, description: backtestMetricDescription("calmar", annualTradingDays) },
-    { label: "盈亏比", value: report.payoffRatio, description: backtestMetricDescription("payoffRatio", annualTradingDays) },
-    { label: "平均日收益率", value: report.averageReturn, format: "percent", description: backtestMetricDescription("averageDailyReturn", annualTradingDays) },
-    { label: "最大连续亏损交易日", value: report.maxConsecutiveLosses, format: "integer", description: backtestMetricDescription("maxConsecutiveLosses", annualTradingDays) },
-    { label: "盈利因子", value: report.profitFactor, description: backtestMetricDescription("profitFactor", annualTradingDays) },
-    { label: "恢复因子", value: report.recoveryFactor, description: backtestMetricDescription("recoveryFactor", annualTradingDays) },
-    { label: "预期年化收益率", value: report.expectedAnnualReturn, format: "percent", description: backtestMetricDescription("expectedAnnualReturn", annualTradingDays) },
-    { label: "最长回撤持续天数", value: longestDrawdown, format: "integer", description: backtestMetricDescription("longestDrawdown", annualTradingDays) },
-    { label: "日收益偏度", value: report.skew, description: backtestMetricDescription("skew", annualTradingDays) },
-    { label: "日收益峰度", value: report.kurtosis, description: backtestMetricDescription("kurtosis", annualTradingDays) },
-    { label: "日风险价值（95%）", value: report.valueAtRisk, format: "percent", description: backtestMetricDescription("dailyVaR", annualTradingDays) },
-    { label: "日预期短缺（95%）", value: report.conditionalValueAtRisk, format: "percent", description: backtestMetricDescription("dailyCVaR", annualTradingDays) },
-    { label: "日胜率", value: report.winRate, format: "percent", description: backtestMetricDescription("dailyWinRate", annualTradingDays) },
-    { label: "收益/痛苦比率", value: report.gainToPainRatio, description: backtestMetricDescription("gainToPainRatio", annualTradingDays) }
+    { label: "累计收益率", value: report.totalReturn, format: "percent" },
+    { label: "年化收益率", value: report.cagr, format: "percent" },
+    { label: "年化 Sharpe", value: report.sharpe },
+    { label: "最大回撤", value: report.maxDrawdown, format: "percent" },
+    { label: "年化 Sortino", value: report.sortino },
+    { label: "年化波动率", value: report.volatility, format: "percent" },
+    { label: "Calmar 比率", value: report.calmar },
+    { label: "盈亏比", value: report.payoffRatio },
+    { label: "平均日收益率", value: report.averageReturn, format: "percent" },
+    { label: "最大连续亏损交易日", value: report.maxConsecutiveLosses, format: "integer" },
+    { label: "盈利因子", value: report.profitFactor },
+    { label: "恢复因子", value: report.recoveryFactor },
+    { label: "预期年化收益率", value: report.expectedAnnualReturn, format: "percent" },
+    { label: "最长回撤持续天数", value: longestDrawdown, format: "integer" },
+    { label: "日收益偏度", value: report.skew },
+    { label: "日收益峰度", value: report.kurtosis },
+    { label: "日风险价值（95%）", value: report.valueAtRisk, format: "percent" },
+    { label: "日预期短缺（95%）", value: report.conditionalValueAtRisk, format: "percent" },
+    { label: "日胜率", value: report.winRate, format: "percent" },
+    { label: "收益/痛苦比率", value: report.gainToPainRatio }
   ] satisfies Metric[];
   const groupedRows = Array.from({ length: Math.ceil(rows.length / 3) }, (_, index) => rows.slice(index * 3, index * 3 + 3));
-  return <div className="max-h-[440px] overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/90 backdrop-blur"><TableRow>{[0, 1, 2].map((column) => <Fragment key={column}><TableHead>指标</TableHead><TableHead className="text-right">策略</TableHead></Fragment>)}</TableRow></TableHeader><TableBody>{groupedRows.map((group, rowIndex) => <TableRow key={rowIndex}>{[0, 1, 2].map((column) => { const metric = group[column]; return <Fragment key={metric?.label ?? column}><TableCell>{metric ? <MetricLabel description={metric.description}>{metric.label}</MetricLabel> : ""}</TableCell><TableCell className="text-right font-mono tabular-nums">{metric ? formatMetric(metric.value, metric.format) : ""}</TableCell></Fragment>; })}</TableRow>)}</TableBody></Table></div>;
+  return <div className="max-h-[440px] overflow-auto rounded-md border"><Table><TableHeader className="sticky top-0 z-10 bg-muted/90 backdrop-blur"><TableRow>{[0, 1, 2].map((column) => <Fragment key={column}><TableHead>指标</TableHead><TableHead className="text-right">策略</TableHead></Fragment>)}</TableRow></TableHeader><TableBody>{groupedRows.map((group, rowIndex) => <TableRow key={rowIndex}>{[0, 1, 2].map((column) => { const metric = group[column]; return <Fragment key={metric?.label ?? column}><TableCell>{metric?.label ?? ""}</TableCell><TableCell className="text-right font-mono tabular-nums">{metric ? formatMetric(metric.value, metric.format) : ""}</TableCell></Fragment>; })}</TableRow>)}</TableBody></Table></div>;
 }
 
 function DrawdownTable({ rows }: { rows: DrawdownPeriod[] }) {
   if (!rows.length) return <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">暂无回撤区间</div>;
-  return <div className="overflow-auto rounded-md border"><Table><TableHeader className="bg-muted/70"><TableRow><TableHead>开始</TableHead><TableHead>谷底</TableHead><TableHead>结束</TableHead><TableHead className="text-right"><MetricLabel description={backtestMetricDescription("longestDrawdown")}>天数</MetricLabel></TableHead><TableHead className="text-right"><MetricLabel description={backtestMetricDescription("maxDrawdown")}>最大回撤</MetricLabel></TableHead><TableHead className="text-right"><MetricLabel description="剔除该回撤区间最差 1% 回撤观测后得到的最大回撤，用于降低单个极端观测的影响；它是路径指标，不进行年化。">99% 最大回撤</MetricLabel></TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={`${row.start}-${row.end}`}><TableCell>{row.start}</TableCell><TableCell>{row.valley}</TableCell><TableCell>{row.end}</TableCell><TableCell className="text-right tabular-nums">{row.days}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetric(row.maxDrawdownPercent / 100, "percent")}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetric(row.maxDrawdown99Percent / 100, "percent")}</TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="overflow-auto rounded-md border"><Table><TableHeader className="bg-muted/70"><TableRow><TableHead>开始</TableHead><TableHead>谷底</TableHead><TableHead>结束</TableHead><TableHead className="text-right">天数</TableHead><TableHead className="text-right">最大回撤</TableHead><TableHead className="text-right">99% 最大回撤</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={`${row.start}-${row.end}`}><TableCell>{row.start}</TableCell><TableCell>{row.valley}</TableCell><TableCell>{row.end}</TableCell><TableCell className="text-right tabular-nums">{row.days}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetric(row.maxDrawdownPercent / 100, "percent")}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetric(row.maxDrawdown99Percent / 100, "percent")}</TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
 function renderParquetContent({ data, download, error, loading, name, onPage, onPageSize, onQuery, outputState, page, pageSize, query }: { data: BacktestTablePage | null; download: { fileName: string; loadRows: () => Promise<Record<string, unknown>[]> }; error: string; loading: boolean; name: BacktestTableName; onPage: (page: number) => void; onPageSize: (pageSize: number) => void; onQuery: (query: ParquetTableQuery) => void; outputState: BacktestOutputState; page: number; pageSize: number; query: ParquetTableQuery }): ReactNode {
@@ -247,10 +245,10 @@ function feeMetrics(rows: PortfolioPoint[]): Metric[] {
   const first = rows[0];
   const initialCapital = first?.totalEquity !== null && first?.netValue !== null && first.netValue > 0 ? first.totalEquity / first.netValue : null;
   return [
-    { label: "累计手续费", value: fees.length ? total : null, format: "currency", description: backtestMetricDescription("cumulativeFee") },
-    { label: "平均交易日手续费", value: paid.length ? total / paid.length : fees.length ? 0 : null, format: "currency", description: backtestMetricDescription("averageTradingDayFee") },
-    { label: "最大单日手续费", value: fees.length ? Math.max(...fees) : null, format: "currency", description: backtestMetricDescription("maxDailyFee") },
-    { label: "手续费占初始资金", value: initialCapital ? total / initialCapital : null, format: "percent", description: backtestMetricDescription("feeToCapital") }
+    { label: "累计手续费", value: fees.length ? total : null, format: "currency" },
+    { label: "平均交易日手续费", value: paid.length ? total / paid.length : fees.length ? 0 : null, format: "currency" },
+    { label: "最大单日手续费", value: fees.length ? Math.max(...fees) : null, format: "currency" },
+    { label: "手续费占初始资金", value: initialCapital ? total / initialCapital : null, format: "percent" }
   ];
 }
 

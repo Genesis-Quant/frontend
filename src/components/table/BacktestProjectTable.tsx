@@ -2,7 +2,6 @@ import { MoreHorizontal, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
-import { backtestMetricDescription } from "@/assets/lib/metricDefinitions";
 import ProjectDataTable, { type ProjectTableColumn } from "@/components/table/ProjectDataTable";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -32,12 +31,12 @@ export default function BacktestProjectTable({ loading, onDelete, onOpen, onPage
     { id: "id", label: "ID", size: 80, sortKey: "id", value: (project) => project.id, className: "px-5 font-mono text-xs text-muted-foreground" },
     { id: "title", label: "名称", size: 260, sortKey: "title", value: (project) => project.title, cell: (project) => <span className="block truncate font-medium group-hover:underline" title={project.title}>{project.title}</span> },
     { id: "latest_version", label: "最新版本", size: 112, sortKey: "latest_version", value: (project) => project.latest_version, cell: (project) => <Badge variant="secondary">{project.latest_version ? `v${project.latest_version}` : "—"}</Badge> },
-    summaryColumn("totalReturn", "累计收益", backtestMetricDescription("totalReturn"), true),
-    summaryColumn("annualReturn", "年化收益", backtestMetricDescription("annualReturn"), true),
-    summaryColumn("sharpeRatio", "年化 Sharpe", backtestMetricDescription("sharpe")),
-    summaryColumn("annualVolatility", "年化波动", backtestMetricDescription("annualVolatility"), true),
-    summaryColumn("maxDrawdown", "最大回撤", backtestMetricDescription("maxDrawdown"), true),
-    summaryColumn("dailyWinningRate", "日胜率", backtestMetricDescription("dailyWinRate"), true),
+    summaryColumn("totalReturn", "累计收益", true),
+    summaryColumn("annualReturn", "年化收益", true),
+    summaryColumn("sharpeRatio", "年化 Sharpe"),
+    summaryColumn("annualVolatility", "年化波动", true),
+    summaryColumn("maxDrawdown", "最大回撤", true),
+    summaryColumn("dailyWinningRate", "日胜率", true),
     { id: "updated_at", label: "更新时间", size: 170, sortKey: "updated_at", value: (project) => project.updated_at, cell: (project) => <span className="text-muted-foreground">{formatDateTime(project.updated_at)}</span> },
     { id: "actions", label: "操作", size: 72, value: (project) => project.id, align: "right", cell: (project) => <ProjectActions onDelete={() => onDelete(project)} /> }
   ], [onDelete]);
@@ -45,8 +44,8 @@ export default function BacktestProjectTable({ loading, onDelete, onOpen, onPage
   return <ProjectDataTable columns={columns} emptyMessage="暂无回测项目" loading={loading} rows={projects} onOpen={onOpen} pagination={{ page, pageSize, total, onPageChange: onPage, onPageSizeChange: onPageSize }} search={{ value: search, onChange: onSearch, placeholder: "搜索项目名称或 ID" }} sorting={{ field: sortBy, order: sortOrder, onChange: onSort }} />;
 }
 
-function summaryColumn(id: Exclude<BacktestProjectSortField, "id" | "title" | "latest_version" | "updated_at">, label: string, description: string, percent = false): ProjectTableColumn<BacktestProjectListItem, BacktestProjectSortField> {
-  return { id, label, description, size: 128, sortKey: id, value: (project) => project.latest_summary?.[id], align: "right", className: "tabular-nums", cell: (project) => formatSummary(project.latest_summary?.[id], percent) };
+function summaryColumn(id: Exclude<BacktestProjectSortField, "id" | "title" | "latest_version" | "updated_at">, label: string, percent = false): ProjectTableColumn<BacktestProjectListItem, BacktestProjectSortField> {
+  return { id, label, size: 128, sortKey: id, value: (project) => project.latest_summary?.[id], align: "right", className: "tabular-nums", cell: (project) => formatSummary(project.latest_summary?.[id], percent) };
 }
 
 function ProjectActions({ onDelete }: { onDelete: () => void }) {

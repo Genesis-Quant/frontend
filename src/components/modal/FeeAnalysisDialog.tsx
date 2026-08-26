@@ -2,13 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 import { backtestApi, canDeleteBacktestAnalysis } from "@/assets/lib/backtest";
-import { backtestMetricDescription } from "@/assets/lib/metricDefinitions";
 import { SensitivityAnalytics, type SensitivityResultRow } from "@/assets/lib/sensitivity";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
 import EChart from "@/components/chart/EChart";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
-import { MetricLabel } from "@/components/mark/MetricLabel";
 import { AnalysisHistoryItem, AnalysisHistoryPanel } from "@/components/panel/AnalysisHistoryPanel";
 import SchedulerState from "@/components/status/SchedulerState";
 import type { BatchResearchListItem, BatchResearchResponse } from "@/types/backtest";
@@ -213,7 +211,7 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
           <div className="space-y-5 pb-2">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3"><div className="flex flex-wrap items-center gap-3"><SchedulerState state={research.state} /><span className="text-sm text-muted-foreground">Workspace #{research.workflow_workspace_id}</span>{research.workflow_instance_id ? <span className="text-sm text-muted-foreground">Workflow #{research.workflow_instance_id}</span> : null}<span className="text-sm text-muted-foreground">成功 {research.completed_count} / 失败 {research.failed_count} / 共 {research.requested_count}</span></div><div className="flex items-center gap-2"><Button size="sm" variant="destructive" disabled={!canDeleteBacktestAnalysis(research.state)} onClick={() => { setDeleteError(""); setDeleteTarget(research); }}><Trash2 />删除分析</Button><Button size="sm" variant="outline" disabled={running} onClick={() => { setResearch(null); setResults([]); setError(""); }}><RefreshCw />新建分析</Button></div></div>
           {research.error ? <ErrorMessage message={research.error} /> : null}
-          {running ? <LoadingPanel label="手续费分析工作流正在运行..." /> : loadingResults ? <LoadingPanel label="DuckDB 正在读取手续费分析结果..." /> : results.length ? <><div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">收益与波动随手续费变化</div><EChart height={300} option={performanceOption} /></div><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">风险调整收益随手续费变化</div><EChart height={300} option={riskOption} /></div></div><FeeResultTable annualTradingDays={research.parameters.annual_trading_days} results={results} /></> : null}
+          {running ? <LoadingPanel label="手续费分析工作流正在运行..." /> : loadingResults ? <LoadingPanel label="DuckDB 正在读取手续费分析结果..." /> : results.length ? <><div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">收益与波动随手续费变化</div><EChart height={300} option={performanceOption} /></div><div className="rounded-md border bg-card p-3"><div className="mb-2 text-sm font-medium">风险调整收益随手续费变化</div><EChart height={300} option={riskOption} /></div></div><FeeResultTable results={results} /></> : null}
           {error ? <ErrorMessage message={error} /> : null}
           </div>
         </div>}
@@ -223,11 +221,9 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
   </>;
 }
 
-function FeeResultTable({ annualTradingDays, results }: { annualTradingDays: number; results: SensitivityResultRow[] }) {
-  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>手续费率</TableHead><TableHead>状态</TableHead><MetricHead description={backtestMetricDescription("totalReturn", annualTradingDays)}>累计收益</MetricHead><MetricHead description={backtestMetricDescription("annualReturn", annualTradingDays)}>年化收益</MetricHead><MetricHead description={backtestMetricDescription("sharpe", annualTradingDays)}>年化 Sharpe</MetricHead><MetricHead description={backtestMetricDescription("annualVolatility", annualTradingDays)}>年化波动</MetricHead><MetricHead description={backtestMetricDescription("maxDrawdown", annualTradingDays)}>最大回撤</MetricHead><MetricHead description={backtestMetricDescription("dailyWinRate", annualTradingDays)}>日胜率</MetricHead><MetricHead description={backtestMetricDescription("cumulativeFee", annualTradingDays)}>累计手续费</MetricHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{results.map((row) => <TableRow key={row.caseIndex}><TableCell className="font-medium">{feeLabel(row.commission)}</TableCell><TableCell><SchedulerState state={row.status} /></TableCell><MetricCell value={row.metrics.totalReturn} percent /><MetricCell value={row.metrics.cagr} percent /><MetricCell value={row.metrics.sharpe} /><MetricCell value={row.metrics.volatility} percent /><MetricCell value={row.metrics.maxDrawdown} percent /><MetricCell value={row.metrics.winRate} percent /><MetricCell value={row.metrics.totalFee} currency /><TableCell className="max-w-96 truncate text-destructive">{row.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
+function FeeResultTable({ results }: { results: SensitivityResultRow[] }) {
+  return <div className="overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>手续费率</TableHead><TableHead>状态</TableHead><TableHead className="text-right">累计收益</TableHead><TableHead className="text-right">年化收益</TableHead><TableHead className="text-right">年化 Sharpe</TableHead><TableHead className="text-right">年化波动</TableHead><TableHead className="text-right">最大回撤</TableHead><TableHead className="text-right">日胜率</TableHead><TableHead className="text-right">累计手续费</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{results.map((row) => <TableRow key={row.caseIndex}><TableCell className="font-medium">{feeLabel(row.commission)}</TableCell><TableCell><SchedulerState state={row.status} /></TableCell><MetricCell value={row.metrics.totalReturn} percent /><MetricCell value={row.metrics.cagr} percent /><MetricCell value={row.metrics.sharpe} /><MetricCell value={row.metrics.volatility} percent /><MetricCell value={row.metrics.maxDrawdown} percent /><MetricCell value={row.metrics.winRate} percent /><MetricCell value={row.metrics.totalFee} currency /><TableCell className="max-w-96 truncate text-destructive">{row.error ?? "—"}</TableCell></TableRow>)}</TableBody></Table></div>;
 }
-
-function MetricHead({ children, description }: { children: string; description: string }) { return <TableHead className="text-right"><MetricLabel description={description}>{children}</MetricLabel></TableHead>; }
 
 function MetricCell({ currency = false, percent = false, value }: { currency?: boolean; percent?: boolean; value: number | null | undefined }) { return <TableCell className="text-right font-mono tabular-nums">{formatMetric(value, percent, currency)}</TableCell>; }
 function parseRateText(value: string) { const rates = value.split(/[，,\s]+/).filter(Boolean).map(Number); if (!rates.length || rates.some((rate) => !Number.isFinite(rate) || rate < 0 || rate > 100)) return []; return [...new Set(rates)].sort((left, right) => left - right); }
