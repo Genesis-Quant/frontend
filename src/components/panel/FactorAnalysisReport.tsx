@@ -5,7 +5,7 @@ import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
 import { chartRange, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
-import { factorMetricDescription } from "@/assets/lib/metricDefinitions";
+import { annualizeFactorInformationRatio, factorMetricDescription } from "@/assets/lib/metricDefinitions";
 import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
@@ -20,7 +20,7 @@ import EChart from "@/components/chart/EChart";
 import { MetricLabel } from "@/components/mark/MetricLabel";
 import { useAppStore } from "@/store";
 import type { AxisFormat, ChartRange, FactorChartRanges } from "@/types/chart";
-import type { FactorAnalysisParameters, FactorMetrics } from "@/types/factor";
+import type { FactorAnalysisParameters, FactorMetrics, FactorReturnSpec } from "@/types/factor";
 import { Button } from "@/ui/button";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
@@ -65,7 +65,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [error, setError] = useState("");
   const rangePoints = useMemo(() => timeline.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic })), [timeline]);
   const returnSpecsKey = JSON.stringify(parameters.return_specs);
-  const icReturnPeriods = parameters.return_specs[icReturnColumn]?.periods ?? 1;
+  const icReturnSpec = parameters.return_specs[icReturnColumn];
   const returnPeriods = parameters.return_specs[returnColumn]?.periods ?? 1;
   const groupReturnPeriods = parameters.return_specs[groupReturnColumn]?.periods ?? 1;
 
@@ -223,7 +223,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       <CardToolbar end={<Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} />}>
         <ReturnSelector value={icReturnColumn} options={parameters.return_columns} onChange={setIcReturnColumn} />
       </CardToolbar>
-      <MetricGrid items={informationMetrics(information, icType, icReturnPeriods)} />
+      <MetricGrid items={informationMetrics(information, icType, icReturnSpec)} />
       <ChartPanel title={`${icType} 时序与累计`}>
         <SeriesContent loading={informationLoading} count={information.length} height={330}>{information.length >= 8 && <EChart option={informationOption(information, theme, icType, chartRanges?.information)} height={330} />}</SeriesContent>
       </ChartPanel>
@@ -272,15 +272,17 @@ function OverlappingReturnNotice({ periods }: { periods: number }) {
   </div>;
 }
 
-function informationMetrics(rows: InformationPoint[], type: IcType, periods: number): DisplayMetric[] {
+function informationMetrics(rows: InformationPoint[], type: IcType, returnSpec: FactorReturnSpec | undefined): DisplayMetric[] {
   const rank = type === "RankIC";
   const values = rows.map((row) => rank ? row.rankIc : row.ic).filter((value): value is number => value !== null);
   const average = mean(values);
   const deviation = sampleStd(values);
+  const rawInformationRatio = average !== null && deviation ? average / deviation : null;
+  const periods = returnSpec?.periods;
   return [
     { label: `${type} 均值`, value: format(average), description: factorMetricDescription(rank ? "rankIcMean" : "icMean", periods) },
     { label: `${type} 标准差`, value: format(deviation), description: factorMetricDescription(rank ? "rankIcStd" : "icStd", periods) },
-    { label: `${type} IR（未年化）`, value: format(average !== null && deviation ? average / deviation : null), description: factorMetricDescription(rank ? "rankIcIr" : "icIr", periods) },
+    { label: `${type} IR（年化）`, value: format(annualizeFactorInformationRatio(rawInformationRatio, returnSpec)), description: factorMetricDescription(rank ? "rankIcIr" : "icIr", periods, rawInformationRatio) },
     { label: `${type} > 0 占比`, value: format(ratio(values, (value) => value > 0), "percent"), description: factorMetricDescription("icPositiveRatio", periods) },
     { label: `${type} > 0.03 占比`, value: format(ratio(values, (value) => value > 0.03), "percent"), description: factorMetricDescription("icThresholdRatio", periods) }
   ];

@@ -1,3 +1,5 @@
+import type { FactorReturnSpec } from "@/types/factor";
+
 export type BacktestMetricKey =
   | "totalReturn"
   | "annualReturn"
@@ -97,15 +99,28 @@ function returnPeriod(periods?: number) {
   return periods ? `${periods} 个交易日的前瞻收益` : "当前收益列对应的前瞻收益";
 }
 
-export function factorMetricDescription(key: FactorMetricKey, periods?: number) {
+const FACTOR_ANNUAL_TRADING_DAYS = 252;
+
+export function annualizeFactorInformationRatio(value: number | null | undefined, returnSpec: Pick<FactorReturnSpec, "periods"> | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || !returnSpec) return null;
+  return value * Math.sqrt(FACTOR_ANNUAL_TRADING_DAYS / returnSpec.periods);
+}
+
+export function factorMetricDescription(key: FactorMetricKey, periods?: number, rawValue?: number | null) {
   const horizon = returnPeriod(periods);
+  const annualization = periods
+    ? `原始值 × √(${FACTOR_ANNUAL_TRADING_DAYS} / ${periods})`
+    : `原始值 × √(${FACTOR_ANNUAL_TRADING_DAYS} / return_specs.periods)`;
+  const raw = rawValue === undefined
+    ? ""
+    : ` 原始未年化值：${rawValue === null || !Number.isFinite(rawValue) ? "—" : rawValue.toFixed(4)}。`;
   const descriptions: Record<FactorMetricKey, string> = {
     icMean: `各交易日因子值与${horizon}的 Pearson 相关系数均值。IC 序列不是收益率序列，不进行年化。`,
     rankIcMean: `各交易日因子排名与${horizon}排名的相关系数均值。Rank IC 序列不是收益率序列，不进行年化。`,
     icStd: "各交易日 IC 的样本标准差，保持单次 IC 观测口径，不进行年化。",
     rankIcStd: "各交易日 Rank IC 的样本标准差，保持单次 IC 观测口径，不进行年化。",
-    icIr: `IC 均值除以 IC 样本标准差，当前值未年化。若需换算年度口径，必须根据${horizon}、每年独立 IC 观测数以及重叠收益带来的自相关自行计算，不能统一乘以 √252。`,
-    rankIcIr: `Rank IC 均值除以 Rank IC 样本标准差，当前值未年化。若需换算年度口径，必须根据${horizon}、每年独立 IC 观测数以及重叠收益带来的自相关自行计算，不能统一乘以 √252。`,
+    icIr: `原始 ICIR 为 IC 均值除以 IC 样本标准差；页面根据${horizon}的 return spec 自动年化，计算为 ${annualization}。${raw}`,
+    rankIcIr: `原始 Rank ICIR 为 Rank IC 均值除以 Rank IC 样本标准差；页面根据${horizon}的 return spec 自动年化，计算为 ${annualization}。${raw}`,
     icPositiveRatio: "IC 大于 0 的有效交易日占比，是频率指标，不进行年化。",
     icThresholdRatio: "IC 超过指定阈值的有效交易日占比，是频率指标，不进行年化。",
     cumulativeReturn: "仅当收益列是 1 个交易日的非重叠前瞻收益时，将每日多空收益复利得到；多期重叠收益不累计。",
