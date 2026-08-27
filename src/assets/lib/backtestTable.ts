@@ -64,6 +64,10 @@ export const backtestTableConfigs: Record<BacktestTableName, ParquetColumnConfig
   },
   daily_portfolios: {
     tradeDate: { filter: "date", filterLabel: "日期", filterOrder: 0, label: "交易日期", pin: "start", sortable: true, type: "date", size: 132 },
+    netValue: number("策略净值", "收益"),
+    totalReturn: { ...number("累计收益率", "收益"), format: "percent" },
+    benchmarkClosePrice: number("基准收盘价", "基准"),
+    benchmarkNetValue: number("基准净值", "基准"),
     totalEquity: number("总资产", "资产"),
     totalMarketValue: number("持仓市值", "资产"),
     cash: number("可用现金", "现金"),

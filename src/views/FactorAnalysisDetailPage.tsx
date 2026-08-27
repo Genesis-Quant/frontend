@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import IconLoaderCircle from "~icons/lucide/loader-circle";
 
@@ -70,7 +70,8 @@ export default function FactorAnalysisDetailPage() {
   const queueItemsRef = useRef(queueItems);
   const displayedWorkflowInstanceId = currentVersion ? currentVersion.workflow_instance_id : workflowInstanceId;
   const displayedParameters = currentVersion?.parameters ?? parameters;
-  const resultParameters = displayedParameters;
+  const submittedParameters = currentVersion?.parameters ?? project?.draft.parameters;
+  const resultParameters = useMemo(() => normalizeAnalysisParameters(submittedParameters), [submittedParameters]);
   const displayedState = currentVersion ? currentVersion.saved ? "SUCCESS" : "IDLE" : workflowState;
   const displayedWorkflowError = currentVersion ? null : workflowError;
   const readOnly = currentVersion !== null;

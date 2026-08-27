@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
@@ -16,7 +16,38 @@ export function TextField({ className = "space-y-2", controlClassName, disabled 
 }
 
 export function NumberField({ className = "space-y-2", controlClassName, disabled = false, label, labelClassName, max, min, onChange, step = 1, value }: FieldStyleProps & { disabled?: boolean; label: string; max?: number; min: number; onChange: (value: number) => void; step?: number; value: number }) {
-  return <div className={className}><Label className={labelClassName}>{label}</Label><Input className={controlClassName} disabled={disabled} max={max} min={min} step={step} type="number" value={value} onChange={(event) => { const next = event.target.valueAsNumber; if (Number.isFinite(next)) onChange(Math.max(min, max === undefined ? next : Math.min(max, next))); }} /></div>;
+  const [source, setSource] = useState(String(value));
+  const editing = useRef(false);
+
+  useEffect(() => {
+    if (!editing.current) setSource(String(value));
+  }, [value]);
+
+  function update(nextSource: string) {
+    setSource(nextSource);
+    const next = parseNumber(nextSource);
+    if (next !== null && next >= min && (max === undefined || next <= max)) onChange(next);
+  }
+
+  function commit() {
+    editing.current = false;
+    const parsed = parseNumber(source);
+    if (parsed === null) {
+      setSource(String(value));
+      return;
+    }
+    const next = Math.max(min, max === undefined ? parsed : Math.min(max, parsed));
+    setSource(String(next));
+    if (next !== value) onChange(next);
+  }
+
+  return <div className={className}><Label className={labelClassName}>{label}</Label><Input className={controlClassName} disabled={disabled} max={max} min={min} step={step} type="number" value={source} onBlur={commit} onChange={(event) => update(event.target.value)} onFocus={() => { editing.current = true; }} /></div>;
+}
+
+function parseNumber(value: string) {
+  if (!value.trim()) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 export function SwitchField({ checked, checkedText, className = "space-y-2", disabled = false, label, labelClassName, onChange, uncheckedText }: FieldStyleProps & { checked: boolean; checkedText: string; disabled?: boolean; label: string; onChange: (checked: boolean) => void; uncheckedText: string }) {

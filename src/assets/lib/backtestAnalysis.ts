@@ -3,7 +3,7 @@ import { readParquetNumericColumnStats } from "@/assets/lib/parquetColumnStats";
 import { backtestTableConfigs } from "@/assets/lib/backtestTable";
 import type { ParquetColumnFilterState, ParquetNumericColumnStatsMap, ParquetTableQuery } from "@/types/table";
 
-export type PortfolioPoint = { time: string; netValue: number | null; totalEquity: number | null; dailyReturn: number | null; dailyFee: number | null };
+export type PortfolioPoint = { time: string; netValue: number | null; benchmarkNetValue: number | null; totalEquity: number | null; dailyReturn: number | null; dailyFee: number | null };
 export type BacktestTableName = "trade_details" | "daily_positions" | "daily_portfolios" | "daily_trading_statistics";
 export type BacktestTablePage = { columns: string[]; numericStats: ParquetNumericColumnStatsMap; rows: Record<string, unknown>[]; total: number };
 export type BacktestDateRange = { start: string; end: string };
@@ -44,12 +44,15 @@ export class BacktestAnalytics {
   }
 
   async portfolios(): Promise<PortfolioPoint[]> {
+    const benchmarkColumn = this.schema("daily_portfolios").columnSet.has("benchmarkNetValue")
+      ? "benchmarkNetValue"
+      : "CAST(NULL AS DOUBLE) AS benchmarkNetValue";
     const rows = await this.database.rows(`
-      SELECT tradeDate, netValue, totalEquity, ratio,
+      SELECT tradeDate, netValue, ${benchmarkColumn}, totalEquity, ratio,
         totalFee - coalesce(lag(totalFee) OVER (ORDER BY tradeDate), 0) AS dailyFee
       FROM read_parquet(${literal(this.files.daily_portfolios)}) ORDER BY tradeDate
     `);
-    return rows.map((row) => ({ time: duckDbDateValue(row.tradeDate), netValue: numberValue(row.netValue), totalEquity: numberValue(row.totalEquity), dailyReturn: numberValue(row.ratio), dailyFee: numberValue(row.dailyFee) }));
+    return rows.map((row) => ({ time: duckDbDateValue(row.tradeDate), netValue: numberValue(row.netValue), benchmarkNetValue: numberValue(row.benchmarkNetValue), totalEquity: numberValue(row.totalEquity), dailyReturn: numberValue(row.ratio), dailyFee: numberValue(row.dailyFee) }));
   }
 
   async tablePage(name: BacktestTableName, page: number, pageSize: number, range: BacktestDateRange, query: ParquetTableQuery = { filters: [], sorting: [] }): Promise<BacktestTablePage> {

@@ -1,4 +1,4 @@
-import type { DslDocument, FactorQuery } from "@/types/factor";
+import type { DslCatalog, DslDocument, FactorQuery } from "@/types/factor";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
@@ -15,6 +15,10 @@ export const callbackParameters: Record<CallbackName, string> = {
   finalize: "mutable context"
 };
 export type BacktestSummary = Record<string, number | null>;
+
+export type BacktestCatalog = DslCatalog & {
+  benchmark_codes: string[];
+};
 
 export type BacktestParameters = {
   config: Record<string, unknown>;

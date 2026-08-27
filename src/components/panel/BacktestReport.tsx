@@ -116,7 +116,10 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
   useEffect(() => {
     if (!onChartRanges || !report) return;
     onChartRanges({
-      netValue: chartRange(report.netValue.map((row) => row.value)),
+      netValue: chartRange([
+        ...report.netValue.map((row) => row.value),
+        ...benchmarkValues(selectedPortfolio).filter((value): value is number => value !== null)
+      ]),
       totalEquity: chartRange(selectedPortfolio.map((row) => row.totalEquity)),
       drawdown: chartRange(report.drawdown.map((row) => row.value), true),
       rollingSharpe: chartRange(report.rollingSharpe.map((row) => row.value), true)
@@ -154,7 +157,7 @@ function ReportOverview({ chartRanges, portfolio, report, theme }: { chartRanges
     <ReportCard title="收益分析">
       <MetricGrid metrics={returnMetrics} />
       <MetricGrid metrics={feeMetrics(portfolio)} />
-      <ChartCard title="累计收益与总资产"><EChart height={360} option={portfolioOption(portfolio, report, theme, chartRanges)} /></ChartCard>
+      <ChartCard title="策略、基准净值与总资产"><EChart height={360} option={portfolioOption(portfolio, report, theme, chartRanges)} /></ChartCard>
       <ChartCard title="滚动年化 Sharpe"><EChart height={340} option={rollingSharpeOption(report, theme, chartRanges?.rollingSharpe)} /></ChartCard>
       <PerformanceTable report={report} />
     </ReportCard>
@@ -269,7 +272,8 @@ function backtestOutputState(name: BacktestTableName | null, availableOutputs: R
 function createTableRequestKey(workflowInstanceId: number, name: BacktestTableName | null, startDate: string, endDate: string, page: number, pageSize: number, query: ParquetTableQuery) { return name ? `${workflowInstanceId}:${name}:${startDate}:${endDate}:${page}:${pageSize}:${JSON.stringify(query)}` : ""; }
 function average(values: number[]) { return values.reduce((sum, value) => sum + value, 0) / values.length; }
 
-function portfolioOption(rows: PortfolioPoint[], report: QuantStatsReport, theme: string, ranges?: BacktestChartRanges) { return baseOption(theme, rows.map((row) => row.time), [{ name: "策略净值", type: "line", data: report.netValue.map((row) => row.value), showSymbol: false, lineStyle: { width: 2.2 }, color: "#2563eb" }, { name: "总资产", type: "line", yAxisIndex: 1, data: rows.map((row) => row.totalEquity), showSymbol: false, lineStyle: { width: 1.5 }, color: "#059669" }], ranges?.netValue, ranges?.totalEquity, true, "decimal", "integer"); }
+function portfolioOption(rows: PortfolioPoint[], report: QuantStatsReport, theme: string, ranges?: BacktestChartRanges) { const benchmark = benchmarkValues(rows); const series: Record<string, unknown>[] = [{ name: "策略净值", type: "line", data: report.netValue.map((row) => row.value), showSymbol: false, lineStyle: { width: 2.2 }, color: "#2563eb" }]; if (benchmark.some((value) => value !== null)) series.push({ name: "基准净值", type: "line", data: benchmark, showSymbol: false, lineStyle: { width: 1.8 }, color: "#d97706" }); series.push({ name: "总资产", type: "line", yAxisIndex: 1, data: rows.map((row) => row.totalEquity), showSymbol: false, lineStyle: { width: 1.5 }, color: "#059669" }); return baseOption(theme, rows.map((row) => row.time), series, ranges?.netValue, ranges?.totalEquity, true, "decimal", "integer"); }
+function benchmarkValues(rows: PortfolioPoint[]) { const base = rows.find((row) => row.benchmarkNetValue !== null && row.benchmarkNetValue > 0)?.benchmarkNetValue; return rows.map((row) => base && row.benchmarkNetValue !== null ? row.benchmarkNetValue / base : null); }
 function drawdownOption(report: QuantStatsReport, theme: string, range?: ChartRange) { return baseOption(theme, report.drawdown.map((row) => row.time), [{ name: "回撤", type: "line", data: report.drawdown.map((row) => row.value), showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: 0.12 }, color: "#dc2626" }], range, undefined, false, "percent"); }
 function rollingSharpeOption(report: QuantStatsReport, theme: string, range?: ChartRange) { return baseOption(theme, report.rollingSharpe.map((row) => row.time), [{ name: "滚动年化 Sharpe", type: "line", data: report.rollingSharpe.map((row) => row.value), showSymbol: false, lineStyle: { width: 1.8 }, color: "#d97706", markLine: thresholdMarkLine(theme, "Sharpe = 0.5", 0.5) }], chartRangeIncluding(range, 0.5)); }
 function baseOption(theme: string, dates: string[], series: unknown[], primaryRange?: ChartRange, secondaryRange?: ChartRange, dualAxis = false, primaryFormat: AxisFormat = "decimal", secondaryFormat: AxisFormat = "decimal") { const color = theme === "dark" ? "#8996a5" : "#687771"; const line = theme === "dark" ? "rgba(160,184,210,.10)" : "rgba(24,66,54,.10)"; const axis = (range?: ChartRange, format: AxisFormat = "decimal") => ({ type: "value", scale: true, min: range?.min, max: range?.max, axisLabel: { color, fontSize: 9, formatter: (value: number) => formatAxisLabel(value, format) }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: line } } }); return { animationDuration: 180, grid: { left: 48, right: dualAxis ? 58 : 28, top: 42, bottom: 38, containLabel: true }, legend: { top: 0, left: 0, textStyle: { color, fontSize: 10 } }, tooltip: { trigger: "axis", backgroundColor: theme === "dark" ? "#151b24" : "#fff", borderColor: line, textStyle: { color: theme === "dark" ? "#eef4f7" : "#13201d", fontSize: 11 } }, xAxis: { type: "category", data: dates, boundaryGap: false, axisLine: { lineStyle: { color: line } }, axisLabel: { color, fontSize: 9, hideOverlap: true }, axisTick: { show: false } }, yAxis: dualAxis ? [axis(primaryRange, primaryFormat), { ...axis(secondaryRange, secondaryFormat), splitLine: { show: false } }] : axis(primaryRange, primaryFormat), series } as Record<string, unknown>; }

@@ -179,7 +179,6 @@ export type FactorProjectListItem = {
   title: string;
   latest_version: number | null;
   latest_metric: FactorMetricSummary | null;
-  latest_return_spec: FactorReturnSpec | null;
   updated_at: string;
 };
 

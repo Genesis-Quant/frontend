@@ -5,12 +5,11 @@ import AnalysisMoreActions from "@/components/button/AnalysisMoreActions";
 import WorkflowExecutionButton from "@/components/button/WorkflowExecutionButton";
 import BacktestEditor from "@/components/editor/BacktestEditor";
 import { Button } from "@/ui/button";
-import type { BacktestParameters, BacktestProject, BacktestVersionListItem } from "@/types/backtest";
-import type { DslCatalog } from "@/types/factor";
+import type { BacktestCatalog, BacktestParameters, BacktestProject, BacktestVersionListItem } from "@/types/backtest";
 
 type BacktestControlsPanelProps = {
   activeWorkflow: boolean;
-  catalog: DslCatalog;
+  catalog: BacktestCatalog;
   displayedParameters: BacktestParameters;
   displayedState: string;
   displayedWorkflowInstanceId: number | null;

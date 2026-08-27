@@ -21,8 +21,7 @@ import BacktestResultsPanel from "@/components/panel/BacktestResultsPanel";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import ExecutionQueuePanel from "@/components/panel/ExecutionQueuePanel";
 import TaskLogPanel from "@/components/panel/TaskLogPanel";
-import { defaultBacktestParameters, type BacktestParameters, type BacktestProject, type BacktestVersion, type BacktestVersionListItem } from "@/types/backtest";
-import type { DslCatalog } from "@/types/factor";
+import { defaultBacktestParameters, type BacktestCatalog, type BacktestParameters, type BacktestProject, type BacktestVersion, type BacktestVersionListItem } from "@/types/backtest";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 import { useAppStore } from "@/store";
@@ -34,7 +33,7 @@ export default function BacktestDetailPage() {
   const [project, setProject] = useState<BacktestProject | null>(null);
   const [versions, setVersions] = useState<BacktestVersionListItem[]>([]);
   const [currentVersion, setCurrentVersion] = useState<BacktestVersion | null>(null);
-  const [catalog, setCatalog] = useState<DslCatalog | null>(null);
+  const [catalog, setCatalog] = useState<BacktestCatalog | null>(null);
   const [parameters, setParameters] = useState<BacktestParameters>(defaultBacktestParameters());
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [workflowInstanceId, setWorkflowInstanceId] = useState<number | null>(null);

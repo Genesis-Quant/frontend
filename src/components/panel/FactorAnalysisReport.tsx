@@ -5,7 +5,6 @@ import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
 import { chartRange, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
-import { annualizeFactorInformationRatio, factorMetricDescription } from "@/assets/lib/metricDefinitions";
 import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
@@ -17,14 +16,13 @@ import {
 } from "@/assets/lib/factorAnalysis";
 import DateRangeBar from "@/components/bar/DateRangeBar";
 import EChart from "@/components/chart/EChart";
-import { MetricLabel } from "@/components/mark/MetricLabel";
 import { useAppStore } from "@/store";
 import type { AxisFormat, ChartRange, FactorChartRanges } from "@/types/chart";
-import type { FactorAnalysisParameters, FactorMetrics, FactorReturnSpec } from "@/types/factor";
+import type { FactorAnalysisParameters, FactorMetrics } from "@/types/factor";
 import { Button } from "@/ui/button";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
-type DisplayMetric = { description?: string; label: string; value: string };
+type DisplayMetric = { label: string; value: string };
 
 type FactorAnalysisReportProps = {
   chartRanges?: FactorChartRanges;
@@ -65,7 +63,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [error, setError] = useState("");
   const rangePoints = useMemo(() => timeline.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic })), [timeline]);
   const returnSpecsKey = JSON.stringify(parameters.return_specs);
-  const icReturnSpec = parameters.return_specs[icReturnColumn];
   const returnPeriods = parameters.return_specs[returnColumn]?.periods ?? 1;
   const groupReturnPeriods = parameters.return_specs[groupReturnColumn]?.periods ?? 1;
 
@@ -223,7 +220,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       <CardToolbar end={<Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} />}>
         <ReturnSelector value={icReturnColumn} options={parameters.return_columns} onChange={setIcReturnColumn} />
       </CardToolbar>
-      <MetricGrid items={informationMetrics(information, icType, icReturnSpec)} />
+      <MetricGrid items={informationMetrics(information, icType)} />
       <ChartPanel title={`${icType} 时序与累计`}>
         <SeriesContent loading={informationLoading} count={information.length} height={330}>{information.length >= 8 && <EChart option={informationOption(information, theme, icType, chartRanges?.information)} height={330} />}</SeriesContent>
       </ChartPanel>
@@ -268,17 +265,16 @@ function OverlappingReturnNotice({ periods }: { periods: number }) {
   </div>;
 }
 
-function informationMetrics(rows: InformationPoint[], type: IcType, returnSpec: FactorReturnSpec | undefined): DisplayMetric[] {
+function informationMetrics(rows: InformationPoint[], type: IcType): DisplayMetric[] {
   const rank = type === "RankIC";
   const values = rows.map((row) => rank ? row.rankIc : row.ic).filter((value): value is number => value !== null);
   const average = mean(values);
   const deviation = sampleStd(values);
-  const rawInformationRatio = average !== null && deviation ? average / deviation : null;
-  const periods = returnSpec?.periods;
+  const informationRatio = average !== null && deviation ? average / deviation : null;
   return [
     { label: `${type} 均值`, value: format(average) },
     { label: `${type} 标准差`, value: format(deviation) },
-    { label: `${type} IR（年化）`, value: format(annualizeFactorInformationRatio(rawInformationRatio, returnSpec)), description: factorMetricDescription(rank ? "rankIcIr" : "icIr", periods, rawInformationRatio) },
+    { label: rank ? "Rank ICIR" : "ICIR", value: format(informationRatio) },
     { label: `${type} > 0 占比`, value: format(ratio(values, (value) => value > 0), "percent") },
     { label: `${type} > 0.03 占比`, value: format(ratio(values, (value) => value > 0.03), "percent") }
   ];
@@ -315,7 +311,7 @@ function decaySummary(rows: DecayPoint[]): DisplayMetric[] {
 }
 
 function MetricGrid({ items }: { items: DisplayMetric[] }) {
-  return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><div className="text-xs text-muted-foreground">{item.label}</div>{item.description ? <MetricLabel className="numeric mt-2 text-lg font-semibold tracking-tight" description={item.description}>{item.value}</MetricLabel> : <div className="numeric mt-2 text-lg font-semibold tracking-tight">{item.value}</div>}</div>)}</div>;
+  return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><div className="text-xs text-muted-foreground">{item.label}</div><div className="numeric mt-2 text-lg font-semibold tracking-tight">{item.value}</div></div>)}</div>;
 }
 
 function SummaryTiles({ items }: { items: DisplayMetric[] }) {

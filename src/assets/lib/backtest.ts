@@ -1,6 +1,6 @@
 import { client } from "@/assets/lib/request";
-import { isFactorQuery, type DslCatalog } from "@/types/factor";
-import { callbackNames, callbackParameters, type BacktestOptimization, type BacktestOptimizationPage, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestProjectSortField, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName, type OptimizationAlgorithm, type OptimizationOutput, type OptimizationSettings, type SensitivityOutput } from "@/types/backtest";
+import { isFactorQuery } from "@/types/factor";
+import { callbackNames, callbackParameters, type BacktestCatalog, type BacktestOptimization, type BacktestOptimizationPage, type BacktestOutput, type BacktestOutputName, type BacktestParameters, type BacktestProject, type BacktestProjectPage, type BacktestProjectSortField, type BacktestVersion, type BacktestVersionListItem, type BacktestWorkflowSubmitted, type BatchResearchPage, type BatchResearchRequest, type BatchResearchResponse, type CallbackName, type OptimizationAlgorithm, type OptimizationOutput, type OptimizationSettings, type SensitivityOutput } from "@/types/backtest";
 import type { ProjectListParams } from "@/types/project";
 import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
@@ -174,7 +174,7 @@ export const backtestApi = {
   saveVersion: (projectId: number, workflowInstanceId: number, remark: string) => client.post<BacktestVersion>(`/backtest/projects/${projectId}/versions`, { workflow_instance_id: workflowInstanceId, remark }),
   updateVersion: (projectId: number, version: number, remark: string) => client.patch<BacktestVersion>(`/backtest/projects/${projectId}/versions/${version}`, { remark }),
   deleteVersion: (projectId: number, version: number) => client.delete<{ version: number }>(`/backtest/projects/${projectId}/versions/${version}`),
-  catalog: () => client.get<DslCatalog>("/backtest/dsl/catalog", { timeout: 30000 }),
+  catalog: () => client.get<BacktestCatalog>("/backtest/dsl/catalog", { timeout: 30000 }),
   outputs: (workflowInstanceId: number) => client.get<BacktestOutput[]>(`/backtest/workflows/${workflowInstanceId}/outputs`),
   output: (workflowInstanceId: number, name: BacktestOutputName) => client.getBinary(`/backtest/workflows/${workflowInstanceId}/outputs/${name}`),
   listOptimizations: (projectId: number, version: number, page = 1, pageSize = 20) => client.get<BacktestOptimizationPage>(`/backtest/projects/${projectId}/versions/${version}/optimizations`, { params: { page, page_size: pageSize } }),

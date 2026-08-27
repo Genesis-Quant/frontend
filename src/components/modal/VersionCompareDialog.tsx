@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { mergeChartRanges } from "@/assets/lib/chart";
-import { normalizeAnalysisParameters, stockPoolLabel, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import { normalizeAnalysisParameters, stockPoolLabel, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { BacktestParameters, BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
 import type { BacktestChartRanges, FactorChartRanges } from "@/types/chart";
 import { Button } from "@/ui/button";
@@ -197,5 +197,8 @@ function factorSummary(parameters: FactorAnalysisParameters): string[][] {
 
 function backtestSummary(parameters: BacktestParameters): string[][] {
   if (!parameters.dataset_query) return [["状态", "尚未执行"]];
-  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["初始资金", Number(parameters.config.cash ?? 0).toLocaleString("zh-CN")], ["复权方式", parameters.adj ?? "不复权"], ["年化交易日", String(parameters.annual_trading_days)], ["无风险利率", String(parameters.risk_free_rate)], ["回溯周期", parameters.dataset_query.lookback]];
+  const benchmark = typeof parameters.config.benchmark === "string"
+    ? stockPools.find((option) => option.value === parameters.config.benchmark)?.label ?? parameters.config.benchmark
+    : "不使用";
+  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["初始资金", Number(parameters.config.cash ?? 0).toLocaleString("zh-CN")], ["复权方式", parameters.adj ?? "不复权"], ["基准指数", benchmark], ["年化交易日", String(parameters.annual_trading_days)], ["无风险利率", String(parameters.risk_free_rate)], ["回溯周期", parameters.dataset_query.lookback]];
 }
