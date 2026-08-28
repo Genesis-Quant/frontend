@@ -214,9 +214,11 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       startDate={startDate}
       theme={theme}
       points={rangePoints}
-      onEndDate={(value) => setEndDate(value < startDate ? startDate : value)}
+      onRangeChange={(nextStartDate, nextEndDate) => {
+        setStartDate(nextStartDate);
+        setEndDate(nextEndDate);
+      }}
       onReset={() => { setStartDate(minimumDate); setEndDate(maximumDate); }}
-      onStartDate={(value) => setStartDate(value > endDate ? endDate : value)}
     />
 
     <SortableCardStack

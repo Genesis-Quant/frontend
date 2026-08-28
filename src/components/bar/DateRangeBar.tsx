@@ -9,7 +9,7 @@ type DateRangePoint = { time: string; value: number | null };
 type DataZoomEvent = { batch?: DataZoomEvent[]; end?: number; endValue?: unknown; start?: number; startValue?: unknown };
 type PointerDate = { date: string; position: number };
 
-export default function DateRangeBar({ endDate, label = "报告区间", maximumDate, minimumDate, onEndDate, onReset, onStartDate, points, startDate, theme }: { endDate: string; label?: string; maximumDate: string; minimumDate: string; onEndDate: (value: string) => void; onReset: () => void; onStartDate: (value: string) => void; points: DateRangePoint[]; startDate: string; theme: string }) {
+export default function DateRangeBar({ endDate, label = "报告区间", maximumDate, minimumDate, onRangeChange, onReset, points, startDate, theme }: { endDate: string; label?: string; maximumDate: string; minimumDate: string; onRangeChange: (start: string, end: string) => void; onReset: () => void; points: DateRangePoint[]; startDate: string; theme: string }) {
   const timer = useRef<number | null>(null);
   const displayFrame = useRef<number | null>(null);
   const pendingDisplay = useRef({ start: startDate, end: endDate });
@@ -35,6 +35,10 @@ export default function DateRangeBar({ endDate, label = "报告区间", maximumD
       displayFrame.current = null;
     });
   }, []);
+  const commitRange = useCallback((nextStart: string, nextEnd: string) => {
+    if (nextStart === startDate && nextEnd === endDate) return;
+    onRangeChange(nextStart, nextEnd);
+  }, [endDate, onRangeChange, startDate]);
   const changeRange = useCallback((event: unknown) => {
     const root = event as DataZoomEvent;
     const zoom = root.batch?.[0] ?? root;
@@ -42,14 +46,14 @@ export default function DateRangeBar({ endDate, label = "报告区间", maximumD
     const nextEnd = zoomDate(zoom.endValue, zoom.end, dates, "end");
     if (!nextStart || !nextEnd) return;
     showDisplayRange(nextStart, nextEnd);
-    if (nextStart === startDate && nextEnd === endDate) return;
     if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    if (dragging.current) return;
     timer.current = window.setTimeout(() => {
-      onStartDate(nextStart);
-      onEndDate(nextEnd);
+      commitRange(nextStart, nextEnd);
       timer.current = null;
     }, 250);
-  }, [dates, endDate, onEndDate, onStartDate, showDisplayRange, startDate]);
+  }, [commitRange, dates, showDisplayRange]);
 
   const showPointerDate = useCallback((clientX: number) => {
     const bounds = track.current?.getBoundingClientRect();
@@ -78,6 +82,9 @@ export default function DateRangeBar({ endDate, label = "报告区间", maximumD
 
   function startDragging(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    pendingDisplay.current = { start: displayStartDate, end: displayEndDate };
     dragging.current = true;
     showPointerDateNextFrame(event.clientX);
   }
@@ -88,11 +95,16 @@ export default function DateRangeBar({ endDate, label = "报告区间", maximumD
     function finish(event: globalThis.PointerEvent) {
       if (!dragging.current) return;
       dragging.current = false;
+      commitRange(pendingDisplay.current.start, pendingDisplay.current.end);
       const bounds = track.current?.getBoundingClientRect();
       if (!bounds || event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) hidePointerDate();
       else showPointerDateNextFrame(event.clientX);
     }
-    function cancel() { dragging.current = false; hidePointerDate(); }
+    function cancel() {
+      dragging.current = false;
+      showDisplayRange(startDate, endDate);
+      hidePointerDate();
+    }
     window.addEventListener("pointermove", move, { capture: true, passive: true });
     window.addEventListener("pointerup", finish, true);
     window.addEventListener("pointercancel", cancel, true);
@@ -101,7 +113,7 @@ export default function DateRangeBar({ endDate, label = "报告区间", maximumD
       window.removeEventListener("pointerup", finish, true);
       window.removeEventListener("pointercancel", cancel, true);
     };
-  }, [hidePointerDate, showPointerDateNextFrame]);
+  }, [commitRange, endDate, hidePointerDate, showDisplayRange, showPointerDateNextFrame, startDate]);
   useEffect(() => () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     if (displayFrame.current !== null) window.cancelAnimationFrame(displayFrame.current);
