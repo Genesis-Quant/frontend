@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ttest from "@stdlib/stats-ttest";
 import { motion } from "motion/react";
+import {
+  mean as statisticsMean,
+  sampleStandardDeviation,
+  standardDeviation
+} from "simple-statistics";
 import IconDatabase from "~icons/lucide/database";
 import IconLoaderCircle from "~icons/lucide/loader-circle";
 
@@ -230,7 +236,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
             <CardToolbar end={<Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} />}>
               <ReturnSelector value={icReturnColumn} options={parameters.return_columns} onChange={setIcReturnColumn} />
             </CardToolbar>
-            <MetricGrid items={informationMetrics(information, icType)} />
+            <MetricGrid columns={6} items={informationMetrics(information, icType)} />
             <ChartPanel title={`${icType} 时序、月度移动平均与累计`}>
               <SeriesContent loading={informationLoading} count={information.length} height={330}>{information.length >= 8 && <EChart option={informationOption(information, theme, icType, chartRanges?.information)} height={330} />}</SeriesContent>
             </ChartPanel>
@@ -252,7 +258,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
           content: <ReportCard title="分组分析">
             <CardToolbar><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
             <OverlappingReturnNotice periods={groupReturnPeriods} />
-            <SummaryTiles items={groupStatistics.map((item) => ({ label: item.group, value: `${format(item.mean, "percent")} / p=${format(item.pValue)}` }))} />
             <ChartPanel title="分组平均收益与显著性 p 值">
               <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
             </ChartPanel>
@@ -287,15 +292,17 @@ function OverlappingReturnNotice({ periods }: { periods: number }) {
 function informationMetrics(rows: InformationPoint[], type: IcType): DisplayMetric[] {
   const rank = type === "RankIC";
   const values = rows.map((row) => rank ? row.rankIc : row.ic).filter((value): value is number => value !== null);
-  const average = mean(values);
-  const deviation = sampleStd(values);
+  const average = values.length ? statisticsMean(values) : null;
+  const deviation = values.length > 1 ? sampleStandardDeviation(values) : null;
   const informationRatio = average !== null && deviation ? average / deviation : null;
+  const pValue = values.length > 1 ? ttest(values, { alternative: "two-sided", mu: 0 }).pValue : null;
   return [
     { label: `${type} 均值`, value: format(average) },
     { label: `${type} 标准差`, value: format(deviation) },
     { label: rank ? "Rank ICIR" : "ICIR", value: format(informationRatio) },
-    { label: `${type} > 0 占比`, value: format(ratio(values, (value) => value > 0), "percent") },
-    { label: `${type} > 0.03 占比`, value: format(ratio(values, (value) => value > 0.03), "percent") }
+    { label: "双侧 p 值", value: formatPValue(pValue) },
+    { label: `${type} > 0 占比`, value: format(booleanMean(values, (value) => value > 0), "percent") },
+    { label: `${type} > 0.03 占比`, value: format(booleanMean(values, (value) => value > 0.03), "percent") }
   ];
 }
 
@@ -304,15 +311,15 @@ function returnMetrics(rows: LongShortPoint[], periods: number): DisplayMetric[]
   const values = rows.map((row) => row.value).filter((value): value is number => value !== null);
   const cumulative = compoundable ? rows.at(-1)?.cumulative ?? null : null;
   const annualReturn = cumulative === null || !values.length || 1 + cumulative <= 0 ? null : (1 + cumulative) ** (252 / values.length) - 1;
-  const annualVolatility = compoundable ? populationStd(values) * Math.sqrt(252) : null;
+  const annualVolatility = compoundable && values.length ? standardDeviation(values) * Math.sqrt(252) : null;
   return [
     { label: "多空累计收益", value: format(cumulative, "percent") },
     { label: "多空年化收益", value: format(annualReturn, "percent") },
     { label: "多空年化 Sharpe", value: format(annualReturn !== null && annualVolatility ? annualReturn / annualVolatility : null) },
     { label: "多空最大回撤", value: format(compoundable ? maxDrawdown(rows) : null, "percent") },
     { label: "多空年化波动", value: format(annualVolatility, "percent") },
-    { label: "多空单期收益均值", value: format(mean(values), "percent") },
-    { label: "多空单期收益标准差", value: format(sampleStd(values), "percent") }
+    { label: "多空单期收益均值", value: format(values.length ? statisticsMean(values) : null, "percent") },
+    { label: "多空单期收益标准差", value: format(values.length > 1 ? sampleStandardDeviation(values) : null, "percent") }
   ];
 }
 
@@ -329,8 +336,9 @@ function decaySummary(rows: DecayPoint[]): DisplayMetric[] {
   ];
 }
 
-function MetricGrid({ items }: { items: DisplayMetric[] }) {
-  return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><div className="text-xs text-muted-foreground">{item.label}</div><div className="numeric mt-2 text-lg font-semibold tracking-tight">{item.value}</div></div>)}</div>;
+function MetricGrid({ columns = 4, items }: { columns?: 4 | 6; items: DisplayMetric[] }) {
+  const gridClassName = columns === 6 ? "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6" : "grid grid-cols-2 gap-3 md:grid-cols-4";
+  return <div className={gridClassName}>{items.map((item) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={item.label}><div className="text-xs text-muted-foreground">{item.label}</div><div className="numeric mt-2 text-lg font-semibold tracking-tight">{item.value}</div></div>)}</div>;
 }
 
 function SummaryTiles({ items }: { items: DisplayMetric[] }) {
@@ -385,21 +393,11 @@ function informationOption(rows: InformationPoint[], theme: string, type: IcType
 }
 
 function rollingMean(values: Array<number | null>, window: number) {
-  let sum = 0;
-  let validCount = 0;
-  return values.map((value, index) => {
-    if (value !== null && Number.isFinite(value)) {
-      sum += value;
-      validCount += 1;
-    }
-    if (index >= window) {
-      const expired = values[index - window];
-      if (expired !== null && Number.isFinite(expired)) {
-        sum -= expired;
-        validCount -= 1;
-      }
-    }
-    return index >= window - 1 && validCount === window ? sum / window : null;
+  return values.map((_, index) => {
+    if (index < window - 1) return null;
+    const sample = values.slice(index - window + 1, index + 1);
+    if (sample.some((value) => value === null || !Number.isFinite(value))) return null;
+    return statisticsMean(sample as number[]);
   });
 }
 
@@ -487,22 +485,6 @@ function halfLife(rows: DecayPoint[], field: "icMean" | "rankIcMean", peakRow: D
   return found?.label ?? "未触及";
 }
 
-function mean(values: number[]) {
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-}
-
-function sampleStd(values: number[]) {
-  if (values.length < 2) return null;
-  const average = mean(values) ?? 0;
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1));
-}
-
-function populationStd(values: number[]) {
-  if (!values.length) return 0;
-  const average = mean(values) ?? 0;
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length);
-}
-
 function maxDrawdown(rows: LongShortPoint[]) {
   let peakValue = 1;
   let maximum = 0;
@@ -514,8 +496,13 @@ function maxDrawdown(rows: LongShortPoint[]) {
   return rows.length ? maximum : null;
 }
 
-function ratio(values: number[], predicate: (value: number) => boolean) {
-  return values.length ? values.filter(predicate).length / values.length : null;
+function booleanMean(values: number[], predicate: (value: number) => boolean) {
+  return values.length ? statisticsMean(values.map((value) => predicate(value) ? 1 : 0)) : null;
+}
+
+function formatPValue(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return value < 0.0001 ? "< 0.0001" : value.toFixed(4);
 }
 
 function format(value: number | null | undefined, type: "number" | "percent" = "number") {

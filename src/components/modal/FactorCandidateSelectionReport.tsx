@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, Loader2, MinusCircle, ShieldAlert, XCircle } from "lucide-react";
+import {
+  mean as statisticsMean,
+  sampleCorrelation,
+  sampleRankCorrelation,
+  sampleStandardDeviation
+} from "simple-statistics";
 
 import { factorApi } from "@/assets/lib/factor";
 import { FactorAnalytics, type GroupStatistic, type InformationPoint, type LongShortPoint } from "@/assets/lib/factorAnalysis";
@@ -339,22 +345,13 @@ function alignedCorrelation(left: Map<string, number>, right: Map<string, number
 }
 
 function pearson(pairs: Array<[number, number]>) {
-  const leftMean = pairs.reduce((sum, pair) => sum + pair[0], 0) / pairs.length;
-  const rightMean = pairs.reduce((sum, pair) => sum + pair[1], 0) / pairs.length;
-  let covariance = 0;
-  let leftVariance = 0;
-  let rightVariance = 0;
-  for (const [left, right] of pairs) { const leftDelta = left - leftMean; const rightDelta = right - rightMean; covariance += leftDelta * rightDelta; leftVariance += leftDelta ** 2; rightVariance += rightDelta ** 2; }
-  const denominator = Math.sqrt(leftVariance * rightVariance);
-  return denominator > 0 ? covariance / denominator : null;
+  const result = sampleCorrelation(pairs.map(([left]) => left), pairs.map(([, right]) => right));
+  return Number.isFinite(result) ? result : null;
 }
 
 function spearman(pairs: Array<[number, number]>) {
-  return pearson(pairs.map((pair, index) => [pair[0], rankValues(pairs.map((item) => item[1]))[index]]));
-}
-
-function rankValues(values: number[]) {
-  return values.map((value, index) => ({ index, value })).sort((left, right) => left.value - right.value).reduce<number[]>((ranks, item, rank) => { ranks[item.index] = rank + 1; return ranks; }, []);
+  const result = sampleRankCorrelation(pairs.map(([left]) => left), pairs.map(([, right]) => right));
+  return Number.isFinite(result) ? result : null;
 }
 
 function maxDrawdown(rows: LongShortPoint[]) {
@@ -375,9 +372,8 @@ function annualizedReturn(cumulative: number | null, observations: number, annua
   return cumulative === null || observations <= 0 || cumulative <= -1 ? null : Math.pow(1 + cumulative, annualization / observations) - 1;
 }
 
-function mean(values: number[]) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null; }
-function informationRatio(values: number[]) { const average = mean(values); const deviation = sampleStd(values); return average !== null && deviation !== null && deviation > 0 ? average / deviation : null; }
-function sampleStd(values: number[]) { if (values.length < 2) return null; const average = mean(values) ?? 0; return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1)); }
+function mean(values: number[]) { return values.length ? statisticsMean(values) : null; }
+function informationRatio(values: number[]) { const average = mean(values); const deviation = values.length > 1 ? sampleStandardDeviation(values) : null; return average !== null && deviation !== null && deviation > 0 ? average / deviation : null; }
 function positive(value: number | null) { return value !== null && value > 0; }
 function greaterOrEqual(left: number | null, right: number | null) { return left !== null && right !== null && left >= right; }
 function greater(left: number | null, right: number | null) { return left !== null && right !== null && left > right; }

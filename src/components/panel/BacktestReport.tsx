@@ -1,5 +1,6 @@
 import { CircleAlert, Loader2 } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { max as statisticsMax, mean as statisticsMean, sum } from "simple-statistics";
 
 import { backtestApi } from "@/assets/lib/backtest";
 import { BacktestAnalytics, backtestTableTimeColumns, type BacktestTableName, type BacktestTablePage, type PortfolioPoint } from "@/assets/lib/backtestAnalysis";
@@ -148,8 +149,8 @@ function ReportOverview({ chartRanges, portfolio, report, theme }: { chartRanges
   ] satisfies Metric[];
   const periods = [...report.drawdownPeriods].sort((left, right) => left.maxDrawdownPercent - right.maxDrawdownPercent);
   const drawdownMetrics = [
-    { label: "平均回撤", value: periods.length ? average(periods.map((row) => row.maxDrawdownPercent)) / 100 : null, format: "percent" },
-    { label: "平均回撤持续天数", value: periods.length ? average(periods.map((row) => row.days)) : null, format: "integer" },
+    { label: "平均回撤", value: periods.length ? statisticsMean(periods.map((row) => row.maxDrawdownPercent)) / 100 : null, format: "percent" },
+    { label: "平均回撤持续天数", value: periods.length ? statisticsMean(periods.map((row) => row.days)) : null, format: "integer" },
     { label: "恢复因子", value: report.recoveryFactor },
     { label: "收益/痛苦比率", value: report.gainToPainRatio }
   ] satisfies Metric[];
@@ -209,7 +210,7 @@ function UnavailableBacktestOutput({ name }: { name: BacktestTableName }) {
 }
 
 function PerformanceTable({ report }: { report: QuantStatsReport }) {
-  const longestDrawdown = report.drawdownPeriods.length ? Math.max(...report.drawdownPeriods.map((row) => row.days)) : null;
+  const longestDrawdown = report.drawdownPeriods.length ? statisticsMax(report.drawdownPeriods.map((row) => row.days)) : null;
   const rows = [
     { label: "累计收益率", value: report.totalReturn, format: "percent" },
     { label: "年化收益率", value: report.cagr, format: "percent" },
@@ -254,13 +255,13 @@ function createReport(rows: PortfolioPoint[], periods: number, riskFreeRate: num
 function feeMetrics(rows: PortfolioPoint[]): Metric[] {
   const fees = rows.map((row) => row.dailyFee).filter((value): value is number => value !== null && value >= 0);
   const paid = fees.filter((value) => value > 0);
-  const total = fees.reduce((sum, value) => sum + value, 0);
+  const total = sum(fees);
   const first = rows[0];
   const initialCapital = first?.totalEquity !== null && first?.netValue !== null && first.netValue > 0 ? first.totalEquity / first.netValue : null;
   return [
     { label: "累计手续费", value: fees.length ? total : null, format: "currency" },
-    { label: "平均交易日手续费", value: paid.length ? total / paid.length : fees.length ? 0 : null, format: "currency" },
-    { label: "最大单日手续费", value: fees.length ? Math.max(...fees) : null, format: "currency" },
+    { label: "平均交易日手续费", value: paid.length ? statisticsMean(paid) : fees.length ? 0 : null, format: "currency" },
+    { label: "最大单日手续费", value: fees.length ? statisticsMax(fees) : null, format: "currency" },
     { label: "手续费占初始资金", value: initialCapital ? total / initialCapital : null, format: "percent" }
   ];
 }
@@ -280,8 +281,6 @@ function backtestOutputState(name: BacktestTableName | null, availableOutputs: R
   return "missing";
 }
 function createTableRequestKey(workflowInstanceId: number, name: BacktestTableName | null, startDate: string, endDate: string, page: number, pageSize: number, query: ParquetTableQuery) { return name ? `${workflowInstanceId}:${name}:${startDate}:${endDate}:${page}:${pageSize}:${JSON.stringify(query)}` : ""; }
-function average(values: number[]) { return values.reduce((sum, value) => sum + value, 0) / values.length; }
-
 function portfolioOption(rows: PortfolioPoint[], report: QuantStatsReport, theme: string, ranges?: BacktestChartRanges) { const benchmark = benchmarkValues(rows); const series: Record<string, unknown>[] = [{ name: "策略净值", type: "line", data: report.netValue.map((row) => row.value), showSymbol: false, lineStyle: { width: 2.2 }, color: "#2563eb" }]; if (benchmark.some((value) => value !== null)) series.push({ name: "基准净值", type: "line", data: benchmark, showSymbol: false, lineStyle: { width: 1.8 }, color: "#d97706" }); series.push({ name: "总资产", type: "line", yAxisIndex: 1, data: rows.map((row) => row.totalEquity), showSymbol: false, lineStyle: { width: 1.5 }, color: "#059669" }); return baseOption(theme, rows.map((row) => row.time), series, ranges?.netValue, ranges?.totalEquity, true, "decimal", "integer"); }
 function benchmarkValues(rows: PortfolioPoint[]) { const base = rows.find((row) => row.benchmarkNetValue !== null && row.benchmarkNetValue > 0)?.benchmarkNetValue; return rows.map((row) => base && row.benchmarkNetValue !== null ? row.benchmarkNetValue / base : null); }
 function drawdownOption(report: QuantStatsReport, theme: string, range?: ChartRange) { return baseOption(theme, report.drawdown.map((row) => row.time), [{ name: "回撤", type: "line", data: report.drawdown.map((row) => row.value), showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: 0.12 }, color: "#dc2626" }], range, undefined, false, "percent"); }

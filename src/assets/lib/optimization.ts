@@ -1,3 +1,5 @@
+import { mean as statisticsMean, sampleStandardDeviation } from "simple-statistics";
+
 import { BrowserDuckDb, duckDbDateValue } from "@/assets/lib/duckdb";
 import type { OptimizationAlgorithm } from "@/types/backtest";
 
@@ -223,7 +225,7 @@ function methodMetrics(runs: OptimizationRunMetric[]): OptimizationMethodMetric[
       sharpeDeviation: deviation(sharpes),
       meanVolatility: mean(finiteValues(methodRuns.map((run) => run.volatility))),
       meanMaxDrawdown: mean(finiteValues(methodRuns.map((run) => run.maxDrawdown))),
-      positiveRate: methodRuns.length ? methodRuns.filter((run) => (run.totalReturn ?? 0) > 0).length / methodRuns.length : null,
+      positiveRate: methodRuns.length ? statisticsMean(methodRuns.map((run) => (run.totalReturn ?? 0) > 0 ? 1 : 0)) : null,
       repetitions: methodRuns.length
     };
   }).sort((left, right) => (right.meanSharpe ?? Number.NEGATIVE_INFINITY) - (left.meanSharpe ?? Number.NEGATIVE_INFINITY));
@@ -259,8 +261,8 @@ function jsonParameters(value: unknown): Record<string, number> {
 }
 
 function finiteValues(values: Array<number | null>) { return values.filter((value): value is number => value !== null && Number.isFinite(value)); }
-function mean(values: number[]) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null; }
-function deviation(values: number[]) { const average = mean(values); return average === null || values.length < 2 ? null : Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1)); }
+function mean(values: number[]) { return values.length ? statisticsMean(values) : null; }
+function deviation(values: number[]) { return values.length > 1 ? sampleStandardDeviation(values) : null; }
 function numberValue(value: unknown) { const number = Number(value); return value === null || value === undefined || !Number.isFinite(number) ? null : number; }
 function integerValue(value: unknown) { return Math.trunc(numberValue(value) ?? 0); }
 function literal(value: string) { return `'${value.replace(/'/g, "''")}'`; }

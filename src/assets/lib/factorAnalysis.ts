@@ -1,3 +1,5 @@
+import studentTCdf from "@stdlib/stats-base-dists-t-cdf";
+
 import { BrowserDuckDb, duckDbDateValue } from "@/assets/lib/duckdb";
 import type { FactorAnalysisParameters, FactorMetricSummary, FactorMetrics } from "@/types/factor";
 
@@ -136,7 +138,11 @@ export class FactorAnalytics {
       const deviation = numberValue(row.std);
       const standardError = deviation === null || observations < 3 ? null : deviation / Math.sqrt(observations);
       const statistic = mean === null || standardError === null || standardError <= 0 ? null : Math.abs(mean / standardError);
-      return { group: String(row.group_name), mean, pValue: statistic === null ? null : 2 * (1 - normalCdf(statistic)) };
+      return {
+        group: String(row.group_name),
+        mean,
+        pValue: statistic === null ? null : 2 * (1 - studentTCdf(statistic, observations - 1))
+      };
     });
   }
 
@@ -274,17 +280,4 @@ function integerValue(value: unknown) {
 function dateFilter(range?: FactorDateRange) {
   if (!range || !/^\d{4}-\d{2}-\d{2}$/.test(range.start) || !/^\d{4}-\d{2}-\d{2}$/.test(range.end)) return "";
   return `WHERE time BETWEEN DATE ${literal(range.start)} AND DATE ${literal(range.end)}`;
-}
-
-function normalCdf(value: number) {
-  return 0.5 * (1 + erf(value / Math.SQRT2));
-}
-
-function erf(value: number) {
-  const sign = value < 0 ? -1 : 1;
-  const x = Math.abs(value);
-  const t = 1 / (1 + 0.3275911 * x);
-  const polynomial = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
-  const y = 1 - polynomial * Math.exp(-x * x);
-  return sign * y;
 }
