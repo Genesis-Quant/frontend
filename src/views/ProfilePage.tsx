@@ -10,6 +10,7 @@ import IconShieldCheck from "~icons/lucide/shield-check";
 
 import { formatDateTime } from "@/assets/lib/dateTime";
 import { submitFeedback } from "@/assets/lib/feedback";
+import { McpConfigurationPanel } from "@/components/panel/McpConfigurationPanel";
 import { MotionPage } from "@/layout/MotionPage";
 import { useAppStore } from "@/store";
 import { Button } from "@/ui/button";
@@ -134,6 +135,10 @@ export default function ProfilePage() {
               </form>
             </CardContent>
           </Card>
+        </div>
+
+        <div className="mt-6">
+          <McpConfigurationPanel />
         </div>
       </section>
     </MotionPage>

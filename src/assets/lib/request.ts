@@ -44,6 +44,7 @@ export const client = {
   getBinary: (url: string) => request<ArrayBuffer>({ method: "GET", url, responseType: "arraybuffer", timeout: 120000 }),
   getText: (url: string, config: AxiosRequestConfig = {}) => request<string>({ ...config, method: "GET", responseType: "text", timeout: 120000, url }),
   post: <T>(url: string, data: unknown, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "POST", url, data }),
+  put: <T>(url: string, data: unknown, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "PUT", url, data }),
   patch: <T>(url: string, data: unknown, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "PATCH", url, data }),
   delete: <T>(url: string, config: AxiosRequestConfig = {}) => request<T>({ ...config, method: "DELETE", url })
 };

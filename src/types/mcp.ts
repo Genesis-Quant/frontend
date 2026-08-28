@@ -21,3 +21,17 @@ export type McpDocument = McpDocumentSummary & {
   section: string;
   content: string;
 };
+
+export type McpConfiguration = {
+  custom_prompt: string;
+  allow_delete_query_projects: boolean;
+  allow_delete_factor_projects: boolean;
+  allow_delete_backtest_projects: boolean;
+  allow_delete_factor_versions: boolean;
+  allow_delete_backtest_versions: boolean;
+  allow_delete_fee_analyses: boolean;
+  allow_delete_sensitivity_analyses: boolean;
+  allow_delete_optimizations: boolean;
+};
+
+export type McpDeletePermission = Exclude<keyof McpConfiguration, "custom_prompt">;
