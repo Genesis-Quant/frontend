@@ -431,7 +431,7 @@ def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
         riskWeights = solveRiskParity(covariance)
         for (index in 0..(rowCount - 1)) {
             riskIndex = find(riskCodes, message.symbol[index])
-            if (riskIndex < riskCodes.size()) {
+            if (riskIndex >= 0 && riskIndex < riskCodes.size()) {
                 weights[index] = riskWeights[riskIndex]
             }
         }

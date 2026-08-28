@@ -33,14 +33,15 @@ export type FactorAnalysisParameters = {
   return_columns: string[];
   return_specs: Record<string, FactorReturnSpec>;
   n_groups: number;
+  n_select: number;
   preprocess: boolean;
   market_value_column: string;
 };
 
 type HistoricalFactorAnalysisParameters = Omit<
   FactorAnalysisParameters,
-  "return_specs"
-> & { return_specs?: undefined };
+  "n_select" | "return_specs"
+> & { n_select?: number; return_specs?: undefined };
 
 export function isFactorQuery(value: unknown): value is FactorQuery {
   if (!isRecord(value)) return false;
@@ -62,6 +63,9 @@ export function isFactorAnalysisParameters(value: unknown): value is FactorAnaly
     && isReturnSpecs(value.return_specs, value.return_columns)
     && typeof value.n_groups === "number"
     && Number.isFinite(value.n_groups)
+    && typeof value.n_select === "number"
+    && Number.isInteger(value.n_select)
+    && value.n_select >= 1
     && typeof value.preprocess === "boolean"
     && typeof value.market_value_column === "string";
 }
@@ -76,6 +80,7 @@ function isHistoricalFactorAnalysisParameters(
     && isStringArray(value.return_columns)
     && typeof value.n_groups === "number"
     && Number.isFinite(value.n_groups)
+    && (value.n_select === undefined || validSelectionCount(value.n_select))
     && typeof value.preprocess === "boolean"
     && typeof value.market_value_column === "string";
 }
@@ -87,6 +92,8 @@ export function canNormalizeFactorAnalysisParameters(value: unknown): boolean {
       || isStringArray(value.return_columns) && isReturnSpecs(value.return_specs, value.return_columns))
     && typeof value.n_groups === "number"
     && Number.isFinite(value.n_groups)
+    && (value.n_select === undefined
+      || typeof value.n_select === "number" && Number.isInteger(value.n_select) && value.n_select >= 1)
     && typeof value.preprocess === "boolean"
     && typeof value.market_value_column === "string";
 }
@@ -102,6 +109,7 @@ export type FactorAnalysisSettings = {
   priceField: PriceField;
   marketValueField: MarketValueField;
   nGroups: number;
+  nSelect: number;
   maxLags: number;
 };
 
@@ -308,6 +316,7 @@ export const analysisSettings = (parameters: FactorAnalysisParameters): FactorAn
   priceField: returnPriceField(parameters),
   marketValueField: parameters.market_value_column === "total_mv" ? "total_mv" : "circ_mv",
   nGroups: parameters.n_groups,
+  nSelect: parameters.n_select,
   maxLags: Math.max(1, parameters.return_columns.filter((column) => /^ret\d+$/.test(column)).length || 10)
 });
 
@@ -367,6 +376,7 @@ export const applyAnalysisSettings = (parameters: FactorAnalysisParameters, dsl:
     return_columns: returnColumns,
     return_specs: oneDayLogReturnSpecs(returnColumns),
     n_groups: settings.nGroups,
+    n_select: settings.nSelect,
     preprocess: parameters.preprocess,
     market_value_column: settings.marketValueField
   };
@@ -397,10 +407,11 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
     return_columns: [],
     return_specs: {},
     n_groups: 5,
+    n_select: 10,
     preprocess: true,
     market_value_column: "circ_mv"
   };
-  return applyAnalysisSettings(parameters, analysisDsl(parameters), { stockPool: "000300.SH", priceField: "close_hfq", marketValueField: "circ_mv", nGroups: 5, maxLags: 10 });
+  return applyAnalysisSettings(parameters, analysisDsl(parameters), { stockPool: "000300.SH", priceField: "close_hfq", marketValueField: "circ_mv", nGroups: 5, nSelect: 10, maxLags: 10 });
 };
 
 export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParameters {
@@ -412,6 +423,9 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
     const parameters = structuredClone(value);
     return {
       ...parameters,
+      n_select: validSelectionCount(parameters.n_select)
+        ? parameters.n_select
+        : defaults.n_select,
       return_specs: historicalReturnSpecs(
         parameters.return_columns,
         parameters.dataset_query
@@ -449,6 +463,9 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
     return_columns: returnColumns,
     return_specs: returnSpecs,
     n_groups: input.n_groups as number,
+    n_select: validSelectionCount(input.n_select)
+      ? input.n_select
+      : defaults.n_select,
     preprocess: input.preprocess as boolean,
     market_value_column: input.market_value_column as string
   };
@@ -461,6 +478,10 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
     parameters.factor_columns = [...defaults.factor_columns];
   }
   return applyAnalysisSettings(parameters, dsl, analysisSettings(parameters));
+}
+
+function validSelectionCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
 function forwardReturnDerivatives(priceField: PriceField, maxLags: number): Record<string, DerivativeNode> {

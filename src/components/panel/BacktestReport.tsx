@@ -8,6 +8,7 @@ import { chartRange, chartRangeIncluding, formatAxisLabel, thresholdMarkLine } f
 import { quantStatsReport, type DrawdownPeriod, type QuantStatsReport } from "@/assets/lib/quantstats";
 import DateRangeBar from "@/components/bar/DateRangeBar";
 import EChart from "@/components/chart/EChart";
+import SortableCardStack from "@/components/layout/SortableCardStack";
 import ParquetDataTable from "@/components/table/ParquetDataTable";
 import { useAppStore } from "@/store";
 import type { AxisFormat, BacktestChartRanges, ChartRange } from "@/types/chart";
@@ -153,20 +154,29 @@ function ReportOverview({ chartRanges, portfolio, report, theme }: { chartRanges
     { label: "收益/痛苦比率", value: report.gainToPainRatio }
   ] satisfies Metric[];
 
-  return <div className="space-y-4">
-    <ReportCard title="收益分析">
-      <MetricGrid metrics={returnMetrics} />
-      <MetricGrid metrics={feeMetrics(portfolio)} />
-      <ChartCard title="策略、基准净值与总资产"><EChart height={360} option={portfolioOption(portfolio, report, theme, chartRanges)} /></ChartCard>
-      <ChartCard title="滚动年化 Sharpe"><EChart height={340} option={rollingSharpeOption(report, theme, chartRanges?.rollingSharpe)} /></ChartCard>
-      <PerformanceTable report={report} />
-    </ReportCard>
-    <ReportCard title="回撤分析">
-      <MetricGrid metrics={drawdownMetrics} />
-      <ChartCard title="回撤曲线"><EChart height={340} option={drawdownOption(report, theme, chartRanges?.drawdown)} /></ChartCard>
-      <DrawdownTable rows={periods.slice(0, 5)} />
-    </ReportCard>
-  </div>;
+  return <SortableCardStack
+    storageKey="arena.backtest.overview-card-order"
+    items={[
+      {
+        id: "returns",
+        content: <ReportCard title="收益分析">
+          <MetricGrid metrics={returnMetrics} />
+          <MetricGrid metrics={feeMetrics(portfolio)} />
+          <ChartCard title="策略、基准净值与总资产"><EChart height={360} option={portfolioOption(portfolio, report, theme, chartRanges)} /></ChartCard>
+          <ChartCard title="滚动年化 Sharpe"><EChart height={340} option={rollingSharpeOption(report, theme, chartRanges?.rollingSharpe)} /></ChartCard>
+          <PerformanceTable report={report} />
+        </ReportCard>
+      },
+      {
+        id: "drawdown",
+        content: <ReportCard title="回撤分析">
+          <MetricGrid metrics={drawdownMetrics} />
+          <ChartCard title="回撤曲线"><EChart height={340} option={drawdownOption(report, theme, chartRanges?.drawdown)} /></ChartCard>
+          <DrawdownTable rows={periods.slice(0, 5)} />
+        </ReportCard>
+      }
+    ]}
+  />;
 }
 
 function renderOverview({ chartRanges, error, loading, portfolio, report, theme }: { chartRanges?: BacktestChartRanges; error: string; loading: boolean; portfolio: PortfolioPoint[]; report: QuantStatsReport | null; theme: string }): ReactNode {
@@ -176,7 +186,7 @@ function renderOverview({ chartRanges, error, loading, portfolio, report, theme 
   return <ReportOverview chartRanges={chartRanges} portfolio={portfolio} report={report} theme={theme} />;
 }
 
-function ReportCard({ children, title }: { children: ReactNode; title: string }) { return <Card className="rounded-md py-5 shadow-sm"><CardHeader className="px-5 pb-2"><CardTitle className="text-base font-semibold">{title}</CardTitle></CardHeader><CardContent className="space-y-4 px-5">{children}</CardContent></Card>; }
+function ReportCard({ children, title }: { children: ReactNode; title: string }) { return <Card className="rounded-md py-5 shadow-sm"><CardHeader className="px-5 pb-2 pr-14"><CardTitle className="text-base font-semibold">{title}</CardTitle></CardHeader><CardContent className="space-y-4 px-5">{children}</CardContent></Card>; }
 function ChartCard({ children, title }: { children: ReactNode; title: ReactNode }) { return <Card className="rounded-md py-4 shadow-sm"><CardHeader className="px-4 pb-2"><CardTitle className="text-sm font-medium">{title}</CardTitle></CardHeader><CardContent className="px-4">{children}</CardContent></Card>; }
 function MetricGrid({ metrics }: { metrics: Metric[] }) { return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{metrics.map((metric) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={metric.label}><div className="text-xs text-muted-foreground">{metric.label}</div><p className="mt-2 text-lg font-semibold tabular-nums tracking-tight">{formatMetric(metric.value, metric.format)}</p></div>)}</div>; }
 function ReportLoading() { return <div className="grid min-h-80 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><p className="mt-3 text-sm text-muted-foreground">DuckDB 正在读取回测结果...</p></div></div>; }

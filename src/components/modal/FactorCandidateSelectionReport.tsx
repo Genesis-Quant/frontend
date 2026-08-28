@@ -284,7 +284,7 @@ function seriesMap(rows: InformationPoint[], key: "ic" | "rankIc") {
 }
 
 function monotonicity(groups: GroupStatistic[]) {
-  const values = groups.map((group) => ({ index: Number(group.group.replace(/[^0-9]/g, "")), mean: group.mean })).filter((item): item is { index: number; mean: number } => Number.isFinite(item.index) && item.mean !== null).sort((left, right) => left.index - right.index);
+  const values = groups.filter((group) => group.group.startsWith("Group ")).map((group) => ({ index: Number(group.group.replace(/[^0-9]/g, "")), mean: group.mean })).filter((item): item is { index: number; mean: number } => Number.isFinite(item.index) && item.mean !== null).sort((left, right) => left.index - right.index);
   return values.length < 3 ? null : spearman(values.map((item) => [item.index, item.mean]));
 }
 

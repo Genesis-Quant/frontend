@@ -192,7 +192,7 @@ function normalizeCompareVersion(kind: "factor" | "backtest", version: CompareVe
 function factorSummary(parameters: FactorAnalysisParameters): string[][] {
   if (!parameters.dataset_query || !Array.isArray(parameters.factor_columns) || !Array.isArray(parameters.return_columns)) return [["状态", "尚未执行"]];
   const pool = stockPoolLabel(parameters);
-  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["股票池", pool], ["回溯周期", parameters.dataset_query.lookback], ["分组数量", String(parameters.n_groups)], ["因子", parameters.factor_columns.join(", ") || "—"], ["收益列", parameters.return_columns.join(", ") || "—"]];
+  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["股票池", pool], ["回溯周期", parameters.dataset_query.lookback], ["分组数量", String(parameters.n_groups)], ["极端股票数", String(parameters.n_select)], ["因子", parameters.factor_columns.join(", ") || "—"], ["收益列", parameters.return_columns.join(", ") || "—"]];
 }
 
 function backtestSummary(parameters: BacktestParameters): string[][] {

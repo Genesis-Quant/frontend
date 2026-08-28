@@ -16,6 +16,7 @@ import {
 } from "@/assets/lib/factorAnalysis";
 import DateRangeBar from "@/components/bar/DateRangeBar";
 import EChart from "@/components/chart/EChart";
+import SortableCardStack from "@/components/layout/SortableCardStack";
 import { useAppStore } from "@/store";
 import type { AxisFormat, ChartRange, FactorChartRanges } from "@/types/chart";
 import type { FactorAnalysisParameters, FactorMetrics } from "@/types/factor";
@@ -23,6 +24,8 @@ import { Button } from "@/ui/button";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
 type DisplayMetric = { label: string; value: string };
+
+const IC_MOVING_AVERAGE_WINDOW = 22;
 
 type FactorAnalysisReportProps = {
   chartRanges?: FactorChartRanges;
@@ -109,7 +112,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       if (analytics.current === session) analytics.current = null;
       session?.close().catch(() => undefined);
     };
-  }, [factorColumnsKey, parameters.n_groups, returnColumnsKey, returnSpecsKey, workflowInstanceId]);
+  }, [factorColumnsKey, parameters.n_groups, parameters.n_select, returnColumnsKey, returnSpecsKey, workflowInstanceId]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -171,7 +174,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); })
       .finally(() => { if (!cancelled) setGroupLoading(false); });
     return () => { cancelled = true; };
-  }, [endDate, factor, groupReturnColumn, metrics, parameters.n_groups, rangeFactor, startDate]);
+  }, [endDate, factor, groupReturnColumn, metrics, parameters.n_groups, parameters.n_select, rangeFactor, startDate]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -216,43 +219,57 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       onStartDate={(value) => setStartDate(value > endDate ? endDate : value)}
     />
 
-    <ReportCard title="IC 分析">
-      <CardToolbar end={<Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} />}>
-        <ReturnSelector value={icReturnColumn} options={parameters.return_columns} onChange={setIcReturnColumn} />
-      </CardToolbar>
-      <MetricGrid items={informationMetrics(information, icType)} />
-      <ChartPanel title={`${icType} 时序与累计`}>
-        <SeriesContent loading={informationLoading} count={information.length} height={330}>{information.length >= 8 && <EChart option={informationOption(information, theme, icType, chartRanges?.information)} height={330} />}</SeriesContent>
-      </ChartPanel>
-    </ReportCard>
-
-    <ReportCard title="收益分析">
-      <CardToolbar><ReturnSelector value={returnColumn} options={parameters.return_columns} onChange={setReturnColumn} /></CardToolbar>
-      <OverlappingReturnNotice periods={returnPeriods} />
-      <MetricGrid items={returnMetrics(longShort, returnPeriods)} />
-      <ChartPanel title="多空收益与累计收益">
-        <SeriesContent loading={returnLoading} count={longShort.length} height={350}>{longShort.length >= 8 && <EChart option={longShortOption(longShort, theme, chartRanges?.longShort)} height={350} />}</SeriesContent>
-      </ChartPanel>
-    </ReportCard>
-
-    <ReportCard title="分组分析">
-      <CardToolbar><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
-      <OverlappingReturnNotice periods={groupReturnPeriods} />
-      <SummaryTiles items={groupStatistics.map((item) => ({ label: item.group, value: `${format(item.mean, "percent")} / p=${format(item.pValue)}` }))} />
-      <ChartPanel title="分组平均收益与显著性 p 值">
-        <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
-      </ChartPanel>
-      <ChartPanel title="各分组净值曲线">
-        <SeriesContent loading={groupLoading} count={groups.length} height={350}>{groups.length >= 8 && <EChart option={groupOption(groups, theme, chartRanges?.groups)} height={350} />}</SeriesContent>
-      </ChartPanel>
-    </ReportCard>
-
-    <ReportCard title="衰减分析">
-      <SummaryTiles items={decaySummary(decay)} />
-      <ChartPanel title="IC 均值衰减">
-        <SeriesContent loading={decayLoading} count={decay.length} height={330}>{decay.length > 0 && <EChart option={decayOption(decay, theme, chartRanges?.decay)} height={330} />}</SeriesContent>
-      </ChartPanel>
-    </ReportCard>
+    <SortableCardStack
+      storageKey="arena.factor-analysis.overview-card-order"
+      items={[
+        {
+          id: "information",
+          content: <ReportCard title="IC 分析">
+            <CardToolbar end={<Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} />}>
+              <ReturnSelector value={icReturnColumn} options={parameters.return_columns} onChange={setIcReturnColumn} />
+            </CardToolbar>
+            <MetricGrid items={informationMetrics(information, icType)} />
+            <ChartPanel title={`${icType} 时序、月度移动平均与累计`}>
+              <SeriesContent loading={informationLoading} count={information.length} height={330}>{information.length >= 8 && <EChart option={informationOption(information, theme, icType, chartRanges?.information)} height={330} />}</SeriesContent>
+            </ChartPanel>
+          </ReportCard>
+        },
+        {
+          id: "returns",
+          content: <ReportCard title="收益分析">
+            <CardToolbar><ReturnSelector value={returnColumn} options={parameters.return_columns} onChange={setReturnColumn} /></CardToolbar>
+            <OverlappingReturnNotice periods={returnPeriods} />
+            <MetricGrid items={returnMetrics(longShort, returnPeriods)} />
+            <ChartPanel title="多空收益与累计收益">
+              <SeriesContent loading={returnLoading} count={longShort.length} height={350}>{longShort.length >= 8 && <EChart option={longShortOption(longShort, theme, chartRanges?.longShort)} height={350} />}</SeriesContent>
+            </ChartPanel>
+          </ReportCard>
+        },
+        {
+          id: "groups",
+          content: <ReportCard title="分组分析">
+            <CardToolbar><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
+            <OverlappingReturnNotice periods={groupReturnPeriods} />
+            <SummaryTiles items={groupStatistics.map((item) => ({ label: item.group, value: `${format(item.mean, "percent")} / p=${format(item.pValue)}` }))} />
+            <ChartPanel title="分组平均收益与显著性 p 值">
+              <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
+            </ChartPanel>
+            <ChartPanel title="各分组净值曲线">
+              <SeriesContent loading={groupLoading} count={groups.length} height={350}>{groups.length >= 8 && <EChart option={groupOption(groups, theme, chartRanges?.groups)} height={350} />}</SeriesContent>
+            </ChartPanel>
+          </ReportCard>
+        },
+        {
+          id: "decay",
+          content: <ReportCard title="衰减分析">
+            <SummaryTiles items={decaySummary(decay)} />
+            <ChartPanel title="IC 均值衰减">
+              <SeriesContent loading={decayLoading} count={decay.length} height={330}>{decay.length > 0 && <EChart option={decayOption(decay, theme, chartRanges?.decay)} height={330} />}</SeriesContent>
+            </ChartPanel>
+          </ReportCard>
+        }
+      ]}
+    />
 
     {error && <div className="rounded-md border border-destructive/30 bg-destructive/8 px-4 py-3 text-xs text-destructive">{error}</div>}
   </section>;
@@ -319,7 +336,7 @@ function SummaryTiles({ items }: { items: DisplayMetric[] }) {
 }
 
 function ReportCard({ children, title }: { children: React.ReactNode; title: string }) {
-  return <motion.div animate={{ opacity: 1 }} initial={{ opacity: 0 }} transition={{ duration: 0.18, ease: "easeOut" }}><div className="rounded-md border bg-card py-5 shadow-sm"><h3 className="px-5 pb-2 text-base font-semibold">{title}</h3><div className="space-y-4 px-5">{children}</div></div></motion.div>;
+  return <motion.div animate={{ opacity: 1 }} initial={{ opacity: 0 }} transition={{ duration: 0.18, ease: "easeOut" }}><div className="rounded-md border bg-card py-5 shadow-sm"><h3 className="px-5 pb-2 pr-14 text-base font-semibold">{title}</h3><div className="space-y-4 px-5">{children}</div></div></motion.div>;
 }
 
 function ChartPanel({ children, title }: { children: React.ReactNode; title: string }) {
@@ -354,13 +371,34 @@ function ResultState({ detail, icon, title }: { detail: string; icon: React.Reac
 
 function informationOption(rows: InformationPoint[], theme: string, type: IcType, ranges?: DualChartRanges) {
   const values = rows.map((row) => type === "RankIC" ? row.rankIc : row.ic);
+  const movingAverage = rollingMean(values, IC_MOVING_AVERAGE_WINDOW);
   const cumulative = rows.map((row) => type === "RankIC" ? row.rankIcCumulative : row.icCumulative);
   const option: Record<string, unknown> = baseOption(theme, rows.map((row) => row.time), [
-    { name: type, type: "line", data: values, showSymbol: false, lineStyle: { width: 1.2, opacity: 0.55 }, color: type === "RankIC" ? "#059669" : "#2563eb" },
+    { name: type, type: "line", data: values, showSymbol: false, lineStyle: { width: 0.8, opacity: 0.7 }, color: "#4682b4" },
+    { name: "1 个月移动平均（22 期）", type: "line", data: movingAverage, showSymbol: false, lineStyle: { width: 2, opacity: 0.8 }, color: "#228b22", z: 3 },
     { name: `${type} 累计`, type: "line", yAxisIndex: 1, data: cumulative, showSymbol: false, lineStyle: { width: 2.2 }, color: "#d97706" }
   ], ranges?.primary);
   option.yAxis = [axis(theme, true, ranges?.primary), axis(theme, false, ranges?.secondary)];
   return option;
+}
+
+function rollingMean(values: Array<number | null>, window: number) {
+  let sum = 0;
+  let validCount = 0;
+  return values.map((value, index) => {
+    if (value !== null && Number.isFinite(value)) {
+      sum += value;
+      validCount += 1;
+    }
+    if (index >= window) {
+      const expired = values[index - window];
+      if (expired !== null && Number.isFinite(expired)) {
+        sum -= expired;
+        validCount -= 1;
+      }
+    }
+    return index >= window - 1 && validCount === window ? sum / window : null;
+  });
 }
 
 function longShortOption(rows: LongShortPoint[], theme: string, ranges?: DualChartRanges) {
