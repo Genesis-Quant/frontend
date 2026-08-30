@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { NumberField, SelectField, SwitchField } from "@/components/field/FormFields";
 import BacktestCodeModal, { type BacktestCodePanel } from "@/components/modal/BacktestCodeModal";
 import { Button } from "@/ui/button";
-import { defaultBacktestCodesQuery, type BacktestCatalog, type BacktestParameters, type StrategyParameters } from "@/types/backtest";
+import { setBacktestStockPoolType, type BacktestCatalog, type BacktestParameters, type StrategyParameters } from "@/types/backtest";
 import { stockPools } from "@/types/factor";
 
 export default function BacktestEditor({ catalog, onChange, onValidityChange, parameters, projectId, readOnly = false }: { catalog: BacktestCatalog; onChange: (parameters: BacktestParameters) => void; onValidityChange: (valid: boolean) => void; parameters: BacktestParameters; projectId: number; readOnly?: boolean }) {
@@ -34,7 +34,7 @@ export default function BacktestEditor({ catalog, onChange, onValidityChange, pa
       <NumberField label="手续费率" min={0} step={0.0001} value={numberConfig(parameters, "commission", 0)} disabled={readOnly} onChange={(commission) => onChange(updateConfig(parameters, "commission", commission))} />
       <NumberField label="印花税率" min={0} step={0.0001} value={numberConfig(parameters, "tax", 0)} disabled={readOnly} onChange={(tax) => onChange(updateConfig(parameters, "tax", tax))} />
       <SwitchField checked={booleanConfig(parameters, "enableMinimumPerTransactionFee", true)} checkedText="5元" disabled={readOnly} label="最低手续费" uncheckedText="无" onChange={(enabled) => onChange(updateConfig(parameters, "enableMinimumPerTransactionFee", enabled))} />
-      <SwitchField checked={parameters.codes_query !== null} checkedText="动态" disabled={readOnly} label="股票池类型" uncheckedText="静态" onChange={(dynamic) => onChange({ ...parameters, codes_query: dynamic ? defaultBacktestCodesQuery(parameters.dataset_query) : null })} />
+      <SwitchField checked={parameters.codes_query !== null} checkedText="动态" disabled={readOnly} label="股票池类型" uncheckedText="静态" onChange={(dynamic) => onChange(setBacktestStockPoolType(parameters, dynamic))} />
       <SelectField className="col-span-2 space-y-2" label="基准指数" value={selectedBenchmark} options={benchmarkOptions} disabled={readOnly} onChange={(benchmark) => onChange(benchmark === "none" ? removeConfig(parameters, "benchmark") : updateConfig(parameters, "benchmark", benchmark))} />
       <StrategyParameterField parameters={parameters.params} readOnly={readOnly} onChange={(params) => onChange({ ...parameters, params })} onValidityChange={setStrategyParametersValid} />
     </div>

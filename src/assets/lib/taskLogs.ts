@@ -61,9 +61,17 @@ export function parseTaskLog(message: string): ParsedTaskLogLine[] {
   });
 }
 
-export function appendTaskLog(current: string, next: string) {
+export function appendTaskLog(current: string, next: string, preservePageBoundary = false) {
+  if (preservePageBoundary) {
+    if (!current || !next || current.endsWith("\n")) return current + next;
+    return `${current}\n${next}`;
+  }
   if (!current || !next || current.endsWith("\n") || next.startsWith("\n")) return current + next;
   return `${current}\n${next}`;
+}
+
+export function shouldResetTerminalTaskLog(scope: "full" | "worker", terminal: boolean) {
+  return terminal && scope === "full";
 }
 
 export function groupTaskLogSections(lines: ParsedTaskLogLine[]): TaskLogGroup[] {

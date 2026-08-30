@@ -11,10 +11,12 @@ import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
 import { chartRange, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
+import { isApiRequestCode } from "@/assets/lib/httpError";
 import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
   type DecayPoint,
+  type FactorDiagnosticSummary,
   type GroupPoint,
   type GroupStatistic,
   type InformationPoint,
@@ -30,6 +32,7 @@ import { Button } from "@/ui/button";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
 type DisplayMetric = { label: string; value: string };
+type DiagnosticResult = { requestKey: string; summary: FactorDiagnosticSummary | null };
 
 const IC_MOVING_AVERAGE_WINDOW = 22;
 
@@ -58,6 +61,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [groups, setGroups] = useState<GroupPoint[]>([]);
   const [groupStatistics, setGroupStatistics] = useState<GroupStatistic[]>([]);
   const [decay, setDecay] = useState<DecayPoint[]>([]);
+  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
   const [timeline, setTimeline] = useState<InformationPoint[]>([]);
   const [rangeFactor, setRangeFactor] = useState("");
   const [minimumDate, setMinimumDate] = useState("");
@@ -72,8 +76,13 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [error, setError] = useState("");
   const rangePoints = useMemo(() => timeline.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic })), [timeline]);
   const returnSpecsKey = JSON.stringify(parameters.return_specs);
-  const returnPeriods = parameters.return_specs[returnColumn]?.periods ?? 1;
-  const groupReturnPeriods = parameters.return_specs[groupReturnColumn]?.periods ?? 1;
+  const icReturnSpec = parameters.return_specs[icReturnColumn];
+  const returnSpec = parameters.return_specs[returnColumn];
+  const groupReturnSpec = parameters.return_specs[groupReturnColumn];
+  const returnPeriods = returnPeriodsOf(parameters, returnColumn);
+  const groupReturnPeriods = returnPeriodsOf(parameters, groupReturnColumn);
+  const diagnosticRequestKey = JSON.stringify([workflowInstanceId, factor, groupReturnColumn, startDate, endDate, rangeFactor]);
+  const diagnostics = diagnosticResult?.requestKey === diagnosticRequestKey ? diagnosticResult.summary : null;
 
   useEffect(() => {
     if (!parameters.return_columns.includes(icReturnColumn)) setIcReturnColumn(firstReturnColumn);
@@ -89,13 +98,17 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     setMetrics(null);
     async function loadResults() {
       try {
-        const [informationBuffer, groupBuffer] = await Promise.all([
+        const [informationBuffer, groupBuffer, diagnosticsBuffer] = await Promise.all([
           factorApi.output(workflowInstanceId, "information_coefficient"),
-          factorApi.output(workflowInstanceId, "group_returns")
+          factorApi.output(workflowInstanceId, "group_returns"),
+          factorApi.output(workflowInstanceId, "diagnostics").catch((reason) => {
+            if (isApiRequestCode(reason, "RESULT_NOT_REQUESTED")) return null;
+            throw reason;
+          })
         ]);
         session = await FactorAnalytics.create(
           workflowInstanceId,
-          { information: informationBuffer, groups: groupBuffer },
+          { information: informationBuffer, groups: groupBuffer, diagnostics: diagnosticsBuffer },
           parameters
         );
         if (cancelled) {
@@ -169,7 +182,9 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     let cancelled = false;
     setGroupLoading(true);
     Promise.all([
-      session.groupSeries(factor, groupReturnColumn, parameters.n_groups, { start: startDate, end: endDate }),
+      groupReturnPeriods === 1
+        ? session.groupSeries(factor, groupReturnColumn, parameters.n_groups, { start: startDate, end: endDate })
+        : Promise.resolve([]),
       session.groupStatistics(factor, groupReturnColumn, parameters.n_groups, { start: startDate, end: endDate })
     ])
       .then(([series, statistics]) => {
@@ -180,7 +195,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); })
       .finally(() => { if (!cancelled) setGroupLoading(false); });
     return () => { cancelled = true; };
-  }, [endDate, factor, groupReturnColumn, metrics, parameters.n_groups, parameters.n_select, rangeFactor, startDate]);
+  }, [endDate, factor, groupReturnColumn, groupReturnPeriods, metrics, parameters.n_groups, parameters.n_select, rangeFactor, startDate]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -193,6 +208,17 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       .finally(() => { if (!cancelled) setDecayLoading(false); });
     return () => { cancelled = true; };
   }, [endDate, factor, metrics, rangeFactor, returnColumnsKey, startDate]);
+
+  useEffect(() => {
+    const session = analytics.current;
+    if (!session || !metrics || !factor || !groupReturnColumn || rangeFactor !== factor) return undefined;
+    let cancelled = false;
+    setDiagnosticResult(null);
+    session.diagnosticSummary(factor, groupReturnColumn, { start: startDate, end: endDate })
+      .then((summary) => { if (!cancelled) setDiagnosticResult({ requestKey: diagnosticRequestKey, summary }); })
+      .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); });
+    return () => { cancelled = true; };
+  }, [diagnosticRequestKey, endDate, factor, groupReturnColumn, metrics, rangeFactor, startDate]);
 
   useEffect(() => {
     if (!onChartRanges) return;
@@ -233,7 +259,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
         {
           id: "information",
           content: <ReportCard title="IC 分析">
-            <CardToolbar end={<Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} />}>
+            <CardToolbar end={<div className="flex flex-wrap items-center gap-2"><ReturnContract spec={icReturnSpec} /><Segmented value={icType} options={["RankIC", "IC"]} onChange={(value) => setIcType(value as IcType)} /></div>}>
               <ReturnSelector value={icReturnColumn} options={parameters.return_columns} onChange={setIcReturnColumn} />
             </CardToolbar>
             <MetricGrid columns={6} items={informationMetrics(information, icType)} />
@@ -245,24 +271,27 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
         {
           id: "returns",
           content: <ReportCard title="收益分析">
-            <CardToolbar><ReturnSelector value={returnColumn} options={parameters.return_columns} onChange={setReturnColumn} /></CardToolbar>
+            <CardToolbar end={<ReturnContract spec={returnSpec} />}><ReturnSelector value={returnColumn} options={parameters.return_columns} onChange={setReturnColumn} /></CardToolbar>
             <OverlappingReturnNotice periods={returnPeriods} />
             <MetricGrid items={returnMetrics(longShort, returnPeriods)} />
-            <ChartPanel title="多空收益与累计收益">
-              <SeriesContent loading={returnLoading} count={longShort.length} height={350}>{longShort.length >= 8 && <EChart option={longShortOption(longShort, theme, chartRanges?.longShort)} height={350} />}</SeriesContent>
+            <ChartPanel title={returnPeriods === 1 ? "多空收益与累计收益" : "多空单期收益"}>
+              <SeriesContent loading={returnLoading} count={longShort.length} height={350}>{longShort.length >= 8 && <EChart option={longShortOption(longShort, theme, returnPeriods === 1, chartRanges?.longShort)} height={350} />}</SeriesContent>
             </ChartPanel>
           </ReportCard>
         },
         {
           id: "groups",
           content: <ReportCard title="分组分析">
-            <CardToolbar><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
+            <CardToolbar end={<ReturnContract spec={groupReturnSpec} />}><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
             <OverlappingReturnNotice periods={groupReturnPeriods} />
+            {diagnostics && <FactorDiagnostics summary={diagnostics} nGroups={parameters.n_groups} />}
             <ChartPanel title="分组平均收益与显著性 p 值">
               <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
             </ChartPanel>
             <ChartPanel title="各分组净值曲线">
-              <SeriesContent loading={groupLoading} count={groups.length} height={350}>{groups.length >= 8 && <EChart option={groupOption(groups, theme, chartRanges?.groups)} height={350} />}</SeriesContent>
+              {groupReturnPeriods > 1
+                ? <NonCompoundableChartState periods={groupReturnPeriods} height={350} />
+                : <SeriesContent loading={groupLoading} count={groups.length} height={350}>{groups.length >= 8 && <EChart option={groupOption(groups, theme, chartRanges?.groups)} height={350} />}</SeriesContent>}
             </ChartPanel>
           </ReportCard>
         },
@@ -286,6 +315,41 @@ function OverlappingReturnNotice({ periods }: { periods: number }) {
   if (periods <= 1) return null;
   return <div className="mx-4 mt-3 rounded-md border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-muted-foreground">
     当前收益列覆盖 {periods} 个交易期，相邻观测存在重叠；保留 IC 和单期分组统计，不计算累计净值、年化收益、波动率及 Sharpe。
+  </div>;
+}
+
+function ReturnContract({ spec }: { spec?: { kind: "simple" | "log"; periods: number } }) {
+  if (!spec) return null;
+  const compoundable = spec.periods === 1;
+  return <div className="flex flex-wrap items-center gap-1 text-xs" aria-label="收益口径">
+    <span className="rounded-sm bg-muted px-2 py-1 text-muted-foreground">{spec.kind === "log" ? "对数收益" : "简单收益"}</span>
+    <span className="rounded-sm bg-muted px-2 py-1 text-muted-foreground">{spec.periods} 期</span>
+    <span className={compoundable ? "rounded-sm bg-emerald-500/10 px-2 py-1 text-emerald-600 dark:text-emerald-400" : "rounded-sm bg-amber-500/12 px-2 py-1 text-amber-700 dark:text-amber-300"}>
+      {compoundable ? "可复利" : "重叠 · 不可复利"}
+    </span>
+  </div>;
+}
+
+function FactorDiagnostics({ nGroups, summary }: { nGroups: number; summary: FactorDiagnosticSummary }) {
+  const occupied = summary.minimumOccupiedGroupCount;
+  const degraded = occupied !== null && occupied < nGroups;
+  const items = [
+    ["平均因子覆盖", format(summary.averageFactorCoverage, "percent")],
+    ["平均配对覆盖", format(summary.averagePairedCoverage, "percent")],
+    ["最小配对样本", formatInteger(summary.minimumPairedCount)],
+    ["最少占用分组", occupied === null ? "—" : `${occupied} / ${nGroups}`],
+    ["最小组样本", formatInteger(summary.minimumGroupSize)],
+    ["实际组值范围", summary.groupMinimum === null || summary.groupMaximum === null ? "—" : `${summary.groupMinimum} – ${summary.groupMaximum}`]
+  ];
+  return <div className={degraded ? "rounded-md border border-amber-500/25 bg-amber-500/6 p-3" : "rounded-md border bg-muted/15 p-3"}>
+    <div className="mb-2 flex items-center justify-between gap-3 text-xs"><span className="text-muted-foreground">截面与分组诊断 · {summary.dates} 个交易日</span>{degraded && <span className="text-amber-700 dark:text-amber-300">存在未占满 {nGroups} 组的截面</span>}</div>
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">{items.map(([label, value]) => <div className="rounded-sm bg-background/60 px-2.5 py-2" key={label}><div className="text-[11px] text-muted-foreground">{label}</div><div className="numeric mt-1 text-sm">{value}</div></div>)}</div>
+  </div>;
+}
+
+function NonCompoundableChartState({ height, periods }: { height: number; periods: number }) {
+  return <div className="grid place-items-center rounded-md border border-dashed border-amber-500/25 bg-amber-500/5 px-6 text-center text-xs text-muted-foreground" style={{ height }}>
+    <div><div className="text-sm text-foreground">该收益列覆盖 {periods} 期，不能连续复利</div><div className="mt-2">分组平均单期收益与显著性仍可使用；净值曲线不生成。</div></div>
   </div>;
 }
 
@@ -401,12 +465,15 @@ function rollingMean(values: Array<number | null>, window: number) {
   });
 }
 
-function longShortOption(rows: LongShortPoint[], theme: string, ranges?: DualChartRanges) {
-  const option: Record<string, unknown> = baseOption(theme, rows.map((row) => row.time), [
+function longShortOption(rows: LongShortPoint[], theme: string, compoundable: boolean, ranges?: DualChartRanges) {
+  const series = [
     { name: "多空收益", type: "bar", data: rows.map((row) => row.value), itemStyle: { color: "#2563eb", opacity: 0.55 } },
-    { name: "累计收益", type: "line", yAxisIndex: 1, data: rows.map((row) => row.cumulative), showSymbol: false, lineStyle: { width: 2.2 }, color: "#d97706" }
-  ], ranges?.primary);
-  option.yAxis = [axis(theme, true, ranges?.primary, "percent"), axis(theme, false, ranges?.secondary, "percent")];
+    ...compoundable ? [{ name: "累计收益", type: "line", yAxisIndex: 1, data: rows.map((row) => row.cumulative), showSymbol: false, lineStyle: { width: 2.2 }, color: "#d97706" }] : []
+  ];
+  const option: Record<string, unknown> = baseOption(theme, rows.map((row) => row.time), series, ranges?.primary);
+  option.yAxis = compoundable
+    ? [axis(theme, true, ranges?.primary, "percent"), axis(theme, false, ranges?.secondary, "percent")]
+    : axis(theme, true, ranges?.primary, "percent");
   return option;
 }
 
@@ -508,4 +575,12 @@ function formatPValue(value: number | null) {
 function format(value: number | null | undefined, type: "number" | "percent" = "number") {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return type === "percent" ? `${(value * 100).toFixed(2)}%` : value.toFixed(4);
+}
+
+function formatInteger(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value) ? "—" : Math.trunc(value).toLocaleString("zh-CN");
+}
+
+function returnPeriodsOf(parameters: FactorAnalysisParameters, returnColumn: string) {
+  return parameters.return_specs[returnColumn]?.periods ?? 1;
 }

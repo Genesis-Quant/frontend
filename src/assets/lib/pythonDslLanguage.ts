@@ -1,5 +1,6 @@
 import type { Monaco } from "@monaco-editor/react";
 
+import { formatPythonDslSource } from "@/assets/lib/dslFormatting";
 import type { DslCatalog, DslOperator, JsonSchema } from "@/types/factor";
 
 type OutputKind = DslOperator["output_kind"];
@@ -75,19 +76,11 @@ export function registerPythonDslLanguageProviders(monaco: Monaco, uri: string, 
       signatureHelpRetriggerCharacters: [","],
       provideSignatureHelp(model: TextModel, position: Position) {
         if (model.uri.toString() !== uri) return null;
-        const context = callContext(model.getValue(), model.getOffsetAt(position), catalog);
-        if (!context || !context.candidates.length) return null;
-        const activeSignature = bestCandidateIndex(context);
-        const operator = context.candidates[activeSignature];
-        const parameters = operatorParameters(operator);
-        const activeParameter = activeParameterIndex(context, parameters);
+        const value = pythonDslSignatureHelp(model.getValue(), model.getOffsetAt(position), catalog);
+        if (!value) return null;
         return {
           dispose() {},
-          value: {
-            activeParameter,
-            activeSignature,
-            signatures: context.candidates.map((candidate) => operatorSignature(candidate, context.namespace, context.alias))
-          }
+          value
         };
       }
     }),
@@ -106,8 +99,29 @@ export function registerPythonDslLanguageProviders(monaco: Monaco, uri: string, 
         return { data: encodeSemanticTokens(model, pythonSemanticSpans(model.getValue())) };
       },
       releaseDocumentSemanticTokens() {}
+    }),
+    monaco.languages.registerDocumentFormattingEditProvider(selector, {
+      displayName: "Arena Python DSL",
+      provideDocumentFormattingEdits(model: TextModel) {
+        if (model.uri.toString() !== uri) return [];
+        const formatted = formatPythonDslSource(model.getValue());
+        return formatted === model.getValue() ? [] : [{ range: model.getFullModelRange(), text: formatted }];
+      }
     })
   ];
+}
+
+export function pythonDslSignatureHelp(source: string, offset: number, catalog: DslCatalog) {
+  const context = callContext(source, offset, catalog);
+  if (!context || !context.candidates.length) return null;
+  const activeSignature = bestCandidateIndex(context);
+  const operator = context.candidates[activeSignature];
+  const parameters = operatorParameters(operator);
+  return {
+    activeParameter: activeParameterIndex(context, parameters),
+    activeSignature,
+    signatures: context.candidates.map((candidate) => operatorSignature(candidate, context.namespace, context.alias))
+  };
 }
 
 function pythonSemanticSpans(source: string): SemanticSpan[] {

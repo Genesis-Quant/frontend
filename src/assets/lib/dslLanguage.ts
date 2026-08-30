@@ -1,6 +1,7 @@
 import type { Monaco } from "@monaco-editor/react";
 import { findNodeAtLocation, getLocation, getNodeValue, parseTree, type Node } from "jsonc-parser";
 
+import { formatJsonDslSource } from "@/assets/lib/dslFormatting";
 import { jsonDefaults } from "@/assets/lib/monaco";
 import type { DerivativeNode, DslCatalog, DslDocument, DslOperator, JsonSchema } from "@/types/factor";
 
@@ -37,6 +38,14 @@ export function registerDslLanguageProviders(monaco: Monaco, uri: string, catalo
         if (model.uri.toString() !== uri) return null;
         const contents = hoverContents(model.getValue(), model.getOffsetAt(position), catalog);
         return contents.length ? { contents: contents.map((text) => ({ value: text })) } : null;
+      }
+    }),
+    monaco.languages.registerDocumentFormattingEditProvider({ language: "json", scheme: "factor-dsl" }, {
+      displayName: "Arena JSON DSL",
+      provideDocumentFormattingEdits(model: import("monaco-editor").editor.ITextModel, options: import("monaco-editor").languages.FormattingOptions) {
+        if (model.uri.toString() !== uri) return [];
+        const formatted = formatJsonDslSource(model.getValue(), options.tabSize);
+        return formatted === null || formatted === model.getValue() ? [] : [{ range: model.getFullModelRange(), text: formatted }];
       }
     })
   ];

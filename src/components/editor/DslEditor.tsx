@@ -4,6 +4,7 @@ import { AlignLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { configureDslLanguage, isDslDocument, registerDslLanguageProviders } from "@/assets/lib/dslLanguage";
+import { formatJsonDslSource, formatPythonDslSource } from "@/assets/lib/dslFormatting";
 import { dslSourceText, effectiveDslSource, updateDslSourceText } from "@/assets/lib/dslSource";
 import { registerPythonDslLanguageProviders } from "@/assets/lib/pythonDslLanguage";
 import { client } from "@/assets/lib/request";
@@ -74,9 +75,21 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
     disposables.current = [];
   }, []);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => refreshLanguageProviders());
+    return () => window.cancelAnimationFrame(frame);
+  }, [catalog, modelPath]);
+
   const mount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    refreshLanguageProviders();
+  };
+
+  function refreshLanguageProviders() {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
     const uri = editor.getModel()?.uri.toString();
     if (!uri) return;
     disposables.current.forEach((disposable) => disposable.dispose());
@@ -84,7 +97,7 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
       ...registerDslLanguageProviders(monaco, uri, catalog),
       ...registerPythonDslLanguageProviders(monaco, uri, catalog)
     ];
-  };
+  }
 
   function change(nextText = "", language = activeSource.language) {
     const nextSource = updateDslSourceText(currentSource.current, language, nextText);
@@ -150,7 +163,15 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
       await documentAction.run();
       return;
     }
-    await editor.getAction("editor.action.reindentlines")?.run();
+    const model = editor.getModel();
+    if (!model) return;
+    const formatted = activeSource.language === "json"
+      ? formatJsonDslSource(model.getValue(), model.getOptions().tabSize)
+      : formatPythonDslSource(model.getValue());
+    if (formatted === null || formatted === model.getValue()) return;
+    editor.pushUndoStop();
+    editor.executeEdits("dsl-format", [{ forceMoveMarkers: true, range: model.getFullModelRange(), text: formatted }]);
+    editor.pushUndoStop();
   }
 
   function clearMarkers() {

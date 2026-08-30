@@ -1,3 +1,5 @@
+import type { ParquetOutput } from "@/types/output";
+
 export type DerivativeNode = {
   type: "DIRECT" | "TS" | "CS";
   op: string;
@@ -173,6 +175,9 @@ export type FactorWorkflowSummary = {
 };
 
 export type FactorMetricSummary = {
+  return_kind?: "simple" | "log" | null;
+  return_periods?: number | null;
+  compoundable?: boolean | null;
   observations: number;
   ic_mean: number | null;
   ic_std: number | null;
@@ -270,12 +275,7 @@ export type DslCatalog = {
   operators: DslOperator[];
 };
 
-export type FactorOutput = {
-  name: "processed_data" | "information_coefficient" | "group_returns";
-  filename: string;
-  size: number;
-  modified_at: string;
-};
+export type FactorOutput = ParquetOutput<"processed_data" | "information_coefficient" | "group_returns" | "diagnostics">;
 
 export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string, endDate: string): FactorQuery => {
   const factor = stockPools.find((item) => item.value === stockPool)?.factor;

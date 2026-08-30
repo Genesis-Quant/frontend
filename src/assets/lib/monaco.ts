@@ -1,6 +1,9 @@
 import { loader } from "@monaco-editor/react";
+import "monaco-editor/editor/common/services/treeViewsDndService.js";
 import * as monaco from "monaco-editor/editor/editor.api.js";
+import "monaco-editor/editor/contrib/format/browser/formatActions.js";
 import "monaco-editor/editor/contrib/hover/browser/hoverContribution.js";
+import "monaco-editor/editor/contrib/parameterHints/browser/parameterHints.js";
 import "monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens.js";
 import "monaco-editor/editor/contrib/semanticTokens/browser/viewportSemanticTokens.js";
 import "monaco-editor/editor/contrib/suggest/browser/suggestController.js";

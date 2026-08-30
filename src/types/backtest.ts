@@ -1,4 +1,5 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
+import type { ParquetOutput } from "@/types/output";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
@@ -89,7 +90,7 @@ export type BacktestVersion = {
 export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "saved" | "is_current" | "remark" | "workflow_instance_id" | "created_at">;
 
 export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "daily_trading_statistics";
-export type BacktestOutput = { name: BacktestOutputName; filename: string; size: number; modified_at: string };
+export type BacktestOutput = ParquetOutput<BacktestOutputName>;
 
 export const optimizationAlgorithms = [
   "random_search",
@@ -234,6 +235,15 @@ export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "star
   };
 }
 
+export function setBacktestStockPoolType(parameters: BacktestParameters, dynamic: boolean): BacktestParameters {
+  return {
+    ...parameters,
+    codes_query: dynamic
+      ? parameters.codes_query ?? defaultBacktestCodesQuery(parameters.dataset_query)
+      : null
+  };
+}
+
 export const defaultBacktestParameters = (): BacktestParameters => ({
   config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, syntheticSpread: 0.001, enableMinimumPerTransactionFee: true },
   params: {
@@ -243,7 +253,7 @@ export const defaultBacktestParameters = (): BacktestParameters => ({
     riskParityRebalanceBars: 5,
     riskParityMinimumMomentum: 0
   },
-  codes_query: defaultBacktestCodesQuery(),
+  codes_query: null,
   dataset_query: {
     start_date: "2020-01-01",
     end_date: "2026-01-01",
@@ -251,12 +261,6 @@ export const defaultBacktestParameters = (): BacktestParameters => ({
     codes: [],
     factors: [],
     derivatives: {
-      stock_pool_member: {
-        type: "DIRECT",
-        op: "binary.gt",
-        fields: { left: "weight_000300SH", right: 0 },
-        params: {}
-      },
       return_1d: {
         type: "TS",
         op: "unary.pct_change",
