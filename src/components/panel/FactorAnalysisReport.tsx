@@ -11,12 +11,10 @@ import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
 import { chartRange, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
-import { isApiRequestCode } from "@/assets/lib/httpError";
 import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
   type DecayPoint,
-  type FactorDiagnosticSummary,
   type GroupPoint,
   type GroupStatistic,
   type InformationPoint,
@@ -32,7 +30,6 @@ import { Button } from "@/ui/button";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
 type DisplayMetric = { label: string; value: string };
-type DiagnosticResult = { requestKey: string; summary: FactorDiagnosticSummary | null };
 
 const IC_MOVING_AVERAGE_WINDOW = 22;
 
@@ -61,7 +58,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [groups, setGroups] = useState<GroupPoint[]>([]);
   const [groupStatistics, setGroupStatistics] = useState<GroupStatistic[]>([]);
   const [decay, setDecay] = useState<DecayPoint[]>([]);
-  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
   const [timeline, setTimeline] = useState<InformationPoint[]>([]);
   const [rangeFactor, setRangeFactor] = useState("");
   const [minimumDate, setMinimumDate] = useState("");
@@ -81,8 +77,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const groupReturnSpec = parameters.return_specs[groupReturnColumn];
   const returnPeriods = returnPeriodsOf(parameters, returnColumn);
   const groupReturnPeriods = returnPeriodsOf(parameters, groupReturnColumn);
-  const diagnosticRequestKey = JSON.stringify([workflowInstanceId, factor, groupReturnColumn, startDate, endDate, rangeFactor]);
-  const diagnostics = diagnosticResult?.requestKey === diagnosticRequestKey ? diagnosticResult.summary : null;
 
   useEffect(() => {
     if (!parameters.return_columns.includes(icReturnColumn)) setIcReturnColumn(firstReturnColumn);
@@ -98,17 +92,13 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     setMetrics(null);
     async function loadResults() {
       try {
-        const [informationBuffer, groupBuffer, diagnosticsBuffer] = await Promise.all([
+        const [informationBuffer, groupBuffer] = await Promise.all([
           factorApi.output(workflowInstanceId, "information_coefficient"),
-          factorApi.output(workflowInstanceId, "group_returns"),
-          factorApi.output(workflowInstanceId, "diagnostics").catch((reason) => {
-            if (isApiRequestCode(reason, "RESULT_NOT_REQUESTED")) return null;
-            throw reason;
-          })
+          factorApi.output(workflowInstanceId, "group_returns")
         ]);
         session = await FactorAnalytics.create(
           workflowInstanceId,
-          { information: informationBuffer, groups: groupBuffer, diagnostics: diagnosticsBuffer },
+          { information: informationBuffer, groups: groupBuffer },
           parameters
         );
         if (cancelled) {
@@ -210,17 +200,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   }, [endDate, factor, metrics, rangeFactor, returnColumnsKey, startDate]);
 
   useEffect(() => {
-    const session = analytics.current;
-    if (!session || !metrics || !factor || !groupReturnColumn || rangeFactor !== factor) return undefined;
-    let cancelled = false;
-    setDiagnosticResult(null);
-    session.diagnosticSummary(factor, groupReturnColumn, { start: startDate, end: endDate })
-      .then((summary) => { if (!cancelled) setDiagnosticResult({ requestKey: diagnosticRequestKey, summary }); })
-      .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); });
-    return () => { cancelled = true; };
-  }, [diagnosticRequestKey, endDate, factor, groupReturnColumn, metrics, rangeFactor, startDate]);
-
-  useEffect(() => {
     if (!onChartRanges) return;
     onChartRanges({
       information: {
@@ -284,7 +263,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
           content: <ReportCard title="分组分析">
             <CardToolbar end={<ReturnContract spec={groupReturnSpec} />}><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
             <OverlappingReturnNotice periods={groupReturnPeriods} />
-            {diagnostics && <FactorDiagnostics summary={diagnostics} nGroups={parameters.n_groups} />}
             <ChartPanel title="分组平均收益与显著性 p 值">
               <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
             </ChartPanel>
@@ -327,23 +305,6 @@ function ReturnContract({ spec }: { spec?: { kind: "simple" | "log"; periods: nu
     <span className={compoundable ? "rounded-sm bg-emerald-500/10 px-2 py-1 text-emerald-600 dark:text-emerald-400" : "rounded-sm bg-amber-500/12 px-2 py-1 text-amber-700 dark:text-amber-300"}>
       {compoundable ? "可复利" : "重叠 · 不可复利"}
     </span>
-  </div>;
-}
-
-function FactorDiagnostics({ nGroups, summary }: { nGroups: number; summary: FactorDiagnosticSummary }) {
-  const occupied = summary.minimumOccupiedGroupCount;
-  const degraded = occupied !== null && occupied < nGroups;
-  const items = [
-    ["平均因子覆盖", format(summary.averageFactorCoverage, "percent")],
-    ["平均配对覆盖", format(summary.averagePairedCoverage, "percent")],
-    ["最小配对样本", formatInteger(summary.minimumPairedCount)],
-    ["最少占用分组", occupied === null ? "—" : `${occupied} / ${nGroups}`],
-    ["最小组样本", formatInteger(summary.minimumGroupSize)],
-    ["实际组值范围", summary.groupMinimum === null || summary.groupMaximum === null ? "—" : `${summary.groupMinimum} – ${summary.groupMaximum}`]
-  ];
-  return <div className={degraded ? "rounded-md border border-amber-500/25 bg-amber-500/6 p-3" : "rounded-md border bg-muted/15 p-3"}>
-    <div className="mb-2 flex items-center justify-between gap-3 text-xs"><span className="text-muted-foreground">截面与分组诊断 · {summary.dates} 个交易日</span>{degraded && <span className="text-amber-700 dark:text-amber-300">存在未占满 {nGroups} 组的截面</span>}</div>
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">{items.map(([label, value]) => <div className="rounded-sm bg-background/60 px-2.5 py-2" key={label}><div className="text-[11px] text-muted-foreground">{label}</div><div className="numeric mt-1 text-sm">{value}</div></div>)}</div>
   </div>;
 }
 
@@ -575,10 +536,6 @@ function formatPValue(value: number | null) {
 function format(value: number | null | undefined, type: "number" | "percent" = "number") {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return type === "percent" ? `${(value * 100).toFixed(2)}%` : value.toFixed(4);
-}
-
-function formatInteger(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "—" : Math.trunc(value).toLocaleString("zh-CN");
 }
 
 function returnPeriodsOf(parameters: FactorAnalysisParameters, returnColumn: string) {

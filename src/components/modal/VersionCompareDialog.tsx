@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { mergeChartRanges } from "@/assets/lib/chart";
-import { normalizeAnalysisParameters, stockPoolLabel, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import { hasCompleteReturnSpecs, normalizeAnalysisParameters, stockPoolLabel, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { BacktestParameters, BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
 import type { BacktestChartRanges, FactorChartRanges } from "@/types/chart";
 import { Button } from "@/ui/button";
@@ -132,11 +132,11 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
       ? <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <ResultColumn accent="border-l-sky-500">
           <FactorTabs factor={leftFactor} factors={leftFactors} onChange={setLeftFactor} />
-          {left.workflow_instance_id && leftFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={leftFactorParameters!} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} /></Suspense> : <MissingResult />}
+          {left.workflow_instance_id && leftFactor && hasCompleteReturnSpecs(leftFactorParameters!) ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={leftFactorParameters!} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} /></Suspense> : <MissingResult />}
         </ResultColumn>
         <ResultColumn accent="border-l-amber-500">
           <FactorTabs factor={rightFactor} factors={rightFactors} onChange={setRightFactor} />
-          {right.workflow_instance_id && rightFactor ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={rightFactorParameters!} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} /></Suspense> : <MissingResult />}
+          {right.workflow_instance_id && rightFactor && hasCompleteReturnSpecs(rightFactorParameters!) ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={rightFactorParameters!} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} /></Suspense> : <MissingResult />}
         </ResultColumn>
       </div>
       : null}

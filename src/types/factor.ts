@@ -1,5 +1,3 @@
-import type { ParquetOutput } from "@/types/output";
-
 export type DerivativeNode = {
   type: "DIRECT" | "TS" | "CS";
   op: string;
@@ -50,11 +48,6 @@ export type FactorAnalysisParameters = {
   market_value_column: string;
 };
 
-type HistoricalFactorAnalysisParameters = Omit<
-  FactorAnalysisParameters,
-  "n_select" | "return_specs"
-> & { n_select?: number; return_specs?: undefined };
-
 export function isFactorQuery(value: unknown): value is FactorQuery {
   if (!isRecord(value)) return false;
   return typeof value.start_date === "string"
@@ -90,32 +83,14 @@ export function isFactorAnalysisParameters(value: unknown): value is FactorAnaly
     && typeof value.market_value_column === "string";
 }
 
-function isHistoricalFactorAnalysisParameters(
-  value: unknown
-): value is HistoricalFactorAnalysisParameters {
-  if (!isRecord(value) || value.return_specs !== undefined) return false;
-  return (value.codes_query === null || isFactorQuery(value.codes_query))
-    && isFactorQuery(value.dataset_query)
-    && isStringArray(value.factor_columns)
-    && isStringArray(value.return_columns)
-    && typeof value.n_groups === "number"
-    && Number.isFinite(value.n_groups)
-    && (value.n_select === undefined || validSelectionCount(value.n_select))
-    && typeof value.preprocess === "boolean"
-    && typeof value.market_value_column === "string";
-}
-
 export function canNormalizeFactorAnalysisParameters(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return isFactorQuery(value.dataset_query)
-    && (value.return_specs === undefined
-      || isStringArray(value.return_columns) && isReturnSpecs(value.return_specs, value.return_columns))
-    && typeof value.n_groups === "number"
-    && Number.isFinite(value.n_groups)
-    && (value.n_select === undefined
-      || typeof value.n_select === "number" && Number.isInteger(value.n_select) && value.n_select >= 1)
-    && typeof value.preprocess === "boolean"
-    && typeof value.market_value_column === "string";
+    && (value.codes_query === null || isFactorQuery(value.codes_query));
+}
+
+export function hasCompleteReturnSpecs(parameters: FactorAnalysisParameters) {
+  return isReturnSpecs(parameters.return_specs, parameters.return_columns);
 }
 
 export type StockPoolCode = "ALL" | "000016.SH" | "000300.SH" | "000905.SH" | "000852.SH";
@@ -156,10 +131,6 @@ export const analysisManagedFactors = ["circ_mv", "total_mv"];
 
 const oneDayLogReturnSpecs = (columns: string[]): Record<string, FactorReturnSpec> => Object.fromEntries(
   columns.map((column) => [column, { kind: "log", periods: 1 }])
-);
-
-const historicalReturnSpecs = (columns: string[], datasetQuery: FactorQuery): Record<string, FactorReturnSpec> => Object.fromEntries(
-  columns.map((column) => [column, inferHistoricalReturnSpec(column, datasetQuery.derivatives[column])])
 );
 
 export type FactorWorkflowSummary = {
@@ -275,7 +246,12 @@ export type DslCatalog = {
   operators: DslOperator[];
 };
 
-export type FactorOutput = ParquetOutput<"processed_data" | "information_coefficient" | "group_returns" | "diagnostics">;
+export type FactorOutput = {
+  name: "processed_data" | "information_coefficient" | "group_returns";
+  filename: string;
+  size: number;
+  modified_at: string;
+};
 
 export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string, endDate: string): FactorQuery => {
   const factor = stockPools.find((item) => item.value === stockPool)?.factor;
@@ -411,65 +387,40 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
   if (isFactorAnalysisParameters(value)) {
     return structuredClone(value);
   }
-  if (isHistoricalFactorAnalysisParameters(value)) {
-    const parameters = structuredClone(value);
-    return {
-      ...parameters,
-      n_select: validSelectionCount(parameters.n_select)
-        ? parameters.n_select
-        : defaults.n_select,
-      return_specs: historicalReturnSpecs(
-        parameters.return_columns,
-        parameters.dataset_query
-      )
-    };
-  }
   if (!canNormalizeFactorAnalysisParameters(value)) return defaults;
 
   const input = value as Record<string, unknown>;
-  const datasetQuery = input.dataset_query as FactorQuery;
-  const inputReturnColumns = input.return_columns;
-  const returnColumns = validAnalysisReturnColumns(inputReturnColumns)
-    ? inputReturnColumns
-    : defaults.return_columns;
-  const returnSpecs = isReturnSpecs(input.return_specs, returnColumns)
-    ? input.return_specs
-    : historicalReturnSpecs(returnColumns, datasetQuery);
-  const inputFactorColumns = input.factor_columns;
-  const factorColumnsValid = validAnalysisFactorColumns(inputFactorColumns, datasetQuery, returnColumns, input.market_value_column as string);
-  const factorColumns = factorColumnsValid
-    ? inputFactorColumns
-    : defaults.factor_columns;
-  const inputCodesQuery = input.codes_query;
-  const codesQuery = inputCodesQuery === null
-    ? null
-    : validAnalysisCodesQuery(inputCodesQuery)
-      ? inputCodesQuery
-      : isFactorQuery(inputCodesQuery)
-        ? inputCodesQuery
-        : stockPoolQuery("000300.SH", datasetQuery.start_date, datasetQuery.end_date);
-  const parameters: FactorAnalysisParameters = {
-    codes_query: codesQuery,
+  const datasetQuery = structuredClone(input.dataset_query as FactorQuery);
+  const returnColumns = isStringArray(input.return_columns)
+    ? [...input.return_columns]
+    : [];
+  const factorColumns = isStringArray(input.factor_columns)
+    ? [...input.factor_columns]
+    : [];
+  const storedReturnSpecs = isRecord(input.return_specs)
+    ? Object.fromEntries(Object.entries(input.return_specs).filter((entry): entry is [string, FactorReturnSpec] => isReturnSpec(entry[1])))
+    : {};
+  return {
+    codes_query: input.codes_query === null
+      ? null
+      : structuredClone(input.codes_query as FactorQuery),
     dataset_query: datasetQuery,
     factor_columns: factorColumns,
     return_columns: returnColumns,
-    return_specs: returnSpecs,
-    n_groups: input.n_groups as number,
+    return_specs: storedReturnSpecs,
+    n_groups: typeof input.n_groups === "number" && Number.isFinite(input.n_groups) && input.n_groups >= 2
+      ? input.n_groups
+      : defaults.n_groups,
     n_select: validSelectionCount(input.n_select)
       ? input.n_select
       : defaults.n_select,
-    preprocess: input.preprocess as boolean,
-    market_value_column: input.market_value_column as string
+    preprocess: typeof input.preprocess === "boolean"
+      ? input.preprocess
+      : defaults.preprocess,
+    market_value_column: typeof input.market_value_column === "string" && input.market_value_column.length > 0
+      ? input.market_value_column
+      : defaults.market_value_column
   };
-  const dsl = analysisDsl(parameters);
-  const factor = factorColumns[0];
-  const factorMissing = !(factor in dsl.derivatives) && !dsl.factors.includes(factor);
-  if (!factorColumnsValid || factorMissing) {
-    const defaultNode = defaults.dataset_query.derivatives[defaults.factor_columns[0]];
-    dsl.derivatives = { ...dsl.derivatives, [defaults.factor_columns[0]]: defaultNode };
-    parameters.factor_columns = [...defaults.factor_columns];
-  }
-  return applyAnalysisSettings(parameters, dsl, analysisSettings(parameters));
 }
 
 function validSelectionCount(value: unknown): value is number {
@@ -507,64 +458,15 @@ function isReturnSpecs(value: unknown, returnColumns: string[]): value is Record
   if (!isRecord(value)) return false;
   const keys = Object.keys(value);
   if (keys.length !== returnColumns.length || keys.some((key) => !returnColumns.includes(key))) return false;
-  return keys.every((key) => {
-    const spec = value[key];
-    return isRecord(spec)
-      && (spec.kind === "simple" || spec.kind === "log")
-      && typeof spec.periods === "number"
-      && Number.isInteger(spec.periods)
-      && spec.periods >= 1;
-  });
+  return keys.every((key) => isReturnSpec(value[key]));
 }
 
-function inferHistoricalReturnSpec(column: string, node: DerivativeNode | undefined): FactorReturnSpec {
-  if (node?.op === "unary.pct_change") {
-    const periods = node.params.periods;
-    if (typeof periods === "number" && Number.isInteger(periods) && periods !== 0) {
-      return { kind: "simple", periods: Math.abs(periods) };
-    }
-  }
-  if (node?.op === "unary.log") {
-    const periods = returnExpressionPeriods(node.fields.col);
-    if (periods !== null) return { kind: "log", periods };
-  }
-  throw new Error(
-    `历史因子分析收益列 ${JSON.stringify(column)} 缺少 return_specs，且无法从收益 DSL 精确推断；请在展示参数中补充 kind 和 periods。`
-  );
-}
-
-function returnExpressionPeriods(value: unknown): number | null {
-  if (!isRecord(value) || value.op !== "binary.div" || !isRecord(value.fields)) return null;
-  const left = historicalShift(value.fields.left);
-  const right = historicalShift(value.fields.right);
-  if (left === null || right === null || left.column !== right.column) return null;
-  return Math.abs(left.periods - right.periods) || null;
-}
-
-function historicalShift(value: unknown): { column: string; periods: number } | null {
-  if (!isRecord(value) || value.op !== "unary.shift" || !isRecord(value.fields) || !isRecord(value.params)) return null;
-  const column = value.fields.col;
-  const periods = value.params.periods;
-  return typeof column === "string" && column.length > 0 && typeof periods === "number" && Number.isInteger(periods)
-    ? { column, periods }
-    : null;
-}
-
-function validAnalysisFactorColumns(value: unknown, datasetQuery: FactorQuery, returnColumns: string[], marketValueColumn: string): value is string[] {
-  if (!isStringArray(value) || value.length !== 1) return false;
-  const factor = value[0];
-  return factor.length > 0
-    && factor.trim() === factor
-    && factor !== marketValueColumn
-    && !returnColumns.includes(factor)
-    && (datasetQuery.factors.includes(factor) || factor in datasetQuery.derivatives);
-}
-
-function validAnalysisReturnColumns(value: unknown): value is string[] {
-  return isStringArray(value)
-    && value.length >= 1
-    && value.length <= 60
-    && value.every((column, index) => column === `ret${index}`);
+function isReturnSpec(value: unknown): value is FactorReturnSpec {
+  return isRecord(value)
+    && (value.kind === "simple" || value.kind === "log")
+    && typeof value.periods === "number"
+    && Number.isInteger(value.periods)
+    && value.periods >= 1;
 }
 
 function validAnalysisCodesQuery(value: unknown): value is FactorQuery {

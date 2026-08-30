@@ -1,5 +1,4 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
-import type { ParquetOutput } from "@/types/output";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
@@ -90,7 +89,7 @@ export type BacktestVersion = {
 export type BacktestVersionListItem = Pick<BacktestVersion, "id" | "version" | "saved" | "is_current" | "remark" | "workflow_instance_id" | "created_at">;
 
 export type BacktestOutputName = "trade_details" | "daily_positions" | "daily_portfolios" | "daily_trading_statistics";
-export type BacktestOutput = ParquetOutput<BacktestOutputName>;
+export type BacktestOutput = { name: BacktestOutputName; filename: string; size: number; modified_at: string };
 
 export const optimizationAlgorithms = [
   "random_search",

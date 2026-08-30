@@ -19,7 +19,7 @@ import FactorAnalysisResultsPanel from "@/components/panel/FactorAnalysisResults
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import ExecutionQueuePanel from "@/components/panel/ExecutionQueuePanel";
 import TaskLogPanel from "@/components/panel/TaskLogPanel";
-import { defaultAnalysisParameters, isFactorAnalysisParameters, normalizeAnalysisParameters, type DslCatalog, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import { defaultAnalysisParameters, hasCompleteReturnSpecs, isFactorAnalysisParameters, normalizeAnalysisParameters, type DslCatalog, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 import { useAppStore } from "@/store";
@@ -468,5 +468,6 @@ function validAnalysisContract(parameters: FactorAnalysisParameters, catalog: Ds
   return parameters.factor_columns.length > 0
     && parameters.factor_columns.every((column) => outputs.has(column))
     && parameters.return_columns.length > 0
-    && parameters.return_columns.every((column) => derivatives.has(column));
+    && parameters.return_columns.every((column) => derivatives.has(column))
+    && hasCompleteReturnSpecs(parameters);
 }

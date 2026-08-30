@@ -228,6 +228,8 @@ async function loadCandidate(projectId: number, versionNumber: number): Promise<
   const factorName = parameters.factor_columns.at(-1);
   const returnColumn = parameters.return_columns[0];
   if (!factorName || !returnColumn) throw new Error(`v${version.version} 缺少因子或收益列，无法生成优选报告`);
+  const returnSpec = parameters.return_specs[returnColumn];
+  if (!returnSpec) throw new Error(`v${version.version} 的收益列 ${returnColumn} 缺少可精确识别的收益口径`);
   if (version.workflow_instance_id === null) throw new Error(`v${version.version} 尚未产生分析结果`);
   const [informationBuffer, groupBuffer] = await Promise.all([factorApi.output(version.workflow_instance_id, "information_coefficient"), factorApi.output(version.workflow_instance_id, "group_returns")]);
   const analytics = await FactorAnalytics.create(
@@ -237,7 +239,7 @@ async function loadCandidate(projectId: number, versionNumber: number): Promise<
   );
   try {
     const [information, longShort, groupStatistics] = await Promise.all([analytics.informationSeries(factorName, returnColumn), analytics.longShortSeries(factorName, returnColumn, parameters.n_groups), analytics.groupStatistics(factorName, returnColumn, parameters.n_groups)]);
-    return { factorName, groupStatistics, information, label: `v${version.version}`, longShort, returnSpec: parameters.return_specs[returnColumn], version };
+    return { factorName, groupStatistics, information, label: `v${version.version}`, longShort, returnSpec, version };
   } finally {
     await analytics.close();
   }

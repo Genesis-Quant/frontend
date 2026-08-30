@@ -1,5 +1,4 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
-import type { ParquetOutput } from "@/types/output";
 
 export type QueryProjectSortField = "id" | "title" | "state" | "workflow_instance_id" | "updated_at";
 
@@ -37,7 +36,7 @@ export type QueryProjectPage = {
 };
 
 export type QueryWorkflowSubmitted = { workspace_id: number; workflow_instance_id: number };
-export type QueryOutput = ParquetOutput<"source_data" | "computed_data" | "filtered_data" | "data">;
+export type QueryOutput = { name: "source_data" | "computed_data" | "filtered_data" | "data"; filename: string; size: number; modified_at: string };
 export type QueryCatalog = DslCatalog;
 
 export function defaultQueryParameters(): FactorQuery {

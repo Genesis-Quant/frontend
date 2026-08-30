@@ -9,44 +9,27 @@ export type GroupPoint = { time: string; values: Record<string, number | null> }
 export type GroupStatistic = { group: string; mean: number | null; pValue: number | null };
 export type DecayPoint = { returnColumn: string; label: string; position: number; icMean: number | null; rankIcMean: number | null };
 export type FactorDateRange = { start: string; end: string };
-export type FactorDiagnosticSummary = {
-  dates: number;
-  averageFactorCoverage: number | null;
-  averagePairedCoverage: number | null;
-  minimumPairedCount: number | null;
-  minimumOccupiedGroupCount: number | null;
-  minimumGroupSize: number | null;
-  groupMinimum: number | null;
-  groupMaximum: number | null;
-};
 
 export class FactorAnalytics {
   private constructor(
     private readonly database: BrowserDuckDb,
     private readonly informationFile: string,
     private readonly groupsFile: string,
-    private readonly diagnosticsFile: string | null,
     private readonly parameters: FactorAnalysisParameters,
     private readonly groupColumns: Set<string>
   ) {}
 
   static async create(
     workflowInstanceId: number,
-    files: { information: ArrayBuffer; groups: ArrayBuffer; diagnostics?: ArrayBuffer | null },
+    files: { information: ArrayBuffer; groups: ArrayBuffer },
     parameters: FactorAnalysisParameters
   ) {
     const informationFile = `factor-${workflowInstanceId}-information.parquet`;
     const groupsFile = `factor-${workflowInstanceId}-groups.parquet`;
-    const diagnosticsFile = files.diagnostics ? `factor-${workflowInstanceId}-diagnostics.parquet` : null;
-    const registeredFiles: Record<string, ArrayBuffer> = {
-      [informationFile]: files.information,
-      [groupsFile]: files.groups
-    };
-    if (diagnosticsFile && files.diagnostics) registeredFiles[diagnosticsFile] = files.diagnostics;
-    const database = await BrowserDuckDb.create(registeredFiles);
+    const database = await BrowserDuckDb.create({ [informationFile]: files.information, [groupsFile]: files.groups });
     const schema = await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(groupsFile)})`);
     const groupColumns = new Set(schema.map((row) => String(row.column_name)));
-    return new FactorAnalytics(database, informationFile, groupsFile, diagnosticsFile, parameters, groupColumns);
+    return new FactorAnalytics(database, informationFile, groupsFile, parameters, groupColumns);
   }
 
   async metrics(): Promise<FactorMetrics> {
@@ -179,41 +162,6 @@ export class FactorAnalytics {
     }));
   }
 
-  async diagnosticSummary(factor: string, returnColumn: string, range?: FactorDateRange): Promise<FactorDiagnosticSummary | null> {
-    if (!this.diagnosticsFile) return null;
-    const filters = [
-      `factor = ${literal(factor)}`,
-      `return_column = ${literal(returnColumn)}`
-    ];
-    if (range && /^\d{4}-\d{2}-\d{2}$/.test(range.start) && /^\d{4}-\d{2}-\d{2}$/.test(range.end)) {
-      filters.push(`time BETWEEN DATE ${literal(range.start)} AND DATE ${literal(range.end)}`);
-    }
-    const row = (await this.rows(`
-      SELECT
-        count(*) AS dates,
-        avg(CASE WHEN universe_count > 0 THEN factor_valid_count::DOUBLE / universe_count END) AS average_factor_coverage,
-        avg(CASE WHEN universe_count > 0 THEN paired_valid_count::DOUBLE / universe_count END) AS average_paired_coverage,
-        min(paired_valid_count) AS minimum_paired_count,
-        min(occupied_group_count) AS minimum_occupied_group_count,
-        min(min_group_size) AS minimum_group_size,
-        min(group_min) AS group_minimum,
-        max(group_max) AS group_maximum
-      FROM read_parquet(${literal(this.diagnosticsFile)})
-      WHERE ${filters.join(" AND ")}
-    `))[0];
-    if (!row || integerValue(row.dates) === 0) return null;
-    return {
-      dates: integerValue(row.dates),
-      averageFactorCoverage: numberValue(row.average_factor_coverage),
-      averagePairedCoverage: numberValue(row.average_paired_coverage),
-      minimumPairedCount: nullableIntegerValue(row.minimum_paired_count),
-      minimumOccupiedGroupCount: nullableIntegerValue(row.minimum_occupied_group_count),
-      minimumGroupSize: nullableIntegerValue(row.minimum_group_size),
-      groupMinimum: nullableIntegerValue(row.group_minimum),
-      groupMaximum: nullableIntegerValue(row.group_maximum)
-    };
-  }
-
   async close() {
     await this.database.close();
   }
@@ -327,11 +275,6 @@ function numberValue(value: unknown) {
 
 function integerValue(value: unknown) {
   return Math.max(0, Math.trunc(numberValue(value) ?? 0));
-}
-
-function nullableIntegerValue(value: unknown) {
-  const number = numberValue(value);
-  return number === null ? null : Math.trunc(number);
 }
 
 function dateFilter(range?: FactorDateRange) {
