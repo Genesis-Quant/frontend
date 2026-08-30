@@ -24,13 +24,13 @@ export default function MonacoEditorFrame({ actions, children, className }: { ac
   }
 
   const label = fullScreen ? "退出全屏" : "全屏编辑";
-  return <div className={cn("monaco-editor-frame relative h-full min-h-0 overflow-hidden rounded-md border bg-background", className)} ref={frame}>
-    <div className="absolute top-2 right-4 z-20 flex items-center gap-1.5">
-      {actions}
-      <Button aria-label={label} className="bg-background/90 shadow-sm backdrop-blur" onClick={toggleFullScreen} size="icon-sm" title={label} variant="outline">
+  return <div className={cn("monaco-editor-frame flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background", className)} ref={frame}>
+    <div className="monaco-editor-frame__toolbar flex shrink-0 items-center justify-between gap-2 border-b px-2 py-1">
+      <div className="flex min-w-0 items-center gap-1.5">{actions}</div>
+      <Button aria-label={label} className="shrink-0 text-muted-foreground hover:text-foreground" onClick={toggleFullScreen} size="icon-sm" title={label} variant="ghost">
         {fullScreen ? <Minimize2 /> : <Maximize2 />}
       </Button>
     </div>
-    <div className="h-full min-h-0 overflow-hidden bg-background">{children}</div>
+    <div className="min-h-0 flex-1 overflow-hidden bg-background">{children}</div>
   </div>;
 }

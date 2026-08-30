@@ -1,4 +1,4 @@
-import type { DslCatalog, DslDocument, FactorQuery } from "@/types/factor";
+import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
@@ -488,11 +488,11 @@ export function backtestDatasetDsl(parameters: BacktestParameters): DslDocument 
   return { factors, derivatives, filters };
 }
 
-export function updateBacktestCodesDsl(parameters: BacktestParameters, dsl: DslDocument): BacktestParameters {
+export function updateBacktestCodesDsl(parameters: BacktestParameters, dsl: DslDocument, source: DslSource): BacktestParameters {
   if (parameters.codes_query === null) return parameters;
-  return { ...parameters, codes_query: { ...parameters.codes_query, ...dsl } };
+  return { ...parameters, codes_query: { ...parameters.codes_query, ...dsl, dsl_source: source } };
 }
 
-export function updateBacktestDatasetDsl(parameters: BacktestParameters, dsl: DslDocument): BacktestParameters {
-  return { ...parameters, dataset_query: { ...parameters.dataset_query, ...dsl } };
+export function updateBacktestDatasetDsl(parameters: BacktestParameters, dsl: DslDocument, source: DslSource): BacktestParameters {
+  return { ...parameters, dataset_query: { ...parameters.dataset_query, ...dsl, dsl_source: source } };
 }

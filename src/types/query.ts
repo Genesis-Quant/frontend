@@ -1,4 +1,4 @@
-import type { DslCatalog, DslDocument, FactorQuery } from "@/types/factor";
+import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
 
 export type QueryProjectSortField = "id" | "title" | "state" | "workflow_instance_id" | "updated_at";
 
@@ -55,6 +55,6 @@ export function queryDsl(query: FactorQuery): DslDocument {
   return { factors: query.factors, derivatives: query.derivatives, filters: query.filters };
 }
 
-export function applyQueryDsl(query: FactorQuery, dsl: DslDocument): FactorQuery {
-  return { ...query, ...dsl };
+export function applyQueryDsl(query: FactorQuery, dsl: DslDocument, source: DslSource): FactorQuery {
+  return { ...query, ...dsl, dsl_source: source };
 }

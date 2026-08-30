@@ -5,12 +5,12 @@ import {
   analysisDsl,
   analysisSettings,
   applyAnalysisSettings,
-  factorQueryDsl,
   marketValueFields,
   priceFields,
   stockPools,
   type DslCatalog,
   type DslDocument,
+  type DslSource,
   type FactorAnalysisParameters,
   type FactorQuery,
   type MarketValueField,
@@ -31,7 +31,6 @@ type FactorAnalysisEditorProps = {
 
 export default function FactorAnalysisEditor({ catalog, onChange, onValidityChange, parameters, projectId, readOnly = false }: FactorAnalysisEditorProps) {
   const dsl = analysisDsl(parameters);
-  const editorDsl = factorQueryDsl(parameters);
   const settings = analysisSettings(parameters);
   const stockPoolOptions = settings.stockPool === "CUSTOM"
     ? [{ label: "自定义股票池", value: "CUSTOM" }, ...stockPools]
@@ -46,11 +45,11 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
     onChange(applyAnalysisSettings({ ...parameters, dataset_query: datasetQuery }, dsl, settings));
   }
 
-  function updateDsl(nextDsl: DslDocument) {
-    const nextParameters = { ...parameters, dataset_query: { ...parameters.dataset_query, ...nextDsl } };
+  function updateDsl(nextDsl: DslDocument, source: DslSource, valid: boolean) {
+    const nextParameters = { ...parameters, dataset_query: { ...parameters.dataset_query, ...nextDsl, dsl_source: source } };
     const userDsl = analysisDsl(nextParameters);
-    onChange(applyAnalysisSettings(parameters, userDsl, settings));
-    onValidityChange(Object.keys(userDsl.derivatives).length > 0);
+    onChange(applyAnalysisSettings(nextParameters, userDsl, settings));
+    onValidityChange(valid && Object.keys(userDsl.derivatives).length > 0);
   }
 
   return <div className="space-y-5">
@@ -72,11 +71,13 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
       <Suspense fallback={<div className="h-full rounded-md border bg-card" />}>
         <DslEditor
           catalog={catalog}
+          compileEndpoint="/factor/dsl/compile"
           modelPath={`factor-dsl://project/${projectId}/dataset.json`}
           onChange={updateDsl}
           onValidityChange={(valid) => onValidityChange(valid && Object.keys(dsl.derivatives).length > 0)}
           readOnly={readOnly}
-          value={editorDsl}
+          source={parameters.dataset_query.dsl_source}
+          value={dsl}
         />
       </Suspense>
     </div>

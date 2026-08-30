@@ -12,6 +12,14 @@ export type DslDocument = {
   filters: string[];
 };
 
+export type DslLanguage = "json" | "python";
+
+export type DslSource = {
+  language: DslLanguage;
+  json_source: string;
+  python_source: string;
+};
+
 export type QueryParameters = {
   start_date: string;
   end_date: string;
@@ -19,7 +27,9 @@ export type QueryParameters = {
   codes: string[];
 };
 
-export type FactorQuery = QueryParameters & DslDocument;
+export type FactorQuery = QueryParameters & DslDocument & {
+  dsl_source?: DslSource;
+};
 
 export type FactorReturnSpec = {
   kind: "simple" | "log";
@@ -51,7 +61,15 @@ export function isFactorQuery(value: unknown): value is FactorQuery {
     && isStringArray(value.codes)
     && isStringArray(value.factors)
     && isRecord(value.derivatives)
-    && isStringArray(value.filters);
+    && isStringArray(value.filters)
+    && (value.dsl_source === undefined || isDslSource(value.dsl_source));
+}
+
+export function isDslSource(value: unknown): value is DslSource {
+  return isRecord(value)
+    && (value.language === "json" || value.language === "python")
+    && typeof value.json_source === "string"
+    && typeof value.python_source === "string";
 }
 
 export function isFactorAnalysisParameters(value: unknown): value is FactorAnalysisParameters {
@@ -283,15 +301,12 @@ export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string,
 export const stockPoolCode = (parameters: FactorAnalysisParameters): StockPoolSelection => {
   if (parameters.codes_query !== null && validAnalysisCodesQuery(parameters.codes_query)) {
     const codesFactor = managedStockPoolFactor(parameters.codes_query);
-    const datasetFactor = managedStockPoolFactor(parameters.dataset_query);
     const configured = stockPools.find((item) => item.factor !== null && item.factor === codesFactor)?.value;
     if (
       configured
-      && datasetFactor === codesFactor
       && parameters.codes_query.start_date === parameters.dataset_query.start_date
       && parameters.codes_query.end_date === parameters.dataset_query.end_date
       && parameters.dataset_query.codes.length === 0
-      && parameters.dataset_query.filters.includes("stock_pool_member")
     ) return configured;
   }
   if (
@@ -326,44 +341,21 @@ export const analysisDsl = (parameters: FactorAnalysisParameters): DslDocument =
   filters: parameters.dataset_query.filters.filter((filter) => filter !== "stock_pool_member")
 });
 
-export const factorQueryDsl = (parameters: FactorAnalysisParameters): DslDocument => ({
-  factors: parameters.dataset_query.factors.filter((factor) => !analysisManagedFactors.includes(factor)),
-  derivatives: Object.fromEntries(Object.entries(parameters.dataset_query.derivatives).filter(([name]) => !/^ret\d+$/.test(name) && !parameters.return_columns.includes(name))),
-  filters: parameters.dataset_query.filters
-});
-
 export const applyAnalysisSettings = (parameters: FactorAnalysisParameters, dsl: DslDocument, settings = analysisSettings(parameters)): FactorAnalysisParameters => {
   const configuredFactor = parameters.factor_columns.length === 1 ? parameters.factor_columns[0] : "";
   const outputs = new Set([...dsl.factors, ...Object.keys(dsl.derivatives)]);
   const factor = outputs.has(configuredFactor) ? configuredFactor : Object.keys(dsl.derivatives).at(-1) ?? dsl.factors.at(-1) ?? "";
   const customPool = settings.stockPool === "CUSTOM";
-  const poolFactor = customPool ? null : stockPools.find((item) => item.value === settings.stockPool)?.factor ?? null;
-  const poolDerivatives: Record<string, DerivativeNode> = {};
-  const poolFilters: string[] = [];
-  if (customPool) {
-    const member = parameters.dataset_query.derivatives.stock_pool_member;
-    if (member) poolDerivatives.stock_pool_member = member;
-    if (parameters.dataset_query.filters.includes("stock_pool_member")) poolFilters.push("stock_pool_member");
-  } else if (poolFactor) {
-    poolDerivatives.stock_pool_member = {
-      type: "DIRECT",
-      op: "binary.gt",
-      fields: { left: poolFactor, right: 0 },
-      params: {}
-    };
-    poolFilters.push("stock_pool_member");
-  }
   const returnColumns = analysisReturnColumns(settings.maxLags);
   const datasetQuery = {
     ...parameters.dataset_query,
     codes: customPool ? parameters.dataset_query.codes : [],
     factors: [...dsl.factors],
     derivatives: {
-      ...poolDerivatives,
       ...dsl.derivatives,
       ...forwardReturnDerivatives(settings.priceField, settings.maxLags)
     },
-    filters: [...poolFilters, ...dsl.filters]
+    filters: [...dsl.filters]
   };
   return {
     codes_query: settings.stockPool === "CUSTOM"
