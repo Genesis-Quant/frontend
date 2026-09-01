@@ -1,5 +1,13 @@
 import type { DerivativeNode, DslDocument, DslSource } from "@/types/factor";
 
+const pythonKeywords = new Set([
+  "False", "None", "True", "and", "as", "assert", "async", "await", "break",
+  "case", "class", "continue", "def", "del", "elif", "else", "except", "finally",
+  "for", "from", "global", "if", "import", "in", "is", "lambda", "match",
+  "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with",
+  "yield"
+]);
+
 export function jsonDslSource(document: DslDocument): DslSource {
   return {
     language: "json",
@@ -42,8 +50,10 @@ export function dslToPython(document: DslDocument): string {
 }
 
 function renderOperation(node: DerivativeNode, name: string | null): string {
-  const operator = `${node.type}.${node.op.replace(/\./g, "_")}`;
-  const argumentsList = [pythonLiteral(name)];
+  const [category, member] = node.op.split(".", 2);
+  const pythonMember = pythonKeywords.has(member) ? `${member}_` : member;
+  const operator = `${node.type}.${category}.${pythonMember}`;
+  const argumentsList = name === null ? [] : [pythonLiteral(name)];
   for (const [field, value] of Object.entries(node.fields)) {
     argumentsList.push(`${field}=${renderValue(value)}`);
   }

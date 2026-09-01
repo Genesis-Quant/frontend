@@ -5,6 +5,7 @@ import {
   analysisDsl,
   analysisSettings,
   applyAnalysisSettings,
+  industryFields,
   marketValueFields,
   priceFields,
   stockPools,
@@ -13,6 +14,7 @@ import {
   type DslSource,
   type FactorAnalysisParameters,
   type FactorQuery,
+  type IndustryField,
   type MarketValueField,
   type PriceField,
   type StockPoolSelection
@@ -60,6 +62,7 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="股票池" value={settings.stockPool} options={stockPoolOptions} disabled={readOnly} onChange={(value) => updateStockPool(value as StockPoolSelection)} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="价格字段" value={settings.priceField} options={priceFields} disabled={readOnly} onChange={(priceField) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, priceField: priceField as PriceField }))} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="市值字段" value={settings.marketValueField} options={marketValueFields} disabled={readOnly} onChange={(marketValueField) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, marketValueField: marketValueField as MarketValueField }))} />
+        <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="行业字段" value={settings.industryField} options={industryFields} disabled={readOnly} onChange={(industryField) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, industryField: industryField as IndustryField }))} />
         <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="分组数量" value={settings.nGroups} min={2} disabled={readOnly} onChange={(nGroups) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, nGroups }))} />
         <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="极端股票数" value={settings.nSelect} min={1} disabled={readOnly} onChange={(nSelect) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, nSelect }))} />
         <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="最大滞后阶数" value={settings.maxLags} min={1} max={60} disabled={readOnly} onChange={(maxLags) => onChange(applyAnalysisSettings(parameters, dsl, { ...settings, maxLags }))} />

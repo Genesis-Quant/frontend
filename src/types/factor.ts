@@ -36,6 +36,8 @@ export type FactorReturnSpec = {
   periods: number;
 };
 
+export type IndustryField = "industry" | "industry_l0" | "industry_l1" | "industry_l2" | "industry_l3";
+
 export type FactorAnalysisParameters = {
   codes_query: FactorQuery | null;
   dataset_query: FactorQuery;
@@ -46,6 +48,7 @@ export type FactorAnalysisParameters = {
   n_select: number;
   preprocess: boolean;
   market_value_column: string;
+  industry_column: IndustryField;
 };
 
 export function isFactorQuery(value: unknown): value is FactorQuery {
@@ -80,7 +83,8 @@ export function isFactorAnalysisParameters(value: unknown): value is FactorAnaly
     && Number.isInteger(value.n_select)
     && value.n_select >= 1
     && typeof value.preprocess === "boolean"
-    && typeof value.market_value_column === "string";
+    && typeof value.market_value_column === "string"
+    && isIndustryField(value.industry_column);
 }
 
 export function canNormalizeFactorAnalysisParameters(value: unknown): boolean {
@@ -103,6 +107,7 @@ export type FactorAnalysisSettings = {
   stockPool: StockPoolSelection;
   priceField: PriceField;
   marketValueField: MarketValueField;
+  industryField: IndustryField;
   nGroups: number;
   nSelect: number;
   maxLags: number;
@@ -126,8 +131,20 @@ export const marketValueFields: { label: string; value: MarketValueField }[] = [
   { label: "总市值", value: "total_mv" }
 ];
 
+export const industryFields: { label: string; value: IndustryField }[] = [
+  { label: "静态行业（industry）", value: "industry" },
+  { label: "自定义 11 类（industry_l0）", value: "industry_l0" },
+  { label: "申万一级（industry_l1）", value: "industry_l1" },
+  { label: "申万二级（industry_l2）", value: "industry_l2" },
+  { label: "申万三级（industry_l3）", value: "industry_l3" }
+];
+
 export const analysisReturnColumns = (maxLags: number) => Array.from({ length: maxLags }, (_, lag) => `ret${lag}`);
-export const analysisManagedFactors = ["circ_mv", "total_mv"];
+export const analysisManagedFactors = [
+  "circ_mv",
+  "total_mv",
+  ...industryFields.map((field) => field.value)
+];
 
 const oneDayLogReturnSpecs = (columns: string[]): Record<string, FactorReturnSpec> => Object.fromEntries(
   columns.map((column) => [column, { kind: "log", periods: 1 }])
@@ -306,6 +323,7 @@ export const analysisSettings = (parameters: FactorAnalysisParameters): FactorAn
   stockPool: stockPoolCode(parameters),
   priceField: returnPriceField(parameters),
   marketValueField: parameters.market_value_column === "total_mv" ? "total_mv" : "circ_mv",
+  industryField: parameters.industry_column,
   nGroups: parameters.n_groups,
   nSelect: parameters.n_select,
   maxLags: Math.max(1, parameters.return_columns.filter((column) => /^ret\d+$/.test(column)).length || 10)
@@ -346,7 +364,8 @@ export const applyAnalysisSettings = (parameters: FactorAnalysisParameters, dsl:
     n_groups: settings.nGroups,
     n_select: settings.nSelect,
     preprocess: parameters.preprocess,
-    market_value_column: settings.marketValueField
+    market_value_column: settings.marketValueField,
+    industry_column: settings.industryField
   };
 };
 
@@ -377,9 +396,10 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
     n_groups: 5,
     n_select: 10,
     preprocess: true,
-    market_value_column: "circ_mv"
+    market_value_column: "circ_mv",
+    industry_column: "industry"
   };
-  return applyAnalysisSettings(parameters, analysisDsl(parameters), { stockPool: "000300.SH", priceField: "close_hfq", marketValueField: "circ_mv", nGroups: 5, nSelect: 10, maxLags: 10 });
+  return applyAnalysisSettings(parameters, analysisDsl(parameters), { stockPool: "000300.SH", priceField: "close_hfq", marketValueField: "circ_mv", industryField: "industry", nGroups: 5, nSelect: 10, maxLags: 10 });
 };
 
 export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParameters {
@@ -419,7 +439,10 @@ export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParam
       : defaults.preprocess,
     market_value_column: typeof input.market_value_column === "string" && input.market_value_column.length > 0
       ? input.market_value_column
-      : defaults.market_value_column
+      : defaults.market_value_column,
+    industry_column: isIndustryField(input.industry_column)
+      ? input.industry_column
+      : defaults.industry_column
   };
 }
 
@@ -508,3 +531,4 @@ function isZeroLookback(value: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 function isStringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every((item) => typeof item === "string"); }
+function isIndustryField(value: unknown): value is IndustryField { return industryFields.some((field) => field.value === value); }
