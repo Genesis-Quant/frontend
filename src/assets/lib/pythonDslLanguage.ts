@@ -38,6 +38,7 @@ type LexicalSource = {
 type CallContext = {
   alias: string;
   candidates: DslOperator[];
+  category: string;
   currentKeyword?: string;
   namespace: OperatorType;
   positionalIndex: number;
@@ -120,7 +121,7 @@ export function pythonDslSignatureHelp(source: string, offset: number, catalog: 
   return {
     activeParameter: activeParameterIndex(context, parameters),
     activeSignature,
-    signatures: context.candidates.map((candidate) => operatorSignature(candidate, context.namespace, context.alias))
+    signatures: context.candidates.map((candidate) => operatorSignature(candidate, context.namespace, context.category, context.alias))
   };
 }
 
@@ -244,12 +245,35 @@ function pythonCompletions(monaco: Monaco, model: TextModel, position: Position,
   const target = completionTarget(monaco, model, position, lexical, offset);
   const maskedPrefix = lexical.masked.slice(0, offset);
   const symbols = collectSymbols(lexical.masked.slice(0, offset), catalog);
-  const member = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)?$/.exec(maskedPrefix);
-  if (member) {
-    return operatorCompletionItems(monaco, model, position, member[1] as OperatorType, member[2] ?? "", catalog, target);
+  const resultList = enclosingResultList(lexical.masked, offset);
+  const operatorMember = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)?$/.exec(maskedPrefix);
+  if (operatorMember) {
+    if (resultList === "FACTORS") return [];
+    return operatorCompletionItems(
+      monaco,
+      model,
+      position,
+      operatorMember[1] as OperatorType,
+      operatorMember[2],
+      operatorMember[3] ?? "",
+      catalog,
+      target,
+      resultList
+    );
+  }
+  const categoryMember = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)?$/.exec(maskedPrefix);
+  if (categoryMember) {
+    if (resultList === "FACTORS") return [];
+    return operatorCategoryItems(
+      monaco,
+      categoryMember[1] as OperatorType,
+      categoryMember[2] ?? "",
+      catalog,
+      target,
+      resultList
+    );
   }
 
-  const resultList = enclosingResultList(lexical.masked, offset);
   if (resultList) return resultListItems(monaco, resultList, catalog, symbols, target);
 
   const context = callContextFromLexical(source, lexical, offset, catalog);
@@ -266,57 +290,67 @@ function pythonCompletions(monaco: Monaco, model: TextModel, position: Position,
   return topLevelItems(monaco, source.slice(0, offset), symbols, catalog, target);
 }
 
-function operatorCompletionItems(monaco: Monaco, model: TextModel, position: Position, namespace: OperatorType, partial: string, catalog: DslCatalog, target: CompletionTarget): CompletionItem[] {
-  const operators = catalog.operators.filter((operator) => operator.type === namespace);
-  const aliases = new Map<string, DslOperator[]>();
-  for (const operator of operators) {
-    const alias = shortAlias(operator.op);
-    aliases.set(alias, [...aliases.get(alias) ?? [], operator]);
-  }
+function operatorCategoryItems(monaco: Monaco, namespace: OperatorType, partial: string, catalog: DslCatalog, target: CompletionTarget, resultList?: typeof resultVariables[number]): CompletionItem[] {
+  const operators = catalog.operators.filter(
+    (operator) => operator.type === namespace && (resultList !== "FILTERS" || operator.output_kind === "BOOL")
+  );
+  const categories = [...new Set(operators
+    .map((operator) => operator.op.split(".", 1)[0]))]
+    .filter((category) => category.startsWith(partial))
+    .sort();
+  return categories.map((category) => ({
+    label: category,
+    detail: `${namespace} 算子类别`,
+    documentation: `${namespace}.${category} 下包含 ${operators.filter((operator) => operator.op.startsWith(`${category}.`)).length} 个算子。`,
+    insertText: `${category}.`,
+    command: { id: "editor.action.triggerSuggest", title: "显示该类别的 DSL 算子" },
+    kind: monaco.languages.CompletionItemKind.Module,
+    range: target.range,
+    sortText: `0-${category}`
+  }));
+}
+
+function operatorCompletionItems(monaco: Monaco, model: TextModel, position: Position, namespace: OperatorType, category: string, partial: string, catalog: DslCatalog, target: CompletionTarget, resultList?: typeof resultVariables[number]): CompletionItem[] {
+  const operators = catalog.operators.filter(
+    (operator) => operator.type === namespace
+      && operator.op.startsWith(`${category}.`)
+      && (resultList !== "FILTERS" || operator.output_kind === "BOOL")
+  );
   const assignment = assignmentName(model.getValueInRange({
     startLineNumber: position.lineNumber,
     startColumn: 1,
     endLineNumber: position.lineNumber,
     endColumn: position.column
   }));
-  const items: CompletionItem[] = [];
-  for (const [alias, candidates] of aliases) {
-    for (const [index, operator] of candidates.entries()) {
-      items.push({
-        label: alias,
-        detail: `${operator.op} · ${operator.output_kind}${candidates.length > 1 ? ` · 重载 ${index + 1}/${candidates.length}` : ""}`,
-        documentation: { value: operatorDocumentation(operator, namespace, alias) },
-        filterText: `${alias} ${operator.op} ${fullAlias(operator.op)}`,
-        insertText: operatorCallSnippet(operator, alias, assignment),
-        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        kind: monaco.languages.CompletionItemKind.Function,
-        range: target.range,
-        sortText: `0-${alias}-${operator.op}`
-      });
-    }
-    if (candidates.length > 1) {
-      for (const operator of candidates) {
-        const alias = fullAlias(operator.op);
-        items.push({
-          label: alias,
-          detail: `${operator.op} · 无歧义完整名称`,
-          documentation: { value: operatorDocumentation(operator, namespace, alias) },
-          insertText: operatorCallSnippet(operator, alias, assignment),
-          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-          kind: monaco.languages.CompletionItemKind.Function,
-          range: target.range,
-          sortText: `1-${alias}`
-        });
-      }
-    }
-  }
+  const outputName = assignment ?? (
+    resultList === "FILTERS"
+      ? "filter_name"
+      : resultList === "DERIVATIVES"
+        ? "factor_name"
+        : undefined
+  );
+  const items = operators.map((operator): CompletionItem => {
+    const alias = shortAlias(operator.op);
+    return {
+      label: alias,
+      detail: `${operator.op} · ${operator.output_kind}`,
+      documentation: { value: operatorDocumentation(operator, namespace, category, alias) },
+      filterText: `${alias} ${operator.op}`,
+      insertText: operatorCallSnippet(operator, alias, outputName),
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      kind: monaco.languages.CompletionItemKind.Function,
+      range: target.range,
+      sortText: `0-${alias}`
+    };
+  });
   return items.filter((item) => completionLabel(item).startsWith(partial) || String(item.filterText ?? "").includes(partial));
 }
 
-function operatorCallSnippet(operator: DslOperator, alias: string, assignment?: string) {
+function operatorCallSnippet(operator: DslOperator, alias: string, outputName?: string) {
   let placeholder = 1;
-  const name = assignment ?? "factor_name";
-  const argumentsList = [`"\${${placeholder++}:${escapeSnippet(name)}}"`];
+  const argumentsList = outputName
+    ? [`"\${${placeholder++}:${escapeSnippet(outputName)}}"`]
+    : [];
   for (const parameter of operatorParameters(operator).slice(1)) {
     if (!parameter.required && schemaDefault(parameter.schema) === undefined) continue;
     argumentsList.push(`${parameter.name}=\${${placeholder++}:${escapeSnippet(parameterDefault(parameter))}}`);
@@ -433,7 +467,7 @@ function topLevelItems(monaco: Monaco, source: string, symbols: PythonSymbol[], 
     label: "def",
     detail: "DSL 辅助函数",
     documentation: "Backend 支持无装饰器、无默认值且函数体只有一个 return 的辅助函数。",
-    insertText: "def ${1:build_factor}(${2:name}, ${3:col}):\n    return ${4:TS.rolling_mean(name, col=col, window=20)}",
+    insertText: "def ${1:build_factor}(${2:name}, ${3:col}):\n    return ${4:TS.unary.rolling_mean(name, col=col, window=20)}",
     insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
     kind: monaco.languages.CompletionItemKind.Snippet,
     range: target.range,
@@ -456,7 +490,7 @@ function pythonHover(model: TextModel, position: Position, catalog: DslCatalog) 
   if (operator) {
     return {
       range: rangeFromOffsets(model, operator.start, operator.end),
-      contents: operator.candidates.map((candidate) => ({ value: operatorDocumentation(candidate, operator.namespace, operator.alias) }))
+      contents: operator.candidates.map((candidate) => ({ value: operatorDocumentation(candidate, operator.namespace, operator.category, operator.alias) }))
     };
   }
   const word = model.getWordAtPosition(position);
@@ -487,11 +521,11 @@ function pythonHover(model: TextModel, position: Position, catalog: DslCatalog) 
   };
 }
 
-function operatorSignature(operator: DslOperator, namespace: OperatorType, alias: string) {
+function operatorSignature(operator: DslOperator, namespace: OperatorType, category: string, alias: string) {
   const parameters = operatorParameters(operator);
   const labels = parameters.map((parameter) => parameterSignature(parameter, operator.definition));
   return {
-    label: `${namespace}.${alias}(${labels.join(", ")}) -> OP[${operator.output_kind}]`,
+    label: `${namespace}.${category}.${alias}(${labels.join(", ")}) -> OP[${operator.output_kind}]`,
     documentation: { value: `${operator.description}\n\n底层算符：\`${operator.op}\`` },
     parameters: parameters.map((parameter) => ({
       label: parameterSignature(parameter, operator.definition),
@@ -522,7 +556,7 @@ function callContext(source: string, offset: number, catalog: DslCatalog) {
 function callContextFromLexical(source: string, lexical: LexicalSource, offset: number, catalog: DslCatalog): CallContext | undefined {
   const open = enclosingOperatorCall(lexical.masked, offset);
   if (!open) return undefined;
-  const candidates = operatorCandidates(open.namespace, open.alias, catalog);
+  const candidates = operatorCandidates(open.namespace, open.category, open.alias, catalog);
   if (!candidates.length) return undefined;
   const argumentsStructure = lexical.masked.slice(open.open + 1, offset);
   const argumentsSource = source.slice(open.open + 1, offset);
@@ -537,7 +571,7 @@ function callContextFromLexical(source: string, lexical: LexicalSource, offset: 
   return { ...open, candidates, currentKeyword, positionalIndex, typingKeyword, usedKeywords };
 }
 
-function enclosingOperatorCall(masked: string, offset: number): { alias: string; namespace: OperatorType; open: number } | undefined {
+function enclosingOperatorCall(masked: string, offset: number): { alias: string; category: string; namespace: OperatorType; open: number } | undefined {
   const stack: Array<{ char: string; index: number }> = [];
   const matching: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
   for (let index = 0; index < offset; index += 1) {
@@ -548,8 +582,8 @@ function enclosingOperatorCall(masked: string, offset: number): { alias: string;
   for (const entry of [...stack].reverse()) {
     if (entry.char !== "(") continue;
     const prefix = masked.slice(Math.max(0, entry.index - 160), entry.index);
-    const match = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)\s*$/.exec(prefix);
-    if (match) return { namespace: match[1] as OperatorType, alias: match[2], open: entry.index };
+    const match = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*$/.exec(prefix);
+    if (match) return { namespace: match[1] as OperatorType, category: match[2], alias: match[3], open: entry.index };
   }
   return undefined;
 }
@@ -604,9 +638,9 @@ function collectSymbols(masked: string, catalog: DslCatalog): PythonSymbol[] {
     if ((resultVariables as readonly string[]).includes(match[1]) || namespaces.includes(match[1] as OperatorType)) continue;
     symbols.set(match[1], { name: match[1], kind: "variable", outputKind: "ANY" });
   }
-  const operationPattern = /^([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*(DIRECT|TS|CS)\.([A-Za-z_]\w*)\s*\(/gm;
+  const operationPattern = /^([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*(DIRECT|TS|CS)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(/gm;
   for (const match of masked.matchAll(operationPattern)) {
-    const candidates = operatorCandidates(match[2] as OperatorType, match[3], catalog);
+    const candidates = operatorCandidates(match[2] as OperatorType, match[3], match[4], catalog);
     const outputKind = commonOutputKind(candidates);
     symbols.set(match[1], { name: match[1], kind: "operation", outputKind, operator: candidates[0] });
   }
@@ -635,8 +669,8 @@ function helperReturnOperator(masked: string, match: RegExpMatchArray, catalog: 
   const start = (match.index ?? 0) + match[0].length;
   const remainder = masked.slice(start);
   const nextTopLevel = /\n(?=\S)/.exec(remainder)?.index ?? remainder.length;
-  const returned = /\breturn\s+(DIRECT|TS|CS)\.([A-Za-z_]\w*)\s*\(/.exec(remainder.slice(0, nextTopLevel));
-  return returned ? operatorCandidates(returned[1] as OperatorType, returned[2], catalog)[0] : undefined;
+  const returned = /\breturn\s+(DIRECT|TS|CS)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(/.exec(remainder.slice(0, nextTopLevel));
+  return returned ? operatorCandidates(returned[1] as OperatorType, returned[2], returned[3], catalog)[0] : undefined;
 }
 
 function collectOperationLists(masked: string, catalog: DslCatalog, symbols: Map<string, PythonSymbol>) {
@@ -645,7 +679,7 @@ function collectOperationLists(masked: string, catalog: DslCatalog, symbols: Map
     const open = (match.index ?? 0) + match[0].lastIndexOf("[");
     const close = matchingDelimiter(masked, open, "[", "]");
     const body = masked.slice(open + 1, close < 0 ? masked.length : close);
-    const calls = [...body.matchAll(/\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)\s*\(/g)].flatMap((call) => operatorCandidates(call[1] as OperatorType, call[2], catalog));
+    const calls = [...body.matchAll(/\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(/g)].flatMap((call) => operatorCandidates(call[1] as OperatorType, call[2], call[3], catalog));
     const referenced = [...body.matchAll(/\b([A-Za-z_]\w*)\b/g)]
       .map((reference) => symbols.get(reference[1]))
       .filter((symbol): symbol is PythonSymbol => symbol?.kind === "operation" || symbol?.kind === "function");
@@ -655,44 +689,49 @@ function collectOperationLists(masked: string, catalog: DslCatalog, symbols: Map
 }
 
 function enclosingResultList(masked: string, offset: number): typeof resultVariables[number] | undefined {
-  const stack: number[] = [];
+  const stack: Array<{ char: string; index: number }> = [];
+  const matching: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
   for (let index = 0; index < offset; index += 1) {
-    if (masked[index] === "[") stack.push(index);
-    else if (masked[index] === "]") stack.pop();
+    const char = masked[index];
+    if (char === "(" || char === "[" || char === "{") stack.push({ char, index });
+    else if (matching[char] && stack.at(-1)?.char === matching[char]) stack.pop();
   }
-  for (const open of [...stack].reverse()) {
-    const prefix = masked.slice(Math.max(0, open - 160), open);
-    const match = /\b(FACTORS|DERIVATIVES|FILTERS)\s*(?::[^=\n]+)?=\s*$/.exec(prefix);
-    if (match) return match[1] as typeof resultVariables[number];
-  }
-  return undefined;
+  const open = stack.at(-1);
+  if (open?.char !== "[") return undefined;
+  const prefix = masked.slice(Math.max(0, open.index - 160), open.index);
+  const match = /\b(FACTORS|DERIVATIVES|FILTERS)\s*(?::[^=\n]+)?=\s*$/.exec(prefix);
+  return match?.[1] as typeof resultVariables[number] | undefined;
 }
 
 function operatorReferenceAt(masked: string, offset: number, catalog: DslCatalog) {
-  const pattern = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)/g;
+  const pattern = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)/g;
   for (const match of masked.matchAll(pattern)) {
     const start = match.index ?? 0;
     const end = start + match[0].length;
     if (offset < start || offset > end) continue;
-    return { start, end, namespace: match[1] as OperatorType, alias: match[2], candidates: operatorCandidates(match[1] as OperatorType, match[2], catalog) };
+    return {
+      start,
+      end,
+      namespace: match[1] as OperatorType,
+      category: match[2],
+      alias: match[3],
+      candidates: operatorCandidates(match[1] as OperatorType, match[2], match[3], catalog)
+    };
   }
   return undefined;
 }
 
-function operatorCandidates(namespace: OperatorType, alias: string, catalog: DslCatalog) {
-  const normalized = alias.endsWith("_") ? alias.slice(0, -1) : alias;
-  const typed = catalog.operators.filter((operator) => operator.type === namespace);
-  const exact = typed.filter((operator) => fullAlias(operator.op) === normalized);
-  return exact.length ? exact : typed.filter((operator) => operator.op.split(".").at(-1) === normalized);
+function operatorCandidates(namespace: OperatorType, category: string, alias: string, catalog: DslCatalog) {
+  const keyword = alias.endsWith("_") ? alias.slice(0, -1) : "";
+  const normalized = keyword && pythonKeywords.has(keyword) ? keyword : alias;
+  return catalog.operators.filter(
+    (operator) => operator.type === namespace && operator.op === `${category}.${normalized}`
+  );
 }
 
 function shortAlias(operation: string) {
   const alias = operation.split(".").at(-1) ?? operation;
   return pythonKeywords.has(alias) ? `${alias}_` : alias;
-}
-
-function fullAlias(operation: string) {
-  return operation.replace(/\./g, "_");
 }
 
 function commonOutputKind(operators: DslOperator[]): OutputKind {
@@ -807,10 +846,10 @@ function parameterDocumentation(parameter: PythonParameter) {
   return [parameter.schema.description, constraints, parameter.required ? "必填" : "可选"].filter(Boolean).join("\n\n");
 }
 
-function operatorDocumentation(operator: DslOperator, namespace: OperatorType, alias: string) {
-  const signature = operatorSignature(operator, namespace, alias).label;
+function operatorDocumentation(operator: DslOperator, namespace: OperatorType, category: string, alias: string) {
+  const signature = operatorSignature(operator, namespace, category, alias).label;
   const parameters = operatorParameters(operator).slice(1).map((parameter) => `- \`${parameter.name}\`：${parameterDocumentation(parameter).replace(/\n+/g, "；")}`).join("\n");
-  return `**${namespace}.${alias}** · ${operator.output_kind}\n\n\`${signature}\`\n\n${operator.description}\n\n底层算符：\`${operator.op}\`${parameters ? `\n\n${parameters}` : ""}`;
+  return `**${namespace}.${category}.${alias}** · ${operator.output_kind}\n\n\`${signature}\`\n\n${operator.description}\n\n底层算符：\`${operator.op}\`${parameters ? `\n\n${parameters}` : ""}`;
 }
 
 function resultVariableDescription(name: typeof resultVariables[number]) {
@@ -830,7 +869,7 @@ function namespaceItem(monaco: Monaco, namespace: OperatorType, target: Completi
   return {
     label: namespace,
     detail: namespace === "DIRECT" ? "直接计算算符" : namespace === "TS" ? "时序算符" : "截面算符",
-    documentation: `输入 ${namespace}. 后可查看该命名空间的全部算符。`,
+    documentation: `输入 ${namespace}. 后先选择算子类别，再查看该类别下的算子。`,
     insertText: `${namespace}.`,
     command: { id: "editor.action.triggerSuggest", title: "显示 DSL 算符" },
     kind: monaco.languages.CompletionItemKind.Module,
@@ -939,7 +978,7 @@ function matchingDelimiter(source: string, open: number, left: string, right: st
 }
 
 function assignmentName(linePrefix: string) {
-  return /\b([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*(?:DIRECT|TS|CS)\.[A-Za-z_]*$/.exec(linePrefix)?.[1]
+  return /\b([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*(?:DIRECT|TS|CS)(?:\.[A-Za-z_]\w*)?\.[A-Za-z_]*$/.exec(linePrefix)?.[1]
     ?? /\b([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*$/.exec(linePrefix)?.[1];
 }
 
