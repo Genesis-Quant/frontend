@@ -11,6 +11,7 @@ import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
 import { chartRange, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
+import { isApiRequestStatus } from "@/assets/lib/httpError";
 import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
@@ -18,7 +19,8 @@ import {
   type GroupPoint,
   type GroupStatistic,
   type InformationPoint,
-  type LongShortPoint
+  type LongShortPoint,
+  type TurnoverSummary
 } from "@/assets/lib/factorAnalysis";
 import DateRangeBar from "@/components/bar/DateRangeBar";
 import EChart from "@/components/chart/EChart";
@@ -27,6 +29,7 @@ import { useAppStore } from "@/store";
 import type { AxisFormat, ChartRange, FactorChartRanges } from "@/types/chart";
 import type { FactorAnalysisParameters, FactorMetrics } from "@/types/factor";
 import { Button } from "@/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 
 type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
 type DisplayMetric = { label: string; value: string };
@@ -58,6 +61,10 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [groups, setGroups] = useState<GroupPoint[]>([]);
   const [groupStatistics, setGroupStatistics] = useState<GroupStatistic[]>([]);
   const [decay, setDecay] = useState<DecayPoint[]>([]);
+  const [turnoverAvailable, setTurnoverAvailable] = useState(false);
+  const [turnoverPeriods, setTurnoverPeriods] = useState<number[]>([]);
+  const [turnoverPeriod, setTurnoverPeriod] = useState<number | null>(null);
+  const [turnover, setTurnover] = useState<TurnoverSummary | null>(null);
   const [timeline, setTimeline] = useState<InformationPoint[]>([]);
   const [rangeFactor, setRangeFactor] = useState("");
   const [minimumDate, setMinimumDate] = useState("");
@@ -69,6 +76,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [returnLoading, setReturnLoading] = useState(false);
   const [groupLoading, setGroupLoading] = useState(false);
   const [decayLoading, setDecayLoading] = useState(false);
+  const [turnoverLoading, setTurnoverLoading] = useState(false);
   const [error, setError] = useState("");
   const rangePoints = useMemo(() => timeline.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic })), [timeline]);
   const returnSpecsKey = JSON.stringify(parameters.return_specs);
@@ -90,15 +98,20 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     setLoading(true);
     setError("");
     setMetrics(null);
+    setTurnoverAvailable(false);
     async function loadResults() {
       try {
-        const [informationBuffer, groupBuffer] = await Promise.all([
+        const [informationBuffer, groupBuffer, turnoverBuffer] = await Promise.all([
           factorApi.output(workflowInstanceId, "information_coefficient"),
-          factorApi.output(workflowInstanceId, "group_returns")
+          factorApi.output(workflowInstanceId, "group_returns"),
+          factorApi.output(workflowInstanceId, "group_turnover").catch((reason: unknown) => {
+            if (isApiRequestStatus(reason, 404)) return null;
+            throw reason;
+          })
         ]);
         session = await FactorAnalytics.create(
           workflowInstanceId,
-          { information: informationBuffer, groups: groupBuffer },
+          { information: informationBuffer, groups: groupBuffer, turnover: turnoverBuffer },
           parameters
         );
         if (cancelled) {
@@ -106,6 +119,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
           return;
         }
         analytics.current = session;
+        setTurnoverAvailable(turnoverBuffer !== null);
         const calculated = await session.metrics();
         if (cancelled) return;
         setMetrics(calculated);
@@ -200,6 +214,36 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   }, [endDate, factor, metrics, rangeFactor, returnColumnsKey, startDate]);
 
   useEffect(() => {
+    const session = analytics.current;
+    if (!session || !metrics || !factor) return undefined;
+    let cancelled = false;
+    setTurnoverPeriods([]);
+    setTurnoverPeriod(null);
+    setTurnover(null);
+    session.turnoverPeriods(factor)
+      .then((periods) => {
+        if (cancelled) return;
+        setTurnoverPeriods(periods);
+        setTurnoverPeriod(periods[0] ?? null);
+      })
+      .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); });
+    return () => { cancelled = true; };
+  }, [factor, metrics]);
+
+  useEffect(() => {
+    const session = analytics.current;
+    if (!session || !metrics || !factor || turnoverPeriod === null || rangeFactor !== factor) return undefined;
+    let cancelled = false;
+    setTurnover(null);
+    setTurnoverLoading(true);
+    session.turnoverSummary(factor, turnoverPeriod, parameters.n_groups, { start: startDate, end: endDate })
+      .then((summary) => { if (!cancelled) setTurnover(summary); })
+      .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); })
+      .finally(() => { if (!cancelled) setTurnoverLoading(false); });
+    return () => { cancelled = true; };
+  }, [endDate, factor, metrics, parameters.n_groups, rangeFactor, startDate, turnoverPeriod]);
+
+  useEffect(() => {
     if (!onChartRanges) return;
     onChartRanges({
       information: {
@@ -209,9 +253,10 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       longShort: { primary: chartRange(longShort.map((row) => row.value), true), secondary: chartRange(longShort.map((row) => row.cumulative)) },
       groupStatistics: chartRange(groupStatistics.map((row) => row.mean), true),
       groups: chartRange(groups.flatMap((row) => Object.values(row.values))),
+      turnover: chartRange(turnover?.groups.map((row) => row.value) ?? [], true),
       decay: chartRange(decay.flatMap((row) => [row.icMean, row.rankIcMean]), true)
     });
-  }, [decay, groupStatistics, groups, icType, information, longShort, onChartRanges]);
+  }, [decay, groupStatistics, groups, icType, information, longShort, onChartRanges, turnover]);
 
   if (loading) return <ResultState icon={<IconLoaderCircle className="animate-spin" width={20} height={20} />} title="DuckDB 正在读取 Parquet" detail="正在浏览器内加载 IC 与分组收益结果。" />;
   if (error && !metrics) return <ResultState icon={<IconDatabase width={20} height={20} />} title="结果读取失败" detail={error} />;
@@ -273,6 +318,26 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
             </ChartPanel>
           </ReportCard>
         },
+        ...turnoverAvailable
+          ? [{
+            id: "turnover",
+            content: <ReportCard title="换手分析">
+              <CardToolbar end={
+                <Tabs value={turnoverPeriod === null ? "" : String(turnoverPeriod)} onValueChange={(value) => setTurnoverPeriod(Number(value))}>
+                  <TabsList variant="line">{turnoverPeriods.map((periods) => <TabsTrigger key={periods} value={String(periods)}>{periods} 日</TabsTrigger>)}</TabsList>
+                </Tabs>
+              }>
+                <span className="text-xs text-muted-foreground">持有期（交易日）</span>
+              </CardToolbar>
+              <MetricGrid items={turnoverMetrics(turnover)} />
+              <ChartPanel title="各组合平均换手率">
+                <SeriesContent loading={turnoverLoading} count={turnover?.groups.filter((row) => row.value !== null).length ?? 0} height={330}>
+                  {turnover?.groups.some((row) => row.value !== null) && <EChart option={turnoverOption(turnover.groups, theme, chartRanges?.turnover)} height={330} />}
+                </SeriesContent>
+              </ChartPanel>
+            </ReportCard>
+          }]
+          : [],
         {
           id: "decay",
           content: <ReportCard title="衰减分析">
@@ -358,6 +423,19 @@ function decaySummary(rows: DecayPoint[]): DisplayMetric[] {
     { label: "IC 峰值收益列", value: icPeak?.label ?? "—" },
     { label: "IC 峰值大小", value: format(icPeak?.icMean) },
     { label: "IC 半衰期", value: halfLife(rows, "icMean", icPeak) }
+  ];
+}
+
+function turnoverMetrics(summary: TurnoverSummary | null): DisplayMetric[] {
+  const groups = summary?.groups.filter((row): row is { group: string; value: number } => row.value !== null) ?? [];
+  const average = groups.length ? statisticsMean(groups.map((row) => row.value)) : null;
+  const lowest = groups.reduce<{ group: string; value: number } | null>((current, row) => !current || row.value < current.value ? row : current, null);
+  const highest = groups.reduce<{ group: string; value: number } | null>((current, row) => !current || row.value > current.value ? row : current, null);
+  return [
+    { label: "平均组合换手率", value: format(average, "percent") },
+    { label: "平均因子秩自相关", value: format(summary?.rankAutocorrelation) },
+    { label: "最低换手组合", value: lowest ? `${lowest.group} · ${format(lowest.value, "percent")}` : "—" },
+    { label: "最高换手组合", value: highest ? `${highest.group} · ${format(highest.value, "percent")}` : "—" }
   ];
 }
 
@@ -475,6 +553,21 @@ function decayOption(rows: DecayPoint[], theme: string, range?: ChartRange) {
     { name: "RankIC 均值", type: "bar", data: rows.map((row) => row.rankIcMean), itemStyle: { color: "#059669", opacity: 0.78 }, barMaxWidth: 24 }
   ], range);
   option.xAxis = { ...(option.xAxis as Record<string, unknown>), boundaryGap: true };
+  return option;
+}
+
+function turnoverOption(rows: TurnoverSummary["groups"], theme: string, range?: ChartRange) {
+  const option: Record<string, unknown> = baseOption(theme, rows.map((row) => row.group), [{
+    name: "平均换手率",
+    type: "bar",
+    data: rows.map((row) => row.value),
+    barMaxWidth: 46,
+    itemStyle: { color: (params: { dataIndex: number }) => groupColor(params.dataIndex, rows.length), borderRadius: [4, 4, 0, 0] },
+    label: { show: true, position: "top", formatter: (params: { value: number }) => `${(params.value * 100).toFixed(1)}%`, color: theme === "dark" ? "#cbd5e1" : "#475569", fontSize: 10 }
+  }], range);
+  option.xAxis = { ...(option.xAxis as Record<string, unknown>), boundaryGap: true };
+  option.yAxis = { ...axis(theme, true, range, "percent"), min: 0, max: 1 };
+  option.tooltip = { ...(option.tooltip as Record<string, unknown>), valueFormatter: (value: number) => `${(value * 100).toFixed(2)}%` };
   return option;
 }
 

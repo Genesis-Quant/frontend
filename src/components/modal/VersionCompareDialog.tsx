@@ -158,6 +158,7 @@ function mergeFactorRanges(left?: FactorChartRanges, right?: FactorChartRanges):
     longShort: { primary: mergeChartRanges(left?.longShort?.primary, right?.longShort?.primary), secondary: mergeChartRanges(left?.longShort?.secondary, right?.longShort?.secondary) },
     groupStatistics: mergeChartRanges(left?.groupStatistics, right?.groupStatistics),
     groups: mergeChartRanges(left?.groups, right?.groups),
+    turnover: mergeChartRanges(left?.turnover, right?.turnover),
     decay: mergeChartRanges(left?.decay, right?.decay)
   };
 }

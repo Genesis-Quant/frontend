@@ -180,6 +180,7 @@ export type FactorMetricSummary = {
   long_short_annual_volatility: number | null;
   long_short_sharpe: number | null;
   long_short_max_drawdown: number | null;
+  average_turnover?: number | null;
 };
 
 export type FactorMetrics = Record<string, Record<string, FactorMetricSummary>>;
@@ -201,7 +202,7 @@ export type FactorProjectListItem = {
   updated_at: string;
 };
 
-export type FactorProjectSortField = "id" | "title" | "latest_version" | "ic_mean" | "rank_ic_mean" | "ic_ir" | "long_short_cumulative_return" | "long_short_annual_return" | "long_short_sharpe" | "updated_at";
+export type FactorProjectSortField = "id" | "title" | "latest_version" | "ic_mean" | "rank_ic_mean" | "ic_ir" | "rank_ic_ir" | "long_short_cumulative_return" | "long_short_annual_return" | "long_short_sharpe" | "average_turnover" | "updated_at";
 
 export type FactorProjectPage = {
   all_total: number;
@@ -264,7 +265,7 @@ export type DslCatalog = {
 };
 
 export type FactorOutput = {
-  name: "processed_data" | "information_coefficient" | "group_returns";
+  name: "processed_data" | "information_coefficient" | "group_returns" | "group_turnover";
   filename: string;
   size: number;
   modified_at: string;

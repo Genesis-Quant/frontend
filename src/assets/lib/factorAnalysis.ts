@@ -8,6 +8,8 @@ export type LongShortPoint = { time: string; value: number | null; cumulative: n
 export type GroupPoint = { time: string; values: Record<string, number | null> };
 export type GroupStatistic = { group: string; mean: number | null; pValue: number | null };
 export type DecayPoint = { returnColumn: string; label: string; position: number; icMean: number | null; rankIcMean: number | null };
+export type TurnoverGroup = { group: string; value: number | null };
+export type TurnoverSummary = { periods: number; rankAutocorrelation: number | null; groups: TurnoverGroup[] };
 export type FactorDateRange = { start: string; end: string };
 
 export class FactorAnalytics {
@@ -15,21 +17,30 @@ export class FactorAnalytics {
     private readonly database: BrowserDuckDb,
     private readonly informationFile: string,
     private readonly groupsFile: string,
+    private readonly turnoverFile: string | null,
     private readonly parameters: FactorAnalysisParameters,
-    private readonly groupColumns: Set<string>
+    private readonly groupColumns: Set<string>,
+    private readonly turnoverColumns: Set<string>
   ) {}
 
   static async create(
     workflowInstanceId: number,
-    files: { information: ArrayBuffer; groups: ArrayBuffer },
+    files: { information: ArrayBuffer; groups: ArrayBuffer; turnover?: ArrayBuffer | null },
     parameters: FactorAnalysisParameters
   ) {
     const informationFile = `factor-${workflowInstanceId}-information.parquet`;
     const groupsFile = `factor-${workflowInstanceId}-groups.parquet`;
-    const database = await BrowserDuckDb.create({ [informationFile]: files.information, [groupsFile]: files.groups });
+    const turnoverFile = files.turnover ? `factor-${workflowInstanceId}-turnover.parquet` : null;
+    const registeredFiles: Record<string, ArrayBuffer> = { [informationFile]: files.information, [groupsFile]: files.groups };
+    if (turnoverFile && files.turnover) registeredFiles[turnoverFile] = files.turnover;
+    const database = await BrowserDuckDb.create(registeredFiles);
     const schema = await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(groupsFile)})`);
     const groupColumns = new Set(schema.map((row) => String(row.column_name)));
-    return new FactorAnalytics(database, informationFile, groupsFile, parameters, groupColumns);
+    const turnoverSchema = turnoverFile
+      ? await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(turnoverFile)})`)
+      : [];
+    const turnoverColumns = new Set(turnoverSchema.map((row) => String(row.column_name)));
+    return new FactorAnalytics(database, informationFile, groupsFile, turnoverFile, parameters, groupColumns, turnoverColumns);
   }
 
   async metrics(): Promise<FactorMetrics> {
@@ -162,6 +173,31 @@ export class FactorAnalytics {
     }));
   }
 
+  async turnoverPeriods(factor: string): Promise<number[]> {
+    if (!this.turnoverFile) return [];
+    const rows = await this.rows(`SELECT DISTINCT periods FROM read_parquet(${literal(this.turnoverFile)}) WHERE factor = ${literal(factor)} ORDER BY periods`);
+    return rows.map((row) => integerValue(row.periods)).filter((periods) => periods > 0);
+  }
+
+  async turnoverSummary(factor: string, periods: number, nGroups: number, range?: FactorDateRange): Promise<TurnoverSummary> {
+    if (!this.turnoverFile) return { periods, rankAutocorrelation: null, groups: [] };
+    const definitions = turnoverDefinitions(this.turnoverColumns, nGroups, this.parameters.n_select);
+    const groupColumns = definitions.map((definition, index) => `avg(${identifier(definition.column)}) AS ${identifier(`turnover_${index}`)}`);
+    const row = (await this.rows(`
+      SELECT avg(rank_autocorrelation) AS rank_autocorrelation, ${groupColumns.join(", ")}
+      FROM read_parquet(${literal(this.turnoverFile)})
+      WHERE factor = ${literal(factor)} AND periods = ${Math.trunc(periods)}${dateAndFilter(range)}
+    `))[0] ?? {};
+    return {
+      periods,
+      rankAutocorrelation: numberValue(row.rank_autocorrelation),
+      groups: definitions.map((definition, index) => ({
+        group: definition.label,
+        value: numberValue(row[`turnover_${index}`])
+      }))
+    };
+  }
+
   async close() {
     await this.database.close();
   }
@@ -280,4 +316,23 @@ function integerValue(value: unknown) {
 function dateFilter(range?: FactorDateRange) {
   if (!range || !/^\d{4}-\d{2}-\d{2}$/.test(range.start) || !/^\d{4}-\d{2}-\d{2}$/.test(range.end)) return "";
   return `WHERE time BETWEEN DATE ${literal(range.start)} AND DATE ${literal(range.end)}`;
+}
+
+function turnoverDefinitions(turnoverColumns: Set<string>, nGroups: number, nSelect: number) {
+  const groups = Array.from({ length: nGroups }, (_, group) => ({
+    column: `group${group}`,
+    label: `Group ${group + 1}`
+  }));
+  return turnoverColumns.has("bottom") && turnoverColumns.has("top")
+    ? [
+      { column: "bottom", label: `最小 ${nSelect} 支` },
+      ...groups,
+      { column: "top", label: `最大 ${nSelect} 支` }
+    ]
+    : groups;
+}
+
+function dateAndFilter(range?: FactorDateRange) {
+  if (!range || !/^\d{4}-\d{2}-\d{2}$/.test(range.start) || !/^\d{4}-\d{2}-\d{2}$/.test(range.end)) return "";
+  return ` AND time BETWEEN DATE ${literal(range.start)} AND DATE ${literal(range.end)}`;
 }

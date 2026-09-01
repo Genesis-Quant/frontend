@@ -6,6 +6,7 @@ export type FactorChartRanges = {
   longShort?: { primary?: ChartRange; secondary?: ChartRange };
   groupStatistics?: ChartRange;
   groups?: ChartRange;
+  turnover?: ChartRange;
   decay?: ChartRange;
 };
 
