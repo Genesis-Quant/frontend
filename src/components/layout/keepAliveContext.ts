@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 export const KeepAliveActiveContext = createContext(true);
 export const KeepAlivePortalContainerContext = createContext<HTMLElement | null>(null);
@@ -9,19 +9,6 @@ export function useKeepAliveActive() {
 
 export function useKeepAlivePortalContainer() {
   return useContext(KeepAlivePortalContainerContext);
-}
-
-export function useKeepAliveReactivation(callback: () => void) {
-  const active = useKeepAliveActive();
-  const callbackRef = useRef(callback);
-  const previouslyActive = useRef(active);
-
-  useLayoutEffect(() => { callbackRef.current = callback; }, [callback]);
-  useEffect(() => {
-    const reactivated = active && !previouslyActive.current;
-    previouslyActive.current = active;
-    if (reactivated) callbackRef.current();
-  }, [active]);
 }
 
 export function useKeepAliveOpenState({ defaultOpen = false, onOpenChange, open }: { defaultOpen?: boolean; onOpenChange?: (open: boolean) => void; open?: boolean }) {

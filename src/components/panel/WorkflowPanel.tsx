@@ -11,7 +11,6 @@ import TaskStateBadge from "@/components/badge/TaskStateBadge";
 import SchedulerState, { schedulerStateLabel } from "@/components/status/SchedulerState";
 import WorkflowDetailsModal from "@/components/modal/WorkflowDetailsModal";
 import TaskLogModal from "@/components/modal/TaskLogModal";
-import { useKeepAliveActive, useKeepAliveReactivation } from "@/components/layout/keepAliveContext";
 import { AppPagination } from "@/components/pagination/AppPagination";
 import { useAppStore } from "@/store";
 import { terminalStates, type WorkflowApplication, type WorkflowAttemptListPage, type WorkflowAttemptSummary, type WorkflowTaskSummary, type WorkflowWorkspaceListItem, type WorkflowWorkspaceListPage } from "@/types/workflow";
@@ -26,7 +25,6 @@ type StateFilter = "all" | "active" | "success" | "failure";
 type SelectedTask = { workflowInstanceId: number; taskInstanceId: number };
 
 export default function WorkflowPanel({ adminScope = false, onTotalChange, showUsername = false }: { adminScope?: boolean; onTotalChange?: (total: number) => void; showUsername?: boolean }) {
-  const keepAliveActive = useKeepAliveActive();
   const userId = useAppStore((store) => store.user?.id);
   const [result, setResult] = useState<WorkflowWorkspaceListPage | null>(null);
   const [page, setPage] = useState(1);
@@ -45,6 +43,7 @@ export default function WorkflowPanel({ adminScope = false, onTotalChange, showU
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
   const loadRequest = useRef(0);
+  const hasLoadedWorkflows = useRef(false);
   const attemptLoadGeneration = useRef(0);
   const totalPages = Math.max(1, Math.ceil((result?.total ?? 0) / pageSize));
 
@@ -56,6 +55,7 @@ export default function WorkflowPanel({ adminScope = false, onTotalChange, showU
       const listWorkflows = adminScope ? adminApi.workflows : workflowsApi.list;
       const nextResult = await listWorkflows({ page, page_size: pageSize, application: application === "all" ? undefined : application, state: state === "all" ? undefined : state });
       if (requestId !== loadRequest.current) return;
+      hasLoadedWorkflows.current = true;
       setResult(nextResult);
       onTotalChange?.(nextResult.total);
     } catch (reason) {
@@ -67,8 +67,6 @@ export default function WorkflowPanel({ adminScope = false, onTotalChange, showU
       }
     }
   }, [adminScope, application, onTotalChange, page, pageSize, state]);
-
-  useKeepAliveReactivation(() => { load(true); });
 
   const loadAttempts = useCallback(async (workspaceId: number, pageNumber = 1) => {
     const generation = attemptLoadGeneration.current;
@@ -103,7 +101,7 @@ export default function WorkflowPanel({ adminScope = false, onTotalChange, showU
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(hasLoadedWorkflows.current); }, [load]);
   useEffect(() => {
     attemptLoadGeneration.current += 1;
     setExpandedWorkspaceIds(new Set());
@@ -152,16 +150,16 @@ export default function WorkflowPanel({ adminScope = false, onTotalChange, showU
   const containsPendingUpdate = useMemo(() => result?.items.some((workspace) => !terminalStates.has(workspace.current_attempt.state)) ?? false, [result]);
   const containsRunningWorkflow = useMemo(() => result?.items.some((workspace) => workflowIsRunning(workspace.current_attempt)) ?? false, [result]);
   useEffect(() => {
-    if (!keepAliveActive || !containsPendingUpdate) return undefined;
+    if (!containsPendingUpdate) return undefined;
     const timer = window.setInterval(() => load(true), 5000);
     return () => window.clearInterval(timer);
-  }, [containsPendingUpdate, keepAliveActive, load]);
+  }, [containsPendingUpdate, load]);
   useEffect(() => {
-    if (!keepAliveActive || !containsRunningWorkflow) return undefined;
+    if (!containsRunningWorkflow) return undefined;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [containsRunningWorkflow, keepAliveActive]);
+  }, [containsRunningWorkflow]);
 
   function changeApplication(value: string) { setApplication(value as "all" | WorkflowApplication); setPage(1); }
   function changeState(value: string) { setState(value as StateFilter); setPage(1); }

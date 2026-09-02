@@ -30,8 +30,11 @@ export default function AppLayout({ children, resolvePrimaryPath }: { children: 
   const user = useAppStore((state) => state.user);
   const visibleNavigation = user?.is_admin ? [...navigation, adminNavigation] : navigation;
 
-  return <main className="flex h-dvh min-h-0 flex-col overflow-hidden text-foreground">
-    <header className="sticky top-0 z-40 shrink-0 border-b border-border/35 bg-background/80 backdrop-blur-xl lg:border-border lg:bg-background/95">
+  const analysisWorkspace = isAnalysisWorkspace(location.pathname);
+  const documentationWorkspace = location.pathname.startsWith("/docs") || location.pathname.startsWith("/mcp");
+
+  return <main className="min-h-screen text-foreground">
+    <header className="sticky top-0 z-40 border-b border-border/35 bg-background/80 backdrop-blur-xl lg:border-border lg:bg-background/95">
       <div className="mx-auto flex min-h-16 max-w-[1440px] flex-wrap items-center justify-between gap-3 px-3 py-2 sm:px-6 lg:h-16 lg:flex-nowrap lg:gap-0 lg:py-0">
         <div className="flex items-center gap-1">
           <Sheet>
@@ -55,7 +58,11 @@ export default function AppLayout({ children, resolvePrimaryPath }: { children: 
         </div>
       </div>
     </header>
-    <section className="min-h-0 flex-1 overflow-hidden">{children}</section>
+    {active === "home"
+      ? children
+      : analysisWorkspace || documentationWorkspace
+        ? <section className="min-h-[calc(100dvh-4rem)]">{children}</section>
+        : <section className="mx-auto min-h-[calc(100vh-4rem)] max-w-[1440px] px-3 py-5 sm:px-6 sm:py-8 lg:py-10">{children}</section>}
   </main>;
 }
 
@@ -69,4 +76,11 @@ function activePage(pathname: string) {
   if (pathname.startsWith("/admin")) return "admin";
   if (pathname.startsWith("/profile")) return "profile";
   return "home";
+}
+
+function isAnalysisWorkspace(pathname: string) {
+  return pathname === "/query/secondary"
+    || pathname.startsWith("/query/projects/")
+    || pathname.startsWith("/factor/projects/")
+    || pathname.startsWith("/backtest/projects/");
 }

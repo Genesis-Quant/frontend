@@ -8,7 +8,6 @@ import ProjectListActions from "@/components/bar/ProjectListActions";
 import { PageHero } from "@/components/bar/PageHero";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
 import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
-import { useKeepAliveReactivation } from "@/components/layout/keepAliveContext";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import QueryProjectTable from "@/components/table/QueryProjectTable";
 import { Button } from "@/ui/button";
@@ -33,11 +32,11 @@ export default function QueryPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const loadSequence = useRef(0);
+  const hasLoadedProjects = useRef(false);
   const allTotal = projects?.all_total ?? projects?.total ?? 0;
   const atLimit = allTotal >= (projects?.limit ?? 5);
 
-  useEffect(() => { load(); }, [page, pageSize, search, sortBy, sortOrder]);
-  useKeepAliveReactivation(() => { load(true); });
+  useEffect(() => { load(hasLoadedProjects.current); }, [page, pageSize, search, sortBy, sortOrder]);
 
   async function load(background = false) {
     const sequence = ++loadSequence.current;
@@ -46,6 +45,7 @@ export default function QueryPage() {
     try {
       const result = await queryApi.listProjects({ page, page_size: pageSize, search: search || undefined, sort_by: sortBy, sort_order: sortOrder });
       if (sequence === loadSequence.current) {
+        hasLoadedProjects.current = true;
         const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
         if (page > lastPage) setPage(lastPage);
         else setProjects(result);

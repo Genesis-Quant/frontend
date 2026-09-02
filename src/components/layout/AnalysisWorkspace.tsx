@@ -28,7 +28,7 @@ export default function AnalysisWorkspace({ backTo, children, sidebar, sidebarLa
     "component-fade-in grid min-h-[calc(100dvh-4rem)] grid-cols-1 xl:transition-[grid-template-columns] xl:duration-300 xl:ease-out",
     collapsed ? "xl:grid-cols-[3.5rem_minmax(0,1fr)]" : "xl:grid-cols-[26rem_minmax(0,1fr)]"
   )}>
-    <aside className="relative flex min-w-0 flex-col border-b bg-muted/15 xl:sticky xl:top-0 xl:h-[calc(100dvh-4rem)] xl:self-start xl:border-b-0 xl:border-r">
+    <aside className="relative flex min-w-0 flex-col border-b bg-muted/15 xl:sticky xl:top-16 xl:h-[calc(100dvh-4rem)] xl:self-start xl:border-b-0 xl:border-r">
       <div className="relative min-h-0 flex-1">
         <div aria-hidden={collapsed} className={cn("h-full min-w-0 overflow-hidden transition-[opacity,transform] duration-200 ease-out", collapsed && "xl:pointer-events-none xl:-translate-x-2 xl:opacity-0")} inert={collapsed}>
           {sidebar}

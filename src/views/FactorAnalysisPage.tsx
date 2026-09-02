@@ -9,7 +9,6 @@ import { PageHero } from "@/components/bar/PageHero";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
 import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ProjectCompareDialog from "@/components/modal/ProjectCompareDialog";
-import { useKeepAliveReactivation } from "@/components/layout/keepAliveContext";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import FactorProjectTable from "@/components/table/FactorProjectTable";
 import type { FactorProjectListItem, FactorProjectPage, FactorProjectSortField } from "@/types/factor";
@@ -35,10 +34,10 @@ export default function FactorAnalysisPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const loadSequence = useRef(0);
+  const hasLoadedProjects = useRef(false);
   const allTotal = projects?.all_total ?? projects?.total ?? 0;
 
-  useEffect(() => { load(); }, [page, pageSize, search, sortBy, sortOrder]);
-  useKeepAliveReactivation(() => { load(true); });
+  useEffect(() => { load(hasLoadedProjects.current); }, [page, pageSize, search, sortBy, sortOrder]);
 
   async function load(background = false) {
     const sequence = ++loadSequence.current;
@@ -47,6 +46,7 @@ export default function FactorAnalysisPage() {
     try {
       const result = await factorApi.listProjects({ page, page_size: pageSize, search: search || undefined, sort_by: sortBy, sort_order: sortOrder });
       if (sequence === loadSequence.current) {
+        hasLoadedProjects.current = true;
         const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
         if (page > lastPage) setPage(lastPage);
         else setProjects(result);

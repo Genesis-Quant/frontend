@@ -23,18 +23,17 @@ const DocsPage = lazy(() => import("@/views/DocsPage"));
 const McpPage = lazy(() => import("@/views/McpPage"));
 const AdminPage = lazy(() => import("@/views/AdminPage"));
 
-const constrainedPageClassName = "mx-auto max-w-[1440px] px-3 py-5 sm:px-6 sm:py-8 lg:py-10";
 const primaryRoutes: KeepAliveRoute[] = [
   { cacheKey: "home", path: "/", element: <HomePage /> },
-  { cacheKey: "query", contentClassName: constrainedPageClassName, path: "/query", element: <QueryPage /> },
-  { cacheKey: "factor", contentClassName: constrainedPageClassName, path: "/factor", element: <FactorAnalysisPage /> },
-  { cacheKey: "backtest", contentClassName: constrainedPageClassName, path: "/backtest", element: <BacktestPage /> },
-  { cacheKey: "workflows", contentClassName: constrainedPageClassName, path: "/workflows", element: <WorkflowsPage /> },
+  { cacheKey: "query", path: "/query", element: <QueryPage /> },
+  { cacheKey: "factor", path: "/factor", element: <FactorAnalysisPage /> },
+  { cacheKey: "backtest", path: "/backtest", element: <BacktestPage /> },
+  { cacheKey: "workflows", path: "/workflows", element: <WorkflowsPage /> },
   { cacheKey: "docs", path: "/docs", element: <DocsPage /> },
   { cacheKey: "mcp", path: "/mcp", element: <McpPage /> },
-  { cacheKey: "profile", contentClassName: constrainedPageClassName, path: "/profile", element: <ProfilePage /> }
+  { cacheKey: "profile", path: "/profile", element: <ProfilePage /> }
 ];
-const adminRoute: KeepAliveRoute = { cacheKey: "admin", contentClassName: constrainedPageClassName, path: "/admin", element: <AdminPage /> };
+const adminRoute: KeepAliveRoute = { cacheKey: "admin", path: "/admin", element: <AdminPage /> };
 
 export default function App() {
   const location = useLocation();
@@ -77,19 +76,17 @@ function AuthenticatedApplication({ admin }: { admin: boolean }) {
   return <AppLayout resolvePrimaryPath={resolvePrimaryPath}>
     <KeepAliveRoutes fallback={<RouteLoading />} routes={routes} />
     {!primary
-      ? <div className="h-full overflow-y-auto"><div className="min-h-full">
-        <Suspense fallback={<RouteLoading />}>
-          <Routes location={location} key={location.pathname}>
-            <Route path="/query/secondary" element={<SecondaryQueryPage />} />
-            <Route path="/query/projects/:projectId" element={<QueryDetailPage />} />
-            <Route path="/factor/projects/:projectId" element={<FactorAnalysisDetailPage />} />
-            <Route path="/backtest/projects/:projectId" element={<BacktestDetailPage />} />
-            <Route path="/tutorial" element={<Navigate to={{ pathname: "/docs", search: location.search, hash: location.hash }} replace />} />
-            <Route path="/admin" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </div></div>
+      ? <Suspense fallback={<RouteLoading />}>
+        <Routes location={location} key={location.pathname}>
+          <Route path="/query/secondary" element={<SecondaryQueryPage />} />
+          <Route path="/query/projects/:projectId" element={<QueryDetailPage />} />
+          <Route path="/factor/projects/:projectId" element={<FactorAnalysisDetailPage />} />
+          <Route path="/backtest/projects/:projectId" element={<BacktestDetailPage />} />
+          <Route path="/tutorial" element={<Navigate to={{ pathname: "/docs", search: location.search, hash: location.hash }} replace />} />
+          <Route path="/admin" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
       : null}
   </AppLayout>;
 }

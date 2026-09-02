@@ -5,12 +5,10 @@ import { useSearchParams } from "react-router-dom";
 import { mcpApi } from "@/assets/lib/mcp";
 import { tokenStorageKey } from "@/assets/lib/settings";
 import DocumentationWorkspace, { indexDocumentation } from "@/components/layout/DocumentationWorkspace";
-import { useKeepAliveActive } from "@/components/layout/keepAliveContext";
 import type { McpCatalog, McpDocument } from "@/types/mcp";
 import { Button } from "@/ui/button";
 
 export default function McpPage() {
-  const keepAliveActive = useKeepAliveActive();
   const [searchParams, setSearchParams] = useSearchParams();
   const [catalog, setCatalog] = useState<McpCatalog | null>(null);
   const [catalogError, setCatalogError] = useState("");
@@ -38,13 +36,13 @@ export default function McpPage() {
   const selectedSlug = selected?.slug ?? "";
 
   useEffect(() => {
-    if (!keepAliveActive || !selectedSlug || requestedSlug === selectedSlug) return;
+    if (!selectedSlug || requestedSlug === selectedSlug) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set("doc", selectedSlug);
       return next;
     }, { replace: true });
-  }, [keepAliveActive, requestedSlug, selectedSlug, setSearchParams]);
+  }, [requestedSlug, selectedSlug, setSearchParams]);
 
   useEffect(() => {
     let active = true;
@@ -100,14 +98,26 @@ export default function McpPage() {
 function McpConnection({ mcpUrl }: { mcpUrl: string }) {
   const [copied, setCopied] = useState<"prompt" | "token" | "url" | null>(null);
   const resetTimer = useRef<number | undefined>(undefined);
+  const resetDeadline = useRef(0);
   const token = localStorage.getItem(tokenStorageKey) ?? "";
   const installPrompt = `请为当前 Agent 安装并启用 Arena MCP：服务地址为 ${mcpUrl}，Bearer Token 从环境变量 ARENA_TOKEN 读取；请自动识别当前客户端的 MCP 配置方式，完成配置后验证连接并列出可用工具，若 ARENA_TOKEN 尚未设置则只提醒我设置该环境变量，不要索取或写入明文 Token。`;
 
-  useEffect(() => () => window.clearTimeout(resetTimer.current), []);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const remaining = resetDeadline.current - Date.now();
+    if (remaining <= 0) {
+      setCopied(null);
+      return undefined;
+    }
+    window.clearTimeout(resetTimer.current);
+    resetTimer.current = window.setTimeout(() => setCopied(null), remaining);
+    return () => window.clearTimeout(resetTimer.current);
+  }, [copied]);
 
   async function copy(target: "prompt" | "token" | "url", value: string) {
     try {
       await navigator.clipboard.writeText(value);
+      resetDeadline.current = Date.now() + 1500;
       setCopied(target);
       window.clearTimeout(resetTimer.current);
       resetTimer.current = window.setTimeout(() => setCopied(null), 1500);
