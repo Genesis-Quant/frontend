@@ -9,6 +9,7 @@ import { PageHero } from "@/components/bar/PageHero";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
 import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ProjectCompareDialog from "@/components/modal/ProjectCompareDialog";
+import { useKeepAliveReactivation } from "@/components/layout/keepAliveContext";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import FactorProjectTable from "@/components/table/FactorProjectTable";
 import type { FactorProjectListItem, FactorProjectPage, FactorProjectSortField } from "@/types/factor";
@@ -37,10 +38,11 @@ export default function FactorAnalysisPage() {
   const allTotal = projects?.all_total ?? projects?.total ?? 0;
 
   useEffect(() => { load(); }, [page, pageSize, search, sortBy, sortOrder]);
+  useKeepAliveReactivation(() => { load(true); });
 
-  async function load() {
+  async function load(background = false) {
     const sequence = ++loadSequence.current;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError("");
     try {
       const result = await factorApi.listProjects({ page, page_size: pageSize, search: search || undefined, sort_by: sortBy, sort_order: sortOrder });
@@ -79,7 +81,7 @@ export default function FactorAnalysisPage() {
   return <div className="space-y-5">
     <PageHero chips={["多因子分析", "版本迭代", "横向对比"]} description="管理因子分析项目、当前草稿和已保存版本，继续迭代同一项研究。" eyebrow="FACTOR ANALYSIS" icon={FlaskConical} stat={{ label: "研究项目", value: allTotal }} title="因子分析" variant="analysis" />
 
-    <ProjectListActions createLabel="新建分析" loading={loading} onCreate={() => setCreateOpen(true)} onRefresh={load}><Button variant="outline" disabled={allTotal === 0} onClick={() => setCompareOpen(true)}><GitCompare />对比研究</Button></ProjectListActions>
+    <ProjectListActions createLabel="新建分析" loading={loading} onCreate={() => setCreateOpen(true)} onRefresh={() => { load(); }}><Button variant="outline" disabled={allTotal === 0} onClick={() => setCompareOpen(true)}><GitCompare />对比研究</Button></ProjectListActions>
     {error ? <ErrorPanel message={error} /> : null}
     <FactorProjectTable loading={loading} onDelete={setDeleteTarget} onOpen={(project) => navigate(`/factor/projects/${project.id}`)} onPage={setPage} onPageSize={setPageSize} onSearch={changeSearch} onSort={changeSorting} page={page} pageSize={pageSize} projects={projects?.items ?? emptyProjects} search={search} sortBy={sortBy} sortOrder={sortOrder} total={projects?.total ?? 0} />
 

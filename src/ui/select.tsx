@@ -3,11 +3,16 @@ import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/assets/lib/utils"
+import { useKeepAliveOpenState, useKeepAlivePortalContainer } from "@/components/layout/keepAliveContext"
 
 function Select({
+  defaultOpen,
+  onOpenChange,
+  open,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+  const keepAliveOpen = useKeepAliveOpenState({ defaultOpen, onOpenChange, open })
+  return <SelectPrimitive.Root data-slot="select" {...props} {...keepAliveOpen} />
 }
 
 function SelectGroup({
@@ -55,8 +60,9 @@ function SelectContent({
   align = "start",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  const keepAliveContainer = useKeepAlivePortalContainer()
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={keepAliveContainer ?? undefined}>
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(

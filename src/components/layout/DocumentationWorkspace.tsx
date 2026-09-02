@@ -88,7 +88,7 @@ export default function DocumentationWorkspace({ description, directoryLabel, he
   }
 
   return <div className="min-h-[calc(100dvh-4rem)] bg-background">
-    <header className="sticky top-16 z-30 border-b bg-background/95 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
         <BookOpenText className="size-4 shrink-0" />
         <div className="flex min-w-0 items-baseline gap-3">
@@ -114,7 +114,7 @@ export default function DocumentationWorkspace({ description, directoryLabel, he
 
     <div className="mx-auto grid min-h-[calc(100dvh-7.5rem)] max-w-[1600px] lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]">
       <aside className="hidden min-w-0 border-r bg-muted/5 lg:block">
-        <div className="sticky top-[7.5rem] max-h-[calc(100dvh-7.5rem)] overflow-y-auto px-5 py-6">
+        <div className="sticky top-14 max-h-[calc(100dvh-7.5rem)] overflow-y-auto px-5 py-6">
           <DocumentationNavigation idPrefix={`${readerId}-desktop`} query={query} sections={sections} selectedSlug={selectedSlug} onQuery={onQuery} onSelect={selectDocument} />
         </div>
       </aside>
@@ -134,7 +134,7 @@ export default function DocumentationWorkspace({ description, directoryLabel, he
       </main>
 
       <aside className="hidden min-w-0 border-l xl:block">
-        <div className="sticky top-[7.5rem] max-h-[calc(100dvh-7.5rem)] overflow-y-auto px-5 py-6">
+        <div className="sticky top-14 max-h-[calc(100dvh-7.5rem)] overflow-y-auto px-5 py-6">
           <RailLabel count={headings.length}>本页目录</RailLabel>
           {headings.length
             ? <nav aria-label="本页目录" className="mt-3 grid gap-0.5">{headings.map((heading) => <button className={cn("w-full cursor-pointer border-l border-transparent bg-transparent px-2 py-1.5 text-left text-xs leading-5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring", heading.level === 3 && "pl-5 text-[11px]", activeHeading === heading.id && "border-foreground font-medium text-foreground")} key={heading.id} type="button" onClick={() => scrollToHeading(heading.id)}>{heading.title}</button>)}</nav>

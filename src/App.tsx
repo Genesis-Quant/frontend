@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { matchPath, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import { KeepAliveRoutes, type KeepAliveRoute } from "@/components/layout/KeepAliveRoutes";
 import { BrandMark } from "@/components/mark/BrandMark";
 import { useAppStore } from "@/store";
 
@@ -22,6 +23,19 @@ const DocsPage = lazy(() => import("@/views/DocsPage"));
 const McpPage = lazy(() => import("@/views/McpPage"));
 const AdminPage = lazy(() => import("@/views/AdminPage"));
 
+const constrainedPageClassName = "mx-auto max-w-[1440px] px-3 py-5 sm:px-6 sm:py-8 lg:py-10";
+const primaryRoutes: KeepAliveRoute[] = [
+  { cacheKey: "home", path: "/", element: <HomePage /> },
+  { cacheKey: "query", contentClassName: constrainedPageClassName, path: "/query", element: <QueryPage /> },
+  { cacheKey: "factor", contentClassName: constrainedPageClassName, path: "/factor", element: <FactorAnalysisPage /> },
+  { cacheKey: "backtest", contentClassName: constrainedPageClassName, path: "/backtest", element: <BacktestPage /> },
+  { cacheKey: "workflows", contentClassName: constrainedPageClassName, path: "/workflows", element: <WorkflowsPage /> },
+  { cacheKey: "docs", path: "/docs", element: <DocsPage /> },
+  { cacheKey: "mcp", path: "/mcp", element: <McpPage /> },
+  { cacheKey: "profile", contentClassName: constrainedPageClassName, path: "/profile", element: <ProfilePage /> }
+];
+const adminRoute: KeepAliveRoute = { cacheKey: "admin", contentClassName: constrainedPageClassName, path: "/admin", element: <AdminPage /> };
+
 export default function App() {
   const location = useLocation();
   const authStatus = useAppStore((state) => state.authStatus);
@@ -32,33 +46,52 @@ export default function App() {
   useEffect(() => { restoreSession(); }, [restoreSession]);
   if (authStatus === "idle" || authStatus === "loading") return <RouteLoading />;
 
-  return (
-    <AnimatePresence mode="wait">
-      <Suspense fallback={<RouteLoading />}>
-        <Routes location={location} key={location.pathname}>
-          <Route path="/login" element={authenticated ? <Navigate to="/" replace /> : <LoginPage />} />
-          <Route path="/register" element={authenticated ? <Navigate to="/" replace /> : <RegisterPage />} />
-          <Route element={authenticated ? <AppLayout /> : <Navigate to="/login" replace />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/query" element={<QueryPage />} />
+  return <AnimatePresence mode="wait"><Suspense fallback={<RouteLoading />}>
+    {authenticated
+      ? <AuthenticatedApplication admin={Boolean(user?.is_admin)} />
+      : <Routes location={location} key={location.pathname}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>}
+  </Suspense></AnimatePresence>;
+}
+
+function AuthenticatedApplication({ admin }: { admin: boolean }) {
+  const location = useLocation();
+  const [primaryLocations, setPrimaryLocations] = useState<Record<string, string>>({});
+  const routes = admin ? [...primaryRoutes, adminRoute] : primaryRoutes;
+  const activePrimaryRoute = routes.find((route) => matchPath({ path: route.path, end: true }, location.pathname));
+  const primary = Boolean(activePrimaryRoute);
+
+  useLayoutEffect(() => {
+    if (!activePrimaryRoute) return;
+    const path = `${location.pathname}${location.search}${location.hash}`;
+    setPrimaryLocations((current) => current[activePrimaryRoute.path] === path
+      ? current
+      : { ...current, [activePrimaryRoute.path]: path });
+  }, [activePrimaryRoute, location.hash, location.pathname, location.search]);
+
+  const resolvePrimaryPath = useCallback((path: string) => primaryLocations[path] ?? path, [primaryLocations]);
+
+  return <AppLayout resolvePrimaryPath={resolvePrimaryPath}>
+    <KeepAliveRoutes fallback={<RouteLoading />} routes={routes} />
+    {!primary
+      ? <div className="h-full overflow-y-auto"><div className="min-h-full">
+        <Suspense fallback={<RouteLoading />}>
+          <Routes location={location} key={location.pathname}>
             <Route path="/query/secondary" element={<SecondaryQueryPage />} />
             <Route path="/query/projects/:projectId" element={<QueryDetailPage />} />
-            <Route path="/factor" element={<FactorAnalysisPage />} />
             <Route path="/factor/projects/:projectId" element={<FactorAnalysisDetailPage />} />
-            <Route path="/backtest" element={<BacktestPage />} />
             <Route path="/backtest/projects/:projectId" element={<BacktestDetailPage />} />
-            <Route path="/workflows" element={<WorkflowsPage />} />
-            <Route path="/docs" element={<DocsPage />} />
-            <Route path="/mcp" element={<McpPage />} />
             <Route path="/tutorial" element={<Navigate to={{ pathname: "/docs", search: location.search, hash: location.hash }} replace />} />
-            <Route path="/admin" element={user?.is_admin ? <AdminPage /> : <Navigate to="/" replace />} />
-            <Route path="/profile" element={<ProfilePage />} />
-          </Route>
-          <Route path="*" element={<Navigate to={authenticated ? "/" : "/login"} replace />} />
-        </Routes>
-      </Suspense>
-    </AnimatePresence>
-  );
+            <Route path="/admin" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </div></div>
+      : null}
+  </AppLayout>;
 }
 
 function RouteLoading() {

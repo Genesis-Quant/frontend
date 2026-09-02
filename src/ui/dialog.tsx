@@ -5,12 +5,17 @@ import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/assets/lib/utils"
+import { useKeepAliveOpenState, useKeepAlivePortalContainer } from "@/components/layout/keepAliveContext"
 import { Button } from "@/ui/button"
 
 function Dialog({
+  defaultOpen,
+  onOpenChange,
+  open,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  const keepAliveOpen = useKeepAliveOpenState({ defaultOpen, onOpenChange, open })
+  return <DialogPrimitive.Root data-slot="dialog" {...props} {...keepAliveOpen} />
 }
 
 function DialogTrigger({
@@ -20,9 +25,11 @@ function DialogTrigger({
 }
 
 function DialogPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  const keepAliveContainer = useKeepAlivePortalContainer()
+  return <DialogPrimitive.Portal container={container ?? keepAliveContainer ?? undefined} data-slot="dialog-portal" {...props} />
 }
 
 function DialogClose({

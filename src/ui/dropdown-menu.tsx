@@ -3,19 +3,26 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/assets/lib/utils"
+import { useKeepAliveOpenState, useKeepAlivePortalContainer } from "@/components/layout/keepAliveContext"
 
 function DropdownMenu({
+  defaultOpen,
   modal = false,
+  onOpenChange,
+  open,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" modal={modal} {...props} />
+  const keepAliveOpen = useKeepAliveOpenState({ defaultOpen, onOpenChange, open })
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" modal={modal} {...props} {...keepAliveOpen} />
 }
 
 function DropdownMenuPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
+  const keepAliveContainer = useKeepAlivePortalContainer()
   return (
-    <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
+    <DropdownMenuPrimitive.Portal container={container ?? keepAliveContainer ?? undefined} data-slot="dropdown-menu-portal" {...props} />
   )
 }
 
@@ -36,7 +43,7 @@ function DropdownMenuContent({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPortal>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
@@ -46,7 +53,7 @@ function DropdownMenuContent({
         )}
         {...props}
       />
-    </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPortal>
   )
 }
 

@@ -9,6 +9,7 @@ import { PageHero } from "@/components/bar/PageHero";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
 import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ProjectCompareDialog from "@/components/modal/ProjectCompareDialog";
+import { useKeepAliveReactivation } from "@/components/layout/keepAliveContext";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import BacktestProjectTable from "@/components/table/BacktestProjectTable";
 import type { BacktestProjectListItem, BacktestProjectPage, BacktestProjectSortField } from "@/types/backtest";
@@ -37,10 +38,11 @@ export default function BacktestPage() {
   const allTotal = projects?.all_total ?? projects?.total ?? 0;
 
   useEffect(() => { load(); }, [page, pageSize, search, sortBy, sortOrder]);
+  useKeepAliveReactivation(() => { load(true); });
 
-  async function load() {
+  async function load(background = false) {
     const sequence = ++loadSequence.current;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError("");
     try {
       const result = await backtestApi.listProjects({ page, page_size: pageSize, search: search || undefined, sort_by: sortBy, sort_order: sortOrder });
@@ -78,7 +80,7 @@ export default function BacktestPage() {
 
   return <div className="space-y-5">
     <PageHero chips={["策略 DSL", "生命周期回调", "版本对比"]} description="管理策略回测项目、当前草稿和已保存版本，在统一任务链路中追踪执行与结果。" eyebrow="STRATEGY BACKTEST" icon={BarChart3} stat={{ label: "回测项目", value: allTotal }} title="策略回测" variant="analysis" />
-    <ProjectListActions createLabel="新建策略" loading={loading} onCreate={() => setCreateOpen(true)} onRefresh={load}><Button variant="outline" disabled={allTotal === 0} onClick={() => setCompareOpen(true)}><GitCompare />对比研究</Button></ProjectListActions>
+    <ProjectListActions createLabel="新建策略" loading={loading} onCreate={() => setCreateOpen(true)} onRefresh={() => { load(); }}><Button variant="outline" disabled={allTotal === 0} onClick={() => setCompareOpen(true)}><GitCompare />对比研究</Button></ProjectListActions>
     {error ? <ErrorPanel message={error} /> : null}
     <BacktestProjectTable loading={loading} onDelete={setDeleteTarget} onOpen={(project) => navigate(`/backtest/projects/${project.id}`)} onPage={setPage} onPageSize={setPageSize} onSearch={changeSearch} onSort={changeSorting} page={page} pageSize={pageSize} projects={projects?.items ?? emptyProjects} search={search} sortBy={sortBy} sortOrder={sortOrder} total={projects?.total ?? 0} />
     <CreateProjectDialog description="创建后设置参数，并在代码弹窗中编辑 DSL 与回调函数。" inputId="backtest-project-title" open={createOpen} placeholder="例如：沪深 300 风险平价策略" submitting={saving} title="创建策略回测项目" value={title} onCreate={create} onOpenChange={setCreateOpen} onValue={setTitle} />

@@ -3,9 +3,11 @@ import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { cn } from "@/assets/lib/utils"
+import { useKeepAliveOpenState, useKeepAlivePortalContainer } from "@/components/layout/keepAliveContext"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({ defaultOpen, onOpenChange, open, ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  const keepAliveOpen = useKeepAliveOpenState({ defaultOpen, onOpenChange, open })
+  return <SheetPrimitive.Root data-slot="sheet" {...props} {...keepAliveOpen} />
 }
 
 function SheetTrigger({
@@ -21,9 +23,11 @@ function SheetClose({
 }
 
 function SheetPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
-  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
+  const keepAliveContainer = useKeepAlivePortalContainer()
+  return <SheetPrimitive.Portal container={container ?? keepAliveContainer ?? undefined} data-slot="sheet-portal" {...props} />
 }
 
 function SheetOverlay({

@@ -5,10 +5,12 @@ import { useSearchParams } from "react-router-dom";
 import { mcpApi } from "@/assets/lib/mcp";
 import { tokenStorageKey } from "@/assets/lib/settings";
 import DocumentationWorkspace, { indexDocumentation } from "@/components/layout/DocumentationWorkspace";
+import { useKeepAliveActive } from "@/components/layout/keepAliveContext";
 import type { McpCatalog, McpDocument } from "@/types/mcp";
 import { Button } from "@/ui/button";
 
 export default function McpPage() {
+  const keepAliveActive = useKeepAliveActive();
   const [searchParams, setSearchParams] = useSearchParams();
   const [catalog, setCatalog] = useState<McpCatalog | null>(null);
   const [catalogError, setCatalogError] = useState("");
@@ -36,13 +38,13 @@ export default function McpPage() {
   const selectedSlug = selected?.slug ?? "";
 
   useEffect(() => {
-    if (!selectedSlug || requestedSlug === selectedSlug) return;
+    if (!keepAliveActive || !selectedSlug || requestedSlug === selectedSlug) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set("doc", selectedSlug);
       return next;
     }, { replace: true });
-  }, [requestedSlug, selectedSlug, setSearchParams]);
+  }, [keepAliveActive, requestedSlug, selectedSlug, setSearchParams]);
 
   useEffect(() => {
     let active = true;

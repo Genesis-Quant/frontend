@@ -3,21 +3,23 @@ import { useSearchParams } from "react-router-dom";
 
 import { userGuideDocuments, userGuideSections } from "@/assets/data/userGuide";
 import DocumentationWorkspace from "@/components/layout/DocumentationWorkspace";
+import { useKeepAliveActive } from "@/components/layout/keepAliveContext";
 
 export default function DocsPage() {
+  const keepAliveActive = useKeepAliveActive();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const requestedSlug = searchParams.get("doc");
   const selected = useMemo(() => userGuideDocuments.find((item) => item.slug === requestedSlug) ?? userGuideDocuments[0], [requestedSlug]);
 
   useEffect(() => {
-    if (requestedSlug === selected.slug) return;
+    if (!keepAliveActive || requestedSlug === selected.slug) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set("doc", selected.slug);
       return next;
     }, { replace: true });
-  }, [requestedSlug, selected.slug, setSearchParams]);
+  }, [keepAliveActive, requestedSlug, selected.slug, setSearchParams]);
 
   function selectDocument(slug: string) {
     setSearchParams((current) => {

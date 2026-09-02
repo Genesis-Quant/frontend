@@ -8,6 +8,7 @@ import ProjectListActions from "@/components/bar/ProjectListActions";
 import { PageHero } from "@/components/bar/PageHero";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
 import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
+import { useKeepAliveReactivation } from "@/components/layout/keepAliveContext";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import QueryProjectTable from "@/components/table/QueryProjectTable";
 import { Button } from "@/ui/button";
@@ -36,10 +37,11 @@ export default function QueryPage() {
   const atLimit = allTotal >= (projects?.limit ?? 5);
 
   useEffect(() => { load(); }, [page, pageSize, search, sortBy, sortOrder]);
+  useKeepAliveReactivation(() => { load(true); });
 
-  async function load() {
+  async function load(background = false) {
     const sequence = ++loadSequence.current;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError("");
     try {
       const result = await queryApi.listProjects({ page, page_size: pageSize, search: search || undefined, sort_by: sortBy, sort_order: sortOrder });
@@ -77,7 +79,7 @@ export default function QueryPage() {
 
   return <div className="space-y-5">
     <PageHero chips={["查询 DSL", "Parquet", "DuckDB SQL"]} description="通过 DSL 生成查询结果，并在浏览器中使用 SQL 关联当前用户已有项目的 Parquet。" eyebrow="DATA QUERY" icon={DatabaseZap} stat={{ label: "查询项目", value: `${allTotal}/${projects?.limit ?? 5}` }} title="数据查询" variant="analysis" />
-    <ProjectListActions createDisabled={atLimit} createLabel="新建查询" loading={loading} onCreate={() => setCreateOpen(true)} onRefresh={load}><Button variant="outline" onClick={() => navigate("/query/secondary")}><Terminal />SQL 二次查询</Button></ProjectListActions>
+    <ProjectListActions createDisabled={atLimit} createLabel="新建查询" loading={loading} onCreate={() => setCreateOpen(true)} onRefresh={() => { load(); }}><Button variant="outline" onClick={() => navigate("/query/secondary")}><Terminal />SQL 二次查询</Button></ProjectListActions>
     {error ? <ErrorPanel message={error} /> : null}
     <QueryProjectTable loading={loading} onDelete={setDeleteTarget} onOpen={(project) => navigate(`/query/projects/${project.id}`)} onPage={setPage} onPageSize={setPageSize} onSearch={changeSearch} onSort={changeSorting} page={page} pageSize={pageSize} projects={projects?.items ?? emptyProjects} search={search} sortBy={sortBy} sortOrder={sortOrder} total={projects?.total ?? 0} />
     <p className="text-sm text-muted-foreground">每个用户最多创建 {projects?.limit ?? 5} 个项目</p>

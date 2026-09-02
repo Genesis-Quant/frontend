@@ -4,6 +4,7 @@ import IconArrowRight from "~icons/lucide/arrow-right";
 import IconCirclePlay from "~icons/lucide/circle-play";
 
 import { CarouselControls } from "@/components/bar/CarouselControls";
+import { useKeepAliveActive } from "@/components/layout/keepAliveContext";
 import { MarketTape } from "@/components/bar/MarketTape";
 import { Button } from "@/ui/button";
 
@@ -27,15 +28,16 @@ interface HomeHeroPanelProps {
 }
 
 export function HomeHeroPanel({ image, marketItems, slides }: HomeHeroPanelProps) {
+  const keepAliveActive = useKeepAliveActive();
   const [activeIndex, setActiveIndex] = useState(0);
   const reducedMotion = useReducedMotion();
   const activeSlide = slides[activeIndex];
 
   useEffect(() => {
-    if (reducedMotion || slides.length < 2) return undefined;
+    if (!keepAliveActive || reducedMotion || slides.length < 2) return undefined;
     const timer = window.setInterval(() => setActiveIndex((current) => (current + 1) % slides.length), 7000);
     return () => window.clearInterval(timer);
-  }, [reducedMotion, slides.length]);
+  }, [keepAliveActive, reducedMotion, slides.length]);
 
   if (!activeSlide) return null;
   const ActiveIcon = activeSlide.icon;

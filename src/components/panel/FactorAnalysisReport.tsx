@@ -533,7 +533,7 @@ function groupOption(rows: GroupPoint[], theme: string, range?: ChartRange) {
     type: "line",
     data: rows.map((row) => row.values[name]),
     showSymbol: false,
-    lineStyle: { width: index === 0 || index === names.length - 1 ? 2.2 : 1, opacity: index === 0 || index === names.length - 1 ? 1 : 0.5 },
+    lineStyle: { width: index === 0 || index === names.length - 1 ? 2.2 : 1.2 },
     color: groupColor(index, names.length)
   })), range);
 }
