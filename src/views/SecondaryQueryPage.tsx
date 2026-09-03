@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BrowserDuckDb } from "@/assets/lib/duckdb";
 import { queryApi, queryResultTableName } from "@/assets/lib/query";
+import type { SqlTableSchema } from "@/assets/lib/sqlLanguage";
 import { errorMessage } from "@/assets/lib/utils";
 import AnalysisWorkspace from "@/components/layout/AnalysisWorkspace";
 import SecondaryQueryControlsPanel from "@/components/panel/SecondaryQueryControlsPanel";
@@ -18,9 +19,50 @@ export default function SecondaryQueryPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [completionTables, setCompletionTables] = useState<SqlTableSchema[]>([]);
+  const completionCache = useRef(new Map<string, SqlTableSchema>());
   const selected = useMemo(() => sources.filter((source) => selectedSources.has(source.id)), [selectedSources, sources]);
 
   useEffect(() => { loadSources(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const completionTable = (source: QueryProjectListItem) => {
+      const cached = completionCache.current.get(completionKey(source));
+      return cached
+        ? { ...cached, detail: source.title }
+        : { columns: [], detail: source.title, name: queryResultTableName(source.id) };
+    };
+    const placeholders = selected.map(completionTable);
+    setCompletionTables(placeholders);
+    Promise.all(selected.map(async (source) => {
+      const key = completionKey(source);
+      const cached = completionCache.current.get(key);
+      if (cached) return { ...cached, detail: source.title };
+      try {
+        const project = await queryApi.getProject(source.id);
+        const expectedWorkflowInstanceId = source.current?.workflow_instance_id;
+        const current = project.current;
+        const parameters = current && current.workflow_instance_id === expectedWorkflowInstanceId ? current.parameters : undefined;
+        const table: SqlTableSchema = {
+          columns: parameters
+            ? [
+              { detail: "交易日期", name: "time" },
+              { detail: "证券代码", name: "code" },
+              ...parameters.factors.map((name) => ({ detail: "基础因子", name })),
+              ...Object.keys(parameters.derivatives).map((name) => ({ detail: "派生因子", name }))
+            ]
+            : [],
+          detail: source.title,
+          name: queryResultTableName(source.id)
+        };
+        if (parameters) completionCache.current.set(key, table);
+        return table;
+      } catch {
+        return completionTable(source);
+      }
+    })).then((tables) => { if (!cancelled) setCompletionTables(tables); });
+    return () => { cancelled = true; };
+  }, [selected]);
 
   async function loadSources() {
     setLoading(true);
@@ -68,7 +110,11 @@ export default function SecondaryQueryPage() {
     });
   }
 
-  return <AnalysisWorkspace backTo="/query" sidebar={<SecondaryQueryControlsPanel loading={loading} running={running} selectedIds={selectedSources} sources={sources} sql={sql} onRefresh={loadSources} onRun={runSql} onSql={setSql} onToggle={toggleSource} />} sidebarLabel="查询参数">
+  return <AnalysisWorkspace backTo="/query" sidebar={<SecondaryQueryControlsPanel completionTables={completionTables} loading={loading} running={running} selectedIds={selectedSources} sources={sources} sql={sql} onRefresh={loadSources} onRun={runSql} onSql={setSql} onToggle={toggleSource} />} sidebarLabel="查询参数">
     <SecondaryQueryResultsPanel error={error} hasSources={selected.length > 0} rows={rows} running={running} />
   </AnalysisWorkspace>;
+}
+
+function completionKey(source: QueryProjectListItem) {
+  return `${source.id}:${source.current?.workflow_instance_id ?? ""}`;
 }

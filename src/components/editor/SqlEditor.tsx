@@ -3,14 +3,15 @@ import { useEffect, useRef } from "react";
 import "monaco-editor/languages/definitions/sql/register.js";
 
 import "@/assets/lib/monaco";
+import { sqlCompletionCandidates, type SqlCompletionKind, type SqlTableSchema } from "@/assets/lib/sqlLanguage";
 import MonacoEditorFrame from "@/components/editor/MonacoEditorFrame";
 import { useAppStore } from "@/store";
 
-export default function SqlEditor({ modelPath, onChange, tables, value }: { modelPath: string; onChange: (value: string) => void; tables: string[]; value: string }) {
+export default function SqlEditor({ modelPath, onChange, tables, value }: { modelPath: string; onChange: (value: string) => void; tables: SqlTableSchema[]; value: string }) {
   const theme = useAppStore((state) => state.theme);
   const disposable = useRef<{ dispose: () => void } | null>(null);
-  const tableNames = useRef(tables);
-  tableNames.current = tables;
+  const tableSchemas = useRef(tables);
+  tableSchemas.current = tables;
 
   useEffect(() => () => disposable.current?.dispose(), []);
 
@@ -24,10 +25,27 @@ export default function SqlEditor({ modelPath, onChange, tables, value }: { mode
         if (model.uri.toString() !== uri) return { suggestions: [] };
         const word = model.getWordUntilPosition(position);
         const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
-        return { suggestions: tableNames.current.map((table) => ({ label: table, insertText: table, detail: "查询项目 Parquet", kind: monaco.languages.CompletionItemKind.Struct, range })) };
+        const offset = model.getOffsetAt(position);
+        return { suggestions: sqlCompletionCandidates(model.getValue(), offset, tableSchemas.current).map((candidate) => {
+          const { snippet, ...suggestion } = candidate;
+          return {
+            ...suggestion,
+            insertTextRules: snippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+            kind: completionKind(monaco, candidate.kind),
+            range
+          };
+        }) };
       }
     });
   };
 
-  return <MonacoEditorFrame className="min-h-64"><Editor height="100%" language="sql" onChange={(source) => onChange(source ?? "")} onMount={mount} options={{ automaticLayout: true, bracketPairColorization: { enabled: true }, cursorBlinking: "smooth", fontFamily: "\"Cascadia Code\", \"JetBrains Mono\", Consolas, monospace", fontLigatures: true, fontSize: 13, lineHeight: 21, minimap: { enabled: false }, padding: { top: 14, bottom: 14 }, quickSuggestions: true, scrollBeyondLastLine: false, tabSize: 2, wordWrap: "off" }} path={modelPath} theme={theme === "dark" ? "vs-dark" : "light"} value={value} /></MonacoEditorFrame>;
+  return <MonacoEditorFrame className="min-h-64"><Editor height="100%" language="sql" onChange={(source) => onChange(source ?? "")} onMount={mount} options={{ acceptSuggestionOnEnter: "smart", automaticLayout: true, bracketPairColorization: { enabled: true }, cursorBlinking: "smooth", fixedOverflowWidgets: true, fontFamily: "\"Cascadia Code\", \"JetBrains Mono\", Consolas, monospace", fontLigatures: true, fontSize: 13, lineHeight: 21, minimap: { enabled: false }, padding: { top: 14, bottom: 14 }, quickSuggestions: { comments: false, other: true, strings: false }, scrollBeyondLastLine: false, snippetSuggestions: "inline", suggestOnTriggerCharacters: true, tabCompletion: "on", tabSize: 2, wordBasedSuggestions: "off", wordWrap: "off" }} path={modelPath} theme={theme === "dark" ? "vs-dark" : "light"} value={value} /></MonacoEditorFrame>;
+}
+
+function completionKind(monaco: Parameters<OnMount>[1], kind: SqlCompletionKind) {
+  if (kind === "column") return monaco.languages.CompletionItemKind.Field;
+  if (kind === "function") return monaco.languages.CompletionItemKind.Function;
+  if (kind === "keyword") return monaco.languages.CompletionItemKind.Keyword;
+  if (kind === "snippet") return monaco.languages.CompletionItemKind.Snippet;
+  return monaco.languages.CompletionItemKind.Struct;
 }

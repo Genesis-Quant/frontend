@@ -1,8 +1,6 @@
-import Editor from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
 
-import MonacoEditorFrame from "@/components/editor/MonacoEditorFrame";
-import { useAppStore } from "@/store";
+import JsonEditor from "@/components/editor/JsonEditor";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 
@@ -17,7 +15,6 @@ type RequestBodyDialogProps<T> = {
 };
 
 export default function RequestBodyDialog<T>({ editable = false, endpoint, onApply, onClose, open, validate, value }: RequestBodyDialogProps<T>) {
-  const theme = useAppStore((state) => state.theme);
   const wasOpen = useRef(false);
   const [source, setSource] = useState(() => JSON.stringify(value, null, 2));
   const [error, setError] = useState("");
@@ -54,30 +51,7 @@ export default function RequestBodyDialog<T>({ editable = false, endpoint, onApp
         <DialogDescription className="font-mono text-[11px]">POST {endpoint}</DialogDescription>
       </DialogHeader>
       <div className="min-h-0 flex-1 p-4">
-        <MonacoEditorFrame>
-          <Editor
-            height="100%"
-            language="json"
-            options={{
-              automaticLayout: true,
-              bracketPairColorization: { enabled: true },
-              fontFamily: "\"Cascadia Code\", \"JetBrains Mono\", Consolas, monospace",
-              fontLigatures: true,
-              fontSize: 13,
-              formatOnPaste: true,
-              lineHeight: 21,
-              minimap: { enabled: false },
-              padding: { top: 14, bottom: 14 },
-              readOnly: !editable,
-              scrollBeyondLastLine: false,
-              tabSize: 2,
-              wordWrap: "off"
-            }}
-            theme={theme === "dark" ? "vs-dark" : "light"}
-            value={source}
-            onChange={(nextSource) => { setSource(nextSource ?? ""); setError(""); }}
-          />
-        </MonacoEditorFrame>
+        <JsonEditor ariaLabel="完整 JSON 请求体" modelPath={`json://request-body${endpoint}.json`} readOnly={!editable} value={source} onChange={(nextSource) => { setSource(nextSource); setError(""); }} />
       </div>
       <DialogFooter className="border-t px-5 py-3">
         <span className={error ? "mr-auto text-xs text-destructive" : "mr-auto text-xs text-muted-foreground"}>{error || (editable ? "点击保存后更新当前草稿。" : "历史版本参数只读。")}</span>

@@ -1,6 +1,7 @@
 import { Braces, FunctionSquare, Settings2, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import CodeEditor from "@/components/editor/CodeEditor";
 import { NumberField, SelectField, SwitchField } from "@/components/field/FormFields";
 import BacktestCodeModal, { type BacktestCodePanel } from "@/components/modal/BacktestCodeModal";
 import { Button } from "@/ui/button";
@@ -36,7 +37,7 @@ export default function BacktestEditor({ catalog, onChange, onValidityChange, pa
       <SwitchField checked={booleanConfig(parameters, "enableMinimumPerTransactionFee", true)} checkedText="5元" disabled={readOnly} label="最低手续费" uncheckedText="无" onChange={(enabled) => onChange(updateConfig(parameters, "enableMinimumPerTransactionFee", enabled))} />
       <SwitchField checked={parameters.codes_query !== null} checkedText="动态" disabled={readOnly} label="股票池类型" uncheckedText="静态" onChange={(dynamic) => onChange(setBacktestStockPoolType(parameters, dynamic))} />
       <SelectField className="col-span-2 space-y-2" label="基准指数" value={selectedBenchmark} options={benchmarkOptions} disabled={readOnly} onChange={(benchmark) => onChange(benchmark === "none" ? removeConfig(parameters, "benchmark") : updateConfig(parameters, "benchmark", benchmark))} />
-      <StrategyParameterField parameters={parameters.params} readOnly={readOnly} onChange={(params) => onChange({ ...parameters, params })} onValidityChange={setStrategyParametersValid} />
+      <StrategyParameterField modelPath={`ini://backtest/${projectId}/strategy-parameters.ini`} parameters={parameters.params} readOnly={readOnly} onChange={(params) => onChange({ ...parameters, params })} onValidityChange={setStrategyParametersValid} />
     </div>
 
     <div className="rounded-md border bg-muted/15 p-4">
@@ -53,7 +54,7 @@ export default function BacktestEditor({ catalog, onChange, onValidityChange, pa
   </div>;
 }
 
-function StrategyParameterField({ onChange, onValidityChange, parameters, readOnly }: { onChange: (parameters: StrategyParameters) => void; onValidityChange: (valid: boolean) => void; parameters: StrategyParameters; readOnly: boolean }) {
+function StrategyParameterField({ modelPath, onChange, onValidityChange, parameters, readOnly }: { modelPath: string; onChange: (parameters: StrategyParameters) => void; onValidityChange: (valid: boolean) => void; parameters: StrategyParameters; readOnly: boolean }) {
   const [source, setSource] = useState(() => serialize(parameters));
   const [invalid, setInvalid] = useState(false);
   const emittedSource = useRef<string | null>(null);
@@ -80,7 +81,7 @@ function StrategyParameterField({ onChange, onValidityChange, parameters, readOn
     }
   }
 
-  return <div className="col-span-2 space-y-2"><label className="text-sm font-medium">策略参数</label><textarea aria-label="策略参数" className="min-h-24 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" disabled={readOnly} value={source} onChange={(event) => update(event.target.value)} />{invalid ? <p className="text-xs text-destructive">每行必须使用 key=value。</p> : null}</div>;
+  return <div className="col-span-2 space-y-2"><label className="text-sm font-medium">策略参数</label><CodeEditor ariaLabel="策略参数" className="h-36" language="ini" modelPath={modelPath} readOnly={readOnly} value={source} onChange={update} />{invalid ? <p className="text-xs text-destructive">每行必须使用 key=value。</p> : null}</div>;
 }
 
 function parse(source: string): StrategyParameters | null {
@@ -102,7 +103,7 @@ function parseValue(value: string): string | number | boolean | null {
   if (value === "true" || value === "false") return value === "true";
   const number = Number(value);
   if (value && Number.isFinite(number)) return number;
-  if (value.startsWith('"') && value.endsWith('"')) {
+  if (value.startsWith("\"") && value.endsWith("\"")) {
     try {
       const parsed = JSON.parse(value);
       if (typeof parsed === "string") return parsed;

@@ -1,12 +1,10 @@
-﻿import Editor from "@monaco-editor/react";
-import { CheckCircle2, CircleX, Clock3, Loader2, Pencil, Play, Trash2 } from "lucide-react";
+﻿import { CheckCircle2, CircleX, Clock3, Loader2, Pencil, Play, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { maxBatchRunItems } from "@/assets/lib/projectQueue";
 import { errorMessage } from "@/assets/lib/utils";
-import MonacoEditorFrame from "@/components/editor/MonacoEditorFrame";
+import JsonEditor from "@/components/editor/JsonEditor";
 import SchedulerState from "@/components/status/SchedulerState";
-import { useAppStore } from "@/store";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 import { Badge } from "@/ui/badge";
@@ -30,7 +28,6 @@ type ExecutionQueuePanelProps<T> = {
 };
 
 export default function ExecutionQueuePanel<T>({ deletingId, executing, items, open, savingId, validate, onDelete, onExecute, onOpenChange, onUpdate }: ExecutionQueuePanelProps<T>) {
-  const theme = useAppStore((state) => state.theme);
   const [editing, setEditing] = useState<ProjectQueueItem<T> | null>(null);
   const [remark, setRemark] = useState("");
   const [source, setSource] = useState("");
@@ -97,7 +94,7 @@ export default function ExecutionQueuePanel<T>({ deletingId, executing, items, o
       <DialogContent className="flex h-[82vh] max-h-[860px] flex-col overflow-hidden p-0 sm:max-w-4xl">
         <DialogHeader className="border-b px-5 py-4 pr-12"><DialogTitle>编辑队列任务</DialogTitle></DialogHeader>
         <div className="space-y-3 px-5 pt-4"><div className="space-y-2"><Label htmlFor="queue-edit-remark">备注（可选）</Label><Input disabled={executing} id="queue-edit-remark" maxLength={512} value={remark} onChange={(event) => setRemark(event.target.value)} /></div></div>
-        <div className="min-h-0 flex-1 p-5 pt-3"><MonacoEditorFrame><Editor height="100%" language="json" options={{ automaticLayout: true, bracketPairColorization: { enabled: true }, fontFamily: "\"Cascadia Code\", \"JetBrains Mono\", Consolas, monospace", fontLigatures: true, fontSize: 13, formatOnPaste: true, lineHeight: 21, minimap: { enabled: true }, padding: { top: 14, bottom: 14 }, readOnly: executing, scrollBeyondLastLine: false, tabSize: 2, wordWrap: "off" }} theme={theme === "dark" ? "vs-dark" : "light"} value={source} onChange={(value) => { setSource(value ?? ""); setEditError(""); }} /></MonacoEditorFrame></div>
+        <div className="min-h-0 flex-1 p-5 pt-3"><JsonEditor ariaLabel="队列任务 JSON 参数" modelPath={`json://execution-queue/${editing?.id ?? "draft"}/parameters.json`} readOnly={executing} value={source} onChange={(value) => { setSource(value); setEditError(""); }} /></div>
         <DialogFooter className="border-t px-5 py-3"><span className="mr-auto text-xs text-destructive">{editError}</span><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button disabled={executing || savingId !== null} onClick={save}>{savingId !== null ? <Loader2 className="animate-spin" /> : null}保存</Button></DialogFooter>
       </DialogContent>
     </Dialog>

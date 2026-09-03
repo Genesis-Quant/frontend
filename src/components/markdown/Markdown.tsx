@@ -1,11 +1,15 @@
 import githubMarkdownDark from "github-markdown-css/github-markdown-dark.css?url";
 import githubMarkdownLight from "github-markdown-css/github-markdown-light.css?url";
+import highlightDark from "highlight.js/styles/github-dark.css?url";
+import highlightLight from "highlight.js/styles/github.css?url";
 import { isValidElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 
+import { markdownHighlightAliases, markdownHighlightLanguages } from "@/assets/lib/markdownHighlight";
 import { useAppStore } from "@/store";
 
 export type MarkdownHeading = {
@@ -31,9 +35,15 @@ export default function Markdown({ content }: { content: string }) {
     {createPortal(<>
       <link href={githubMarkdownLight} media={theme === "light" ? "all" : "not all"} rel="stylesheet" />
       <link href={githubMarkdownDark} media={theme === "dark" ? "all" : "not all"} rel="stylesheet" />
+      <link href={highlightLight} media={theme === "light" ? "all" : "not all"} rel="stylesheet" />
+      <link href={highlightDark} media={theme === "dark" ? "all" : "not all"} rel="stylesheet" />
     </>, document.head)}
     <div className="markdown-body !bg-transparent [&_h2]:scroll-mt-32 [&_h3]:scroll-mt-32">
-      <ReactMarkdown components={components} rehypePlugins={[rehypeSlug]} remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        components={components}
+        rehypePlugins={[[rehypeHighlight, { aliases: markdownHighlightAliases, languages: markdownHighlightLanguages }], rehypeSlug]}
+        remarkPlugins={[remarkGfm]}
+      >{content}</ReactMarkdown>
     </div>
   </>;
 }
