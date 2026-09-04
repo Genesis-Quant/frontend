@@ -2,6 +2,7 @@ export type ChartRange = { min: number; max: number };
 export type AxisFormat = "decimal" | "integer" | "percent";
 
 export type FactorChartRanges = {
+  executionStatistics?: ChartRange;
   information?: { primary?: ChartRange; secondary?: ChartRange };
   longShort?: { primary?: ChartRange; secondary?: ChartRange };
   groupStatistics?: ChartRange;

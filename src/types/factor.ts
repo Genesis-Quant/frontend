@@ -265,7 +265,7 @@ export type DslCatalog = {
 };
 
 export type FactorOutput = {
-  name: "processed_data" | "information_coefficient" | "group_returns" | "group_turnover";
+  name: "processed_data" | "execution_statistics" | "information_coefficient" | "group_returns" | "group_turnover";
   filename: string;
   size: number;
   modified_at: string;

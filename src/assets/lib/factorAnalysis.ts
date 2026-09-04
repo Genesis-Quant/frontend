@@ -10,6 +10,8 @@ export type GroupStatistic = { group: string; mean: number | null; pValue: numbe
 export type DecayPoint = { returnColumn: string; label: string; position: number; icMean: number | null; rankIcMean: number | null };
 export type TurnoverGroup = { group: string; value: number | null };
 export type TurnoverSummary = { periods: number; rankAutocorrelation: number | null; groups: TurnoverGroup[] };
+export type ExecutionFilterStatistic = { name: string; count: number };
+export type ExecutionStatisticPoint = { time: string; sourceCount: number; filteredCount: number; retentionRate: number | null; filters: ExecutionFilterStatistic[] };
 export type FactorDateRange = { start: string; end: string };
 
 export class FactorAnalytics {
@@ -18,21 +20,25 @@ export class FactorAnalytics {
     private readonly informationFile: string,
     private readonly groupsFile: string,
     private readonly turnoverFile: string | null,
+    private readonly executionStatisticsFile: string | null,
     private readonly parameters: FactorAnalysisParameters,
     private readonly groupColumns: Set<string>,
-    private readonly turnoverColumns: Set<string>
+    private readonly turnoverColumns: Set<string>,
+    private readonly executionFilterIndices: number[]
   ) {}
 
   static async create(
     workflowInstanceId: number,
-    files: { information: ArrayBuffer; groups: ArrayBuffer; turnover?: ArrayBuffer | null },
+    files: { information: ArrayBuffer; groups: ArrayBuffer; turnover?: ArrayBuffer | null; executionStatistics?: ArrayBuffer | null },
     parameters: FactorAnalysisParameters
   ) {
     const informationFile = `factor-${workflowInstanceId}-information.parquet`;
     const groupsFile = `factor-${workflowInstanceId}-groups.parquet`;
     const turnoverFile = files.turnover ? `factor-${workflowInstanceId}-turnover.parquet` : null;
+    const executionStatisticsFile = files.executionStatistics ? `factor-${workflowInstanceId}-execution-statistics.parquet` : null;
     const registeredFiles: Record<string, ArrayBuffer> = { [informationFile]: files.information, [groupsFile]: files.groups };
     if (turnoverFile && files.turnover) registeredFiles[turnoverFile] = files.turnover;
+    if (executionStatisticsFile && files.executionStatistics) registeredFiles[executionStatisticsFile] = files.executionStatistics;
     const database = await BrowserDuckDb.create(registeredFiles);
     const schema = await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(groupsFile)})`);
     const groupColumns = new Set(schema.map((row) => String(row.column_name)));
@@ -40,7 +46,15 @@ export class FactorAnalytics {
       ? await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(turnoverFile)})`)
       : [];
     const turnoverColumns = new Set(turnoverSchema.map((row) => String(row.column_name)));
-    return new FactorAnalytics(database, informationFile, groupsFile, turnoverFile, parameters, groupColumns, turnoverColumns);
+    const executionStatisticsSchema = executionStatisticsFile
+      ? await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(executionStatisticsFile)})`)
+      : [];
+    const executionFilterIndices = executionStatisticsSchema
+      .map((row) => /^filter(\d+)_count$/.exec(String(row.column_name)))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map((match) => Number(match[1]))
+      .sort((left, right) => left - right);
+    return new FactorAnalytics(database, informationFile, groupsFile, turnoverFile, executionStatisticsFile, parameters, groupColumns, turnoverColumns, executionFilterIndices);
   }
 
   async metrics(): Promise<FactorMetrics> {
@@ -196,6 +210,28 @@ export class FactorAnalytics {
         value: numberValue(row[`turnover_${index}`])
       }))
     };
+  }
+
+  async executionStatistics(range?: FactorDateRange): Promise<ExecutionStatisticPoint[]> {
+    if (!this.executionStatisticsFile) return [];
+    const filterColumns = this.executionFilterIndices.flatMap((index) => [`filter${index}_name`, `filter${index}_count`]);
+    const columns = ["time", "source_count", ...filterColumns, "filtered_count", "retention_rate"];
+    const rows = await this.rows(`
+      SELECT ${columns.map(identifier).join(", ")}
+      FROM read_parquet(${literal(this.executionStatisticsFile)})
+      ${dateFilter(range)}
+      ORDER BY time
+    `);
+    return rows.map((row) => ({
+      time: duckDbDateValue(row.time),
+      sourceCount: integerValue(row.source_count),
+      filteredCount: integerValue(row.filtered_count),
+      retentionRate: numberValue(row.retention_rate),
+      filters: this.executionFilterIndices.map((index) => ({
+        name: String(row[`filter${index}_name`]),
+        count: integerValue(row[`filter${index}_count`])
+      }))
+    }));
   }
 
   async close() {

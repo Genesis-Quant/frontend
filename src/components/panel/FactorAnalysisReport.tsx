@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ttest from "@stdlib/stats-ttest";
 import { motion } from "motion/react";
 import {
@@ -16,6 +16,7 @@ import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
   type DecayPoint,
+  type ExecutionStatisticPoint,
   type GroupPoint,
   type GroupStatistic,
   type InformationPoint,
@@ -61,11 +62,13 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [groups, setGroups] = useState<GroupPoint[]>([]);
   const [groupStatistics, setGroupStatistics] = useState<GroupStatistic[]>([]);
   const [decay, setDecay] = useState<DecayPoint[]>([]);
+  const [executionStatisticsAvailable, setExecutionStatisticsAvailable] = useState(false);
+  const [executionStatistics, setExecutionStatistics] = useState<ExecutionStatisticPoint[]>([]);
   const [turnoverAvailable, setTurnoverAvailable] = useState(false);
   const [turnoverPeriods, setTurnoverPeriods] = useState<number[]>([]);
   const [turnoverPeriod, setTurnoverPeriod] = useState<number | null>(null);
   const [turnover, setTurnover] = useState<TurnoverSummary | null>(null);
-  const [timeline, setTimeline] = useState<InformationPoint[]>([]);
+  const [timeline, setTimeline] = useState<Array<{ time: string; value: number | null }>>([]);
   const [rangeFactor, setRangeFactor] = useState("");
   const [minimumDate, setMinimumDate] = useState("");
   const [maximumDate, setMaximumDate] = useState("");
@@ -76,9 +79,10 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [returnLoading, setReturnLoading] = useState(false);
   const [groupLoading, setGroupLoading] = useState(false);
   const [decayLoading, setDecayLoading] = useState(false);
+  const [executionStatisticsLoading, setExecutionStatisticsLoading] = useState(false);
   const [turnoverLoading, setTurnoverLoading] = useState(false);
   const [error, setError] = useState("");
-  const rangePoints = useMemo(() => timeline.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic })), [timeline]);
+  const rangePoints = timeline;
   const returnSpecsKey = JSON.stringify(parameters.return_specs);
   const icReturnSpec = parameters.return_specs[icReturnColumn];
   const returnSpec = parameters.return_specs[returnColumn];
@@ -98,20 +102,26 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     setLoading(true);
     setError("");
     setMetrics(null);
+    setExecutionStatisticsAvailable(false);
+    setExecutionStatistics([]);
     setTurnoverAvailable(false);
     async function loadResults() {
       try {
-        const [informationBuffer, groupBuffer, turnoverBuffer] = await Promise.all([
+        const [informationBuffer, groupBuffer, turnoverBuffer, executionStatisticsBuffer] = await Promise.all([
           factorApi.output(workflowInstanceId, "information_coefficient"),
           factorApi.output(workflowInstanceId, "group_returns"),
           factorApi.output(workflowInstanceId, "group_turnover").catch((reason: unknown) => {
+            if (isApiRequestStatus(reason, 404)) return null;
+            throw reason;
+          }),
+          factorApi.output(workflowInstanceId, "execution_statistics").catch((reason: unknown) => {
             if (isApiRequestStatus(reason, 404)) return null;
             throw reason;
           })
         ]);
         session = await FactorAnalytics.create(
           workflowInstanceId,
-          { information: informationBuffer, groups: groupBuffer, turnover: turnoverBuffer },
+          { information: informationBuffer, groups: groupBuffer, turnover: turnoverBuffer, executionStatistics: executionStatisticsBuffer },
           parameters
         );
         if (cancelled) {
@@ -120,6 +130,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
         }
         analytics.current = session;
         setTurnoverAvailable(turnoverBuffer !== null);
+        setExecutionStatisticsAvailable(executionStatisticsBuffer !== null);
         const calculated = await session.metrics();
         if (cancelled) return;
         setMetrics(calculated);
@@ -142,19 +153,29 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     if (!session || !metrics || !factor || !firstReturnColumn) return undefined;
     let cancelled = false;
     setRangeFactor("");
-    Promise.all([session.dateRange(factor, firstReturnColumn), session.informationSeries(factor, firstReturnColumn)])
-      .then(([range, rows]) => {
+    Promise.all([
+      session.dateRange(factor, firstReturnColumn),
+      session.informationSeries(factor, firstReturnColumn),
+      executionStatisticsAvailable ? session.executionStatistics() : Promise.resolve([])
+    ])
+      .then(([range, rows, statistics]) => {
         if (cancelled) return;
-        setTimeline(rows.filter((row) => row.time >= range.start && row.time <= range.end));
-        setMinimumDate(range.start);
-        setMaximumDate(range.end);
-        setStartDate(range.start);
-        setEndDate(range.end);
+        const nextTimeline = statistics.length
+          ? statistics.map((row) => ({ time: row.time, value: row.retentionRate }))
+          : rows.map((row) => ({ time: row.time, value: row.rankIc ?? row.ic }));
+        const nextMinimum = nextTimeline[0]?.time ?? range.start;
+        const nextMaximum = nextTimeline.at(-1)?.time ?? range.end;
+        setTimeline(nextTimeline);
+        setExecutionStatistics(statistics);
+        setMinimumDate(nextMinimum);
+        setMaximumDate(nextMaximum);
+        setStartDate(nextMinimum);
+        setEndDate(nextMaximum);
         setRangeFactor(factor);
       })
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); });
     return () => { cancelled = true; };
-  }, [factor, firstReturnColumn, metrics]);
+  }, [executionStatisticsAvailable, factor, firstReturnColumn, metrics]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -179,6 +200,18 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       .finally(() => { if (!cancelled) setReturnLoading(false); });
     return () => { cancelled = true; };
   }, [endDate, factor, metrics, parameters.n_groups, rangeFactor, returnColumn, startDate]);
+
+  useEffect(() => {
+    const session = analytics.current;
+    if (!session || !metrics || !factor || !executionStatisticsAvailable || rangeFactor !== factor) return undefined;
+    let cancelled = false;
+    setExecutionStatisticsLoading(true);
+    session.executionStatistics({ start: startDate, end: endDate })
+      .then((rows) => { if (!cancelled) setExecutionStatistics(rows); })
+      .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); })
+      .finally(() => { if (!cancelled) setExecutionStatisticsLoading(false); });
+    return () => { cancelled = true; };
+  }, [endDate, executionStatisticsAvailable, factor, metrics, rangeFactor, startDate]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -246,6 +279,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   useEffect(() => {
     if (!onChartRanges) return;
     onChartRanges({
+      executionStatistics: chartRange(executionStatistics.map((row) => row.sourceCount), true),
       information: {
         primary: chartRange(information.map((row) => icType === "RankIC" ? row.rankIc : row.ic)),
         secondary: chartRange(information.map((row) => icType === "RankIC" ? row.rankIcCumulative : row.icCumulative))
@@ -256,9 +290,9 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       turnover: chartRange(turnover?.groups.map((row) => row.value) ?? [], true),
       decay: chartRange(decay.flatMap((row) => [row.icMean, row.rankIcMean]), true)
     });
-  }, [decay, groupStatistics, groups, icType, information, longShort, onChartRanges, turnover]);
+  }, [decay, executionStatistics, groupStatistics, groups, icType, information, longShort, onChartRanges, turnover]);
 
-  if (loading) return <ResultState icon={<IconLoaderCircle className="animate-spin" width={20} height={20} />} title="DuckDB 正在读取 Parquet" detail="正在浏览器内加载 IC 与分组收益结果。" />;
+  if (loading) return <ResultState icon={<IconLoaderCircle className="animate-spin" width={20} height={20} />} title="DuckDB 正在读取 Parquet" detail="正在浏览器内加载因子分析结果。" />;
   if (error && !metrics) return <ResultState icon={<IconDatabase width={20} height={20} />} title="结果读取失败" detail={error} />;
   if (!metrics || !factor) return null;
 
@@ -280,6 +314,19 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     <SortableCardStack
       storageKey="arena.factor-analysis.overview-card-order"
       items={[
+        ...executionStatisticsAvailable
+          ? [{
+            id: "execution-statistics",
+            content: <ReportCard title="DSL 执行统计">
+              <p className="text-xs leading-5 text-muted-foreground">区域总上沿是当日过滤前股票数；各色带依次表示过滤条件的边际剔除数量和最终保留数量。</p>
+              <ChartPanel title="每日股票域与过滤去向">
+                <SeriesContent loading={executionStatisticsLoading} count={executionStatistics.length} height={360}>
+                  {executionStatistics.length > 0 && <EChart option={executionStatisticsOption(executionStatistics, theme, chartRanges?.executionStatistics)} height={360} />}
+                </SeriesContent>
+              </ChartPanel>
+            </ReportCard>
+          }]
+          : [],
         {
           id: "information",
           content: <ReportCard title="IC 分析">
@@ -493,6 +540,71 @@ function informationOption(rows: InformationPoint[], theme: string, type: IcType
   ], ranges?.primary);
   option.yAxis = [axis(theme, true, ranges?.primary), axis(theme, false, ranges?.secondary)];
   return option;
+}
+
+function executionStatisticsOption(rows: ExecutionStatisticPoint[], theme: string, range?: ChartRange) {
+  const filterNames = rows[0]?.filters.map((filter) => filter.name) ?? [];
+  const filterSeries = filterNames.map((name, filterIndex) => ({
+    name: `${name} 剔除`,
+    type: "line",
+    stack: "stocks",
+    data: rows.map((row) => {
+      const previous = filterIndex === 0 ? row.sourceCount : row.filters[filterIndex - 1]?.count ?? row.filteredCount;
+      const remaining = row.filters[filterIndex]?.count ?? row.filteredCount;
+      return Math.max(0, previous - remaining);
+    }),
+    showSymbol: false,
+    symbol: "none",
+    lineStyle: { width: 0.8, color: executionFilterColor(filterIndex) },
+    areaStyle: { color: executionFilterColor(filterIndex), opacity: 0.78 },
+    itemStyle: { color: executionFilterColor(filterIndex) }
+  }));
+  const option: Record<string, unknown> = baseOption(theme, rows.map((row) => row.time), [
+    {
+      name: "最终保留",
+      type: "line",
+      stack: "stocks",
+      data: rows.map((row) => row.filteredCount),
+      showSymbol: false,
+      symbol: "none",
+      lineStyle: { width: 1.2, color: "#2563eb" },
+      areaStyle: { color: "#2563eb", opacity: 0.86 },
+      itemStyle: { color: "#2563eb" }
+    },
+    ...filterSeries
+  ], range);
+  const maximum = range?.max ?? Math.max(...rows.map((row) => row.sourceCount), 0);
+  option.grid = { ...(option.grid as Record<string, unknown>), top: 48 };
+  option.legend = { ...(option.legend as Record<string, unknown>), type: "scroll", right: 0 };
+  option.xAxis = { ...(option.xAxis as Record<string, unknown>), boundaryGap: false };
+  option.yAxis = { ...axis(theme, true, { min: 0, max: Math.ceil(maximum * 1.04) }, "integer"), min: 0 };
+  option.tooltip = {
+    ...(option.tooltip as Record<string, unknown>),
+    axisPointer: { type: "line" },
+    formatter: (items: Array<{ dataIndex: number; marker: string; seriesName: string; value: number }>) => {
+      const item = items[0];
+      const row = item ? rows[item.dataIndex] : undefined;
+      if (!row) return "";
+      const details = items.map((entry) => `${entry.marker}${escapeHtml(entry.seriesName)}：${Number(entry.value).toLocaleString("zh-CN")}`);
+      return [
+        escapeHtml(row.time),
+        `原始股票：${row.sourceCount.toLocaleString("zh-CN")}`,
+        `最终保留：${row.filteredCount.toLocaleString("zh-CN")}（${format(row.retentionRate, "percent")}）`,
+        ...details.slice(1)
+      ].join("<br/>");
+    }
+  };
+  return option;
+}
+
+function executionFilterColor(index: number) {
+  const colors = ["#94a3b8", "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#14b8a6", "#64748b", "#e11d48"];
+  return colors[index % colors.length];
+}
+
+function escapeHtml(value: string) {
+  const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" };
+  return value.replace(/[&<>"']/g, (character) => entities[character] ?? character);
 }
 
 function rollingMean(values: Array<number | null>, window: number) {

@@ -154,6 +154,7 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
 
 function mergeFactorRanges(left?: FactorChartRanges, right?: FactorChartRanges): FactorChartRanges {
   return {
+    executionStatistics: mergeChartRanges(left?.executionStatistics, right?.executionStatistics),
     information: { primary: mergeChartRanges(left?.information?.primary, right?.information?.primary), secondary: mergeChartRanges(left?.information?.secondary, right?.information?.secondary) },
     longShort: { primary: mergeChartRanges(left?.longShort?.primary, right?.longShort?.primary), secondary: mergeChartRanges(left?.longShort?.secondary, right?.longShort?.secondary) },
     groupStatistics: mergeChartRanges(left?.groupStatistics, right?.groupStatistics),
