@@ -115,13 +115,22 @@ test("tracks the active positional and keyword parameter", () => {
   assert.equal(keywordHelp?.activeParameter, 2);
 });
 
-test("names direct result operations while keeping nested operations anonymous", () => {
-  const derivatives = completionSuggestions(
-    "DERIVATIVES = [DIRECT.binary."
+test("offers only the two required Python DSL result variables", () => {
+  const declaration = completionSuggestions("").find(
+    (item) => item.label === "DSL 完整声明"
   );
+
+  assert.ok(declaration);
+  assert.match(declaration.insertText, /FACTORS/);
+  assert.match(declaration.insertText, /FILTERS/);
+  assert.doesNotMatch(declaration.insertText, /DERIVATIVES/);
+});
+
+test("names assigned and filter operations while keeping nested operations anonymous", () => {
+  const derivatives = completionSuggestions("value = DIRECT.binary.");
   assert.match(
     derivatives.find((item) => item.label === "add").insertText,
-    /factor_name/
+    /value/
   );
 
   const filters = completionSuggestions("FILTERS = [DIRECT.binary.");
@@ -129,7 +138,7 @@ test("names direct result operations while keeping nested operations anonymous",
   assert.match(filters[0].insertText, /filter_name/);
 
   const nested = completionSuggestions(
-    'DERIVATIVES = [DIRECT.binary.add("value", left=DIRECT.binary.'
+    'value = DIRECT.binary.add("value", left=DIRECT.binary.'
   );
   assert.doesNotMatch(
     nested.find((item) => item.label === "add").insertText,

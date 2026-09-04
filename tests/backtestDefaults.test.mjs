@@ -3,9 +3,14 @@ import test from "node:test";
 
 import { defaultBacktestParameters, setBacktestStockPoolType } from "../src/types/backtest.ts";
 
-test("new backtests use a static stock pool by default", () => {
+test("new backtests use the dynamic HS300 stock pool by default", () => {
   const parameters = defaultBacktestParameters();
-  assert.equal(parameters.codes_query, null);
+  assert.ok(parameters.codes_query);
+  assert.equal(
+    parameters.codes_query.derivatives.stock_pool_member.fields.left,
+    "weight_000300SH"
+  );
+  assert.deepEqual(parameters.codes_query.filters, ["stock_pool_member"]);
   assert.deepEqual(parameters.dataset_query.codes, []);
   assert.equal("stock_pool_member" in parameters.dataset_query.derivatives, false);
   assert.equal(parameters.callbacks.onSnapshot.includes("stock_pool_member == true"), true);

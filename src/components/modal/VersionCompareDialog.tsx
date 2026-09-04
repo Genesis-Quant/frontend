@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
+import { backtestReportParameters, isBacktestParameters } from "@/assets/lib/backtest";
 import { mergeChartRanges } from "@/assets/lib/chart";
-import { hasCompleteReturnSpecs, normalizeAnalysisParameters, stockPoolLabel, stockPools, type FactorAnalysisParameters, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
-import type { BacktestParameters, BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
+import { factorReportParameters, isFactorAnalysisParameters, stockPoolLabel, stockPools, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
+import type { BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
 import type { BacktestChartRanges, FactorChartRanges } from "@/types/chart";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, LargeDialogContent } from "@/ui/dialog";
@@ -57,10 +58,7 @@ export default function VersionCompareDialog({ currentVersion, currentVersionNum
     setError("");
     try {
       const [left, right] = await Promise.all([currentVersion ?? loadVersion(currentVersionNumber), loadVersion(selected.version)]);
-      setResult({
-        left: normalizeCompareVersion(kind, left),
-        right: normalizeCompareVersion(kind, right)
-      });
+      setResult({ left, right });
       onOpenChange(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -102,14 +100,16 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
   const [rightFactorRanges, setRightFactorRanges] = useState<FactorChartRanges>();
   const [leftBacktestRanges, setLeftBacktestRanges] = useState<BacktestChartRanges>();
   const [rightBacktestRanges, setRightBacktestRanges] = useState<BacktestChartRanges>();
-  const leftFactorParameters = kind === "factor" ? left.parameters as FactorAnalysisParameters : null;
-  const rightFactorParameters = kind === "factor" ? right.parameters as FactorAnalysisParameters : null;
+  const leftFactorParameters = kind === "factor" ? factorReportParameters(left.parameters) : null;
+  const rightFactorParameters = kind === "factor" ? factorReportParameters(right.parameters) : null;
   const leftFactors = leftFactorParameters?.factor_columns ?? [];
   const rightFactors = rightFactorParameters?.factor_columns ?? [];
   const [leftFactor, setLeftFactor] = useState(leftFactors[0] ?? "");
   const [rightFactor, setRightFactor] = useState(rightFactors[0] ?? "");
   const factorRanges = useMemo(() => mergeFactorRanges(leftFactorRanges, rightFactorRanges), [leftFactorRanges, rightFactorRanges]);
   const backtestRanges = useMemo(() => mergeBacktestRanges(leftBacktestRanges, rightBacktestRanges), [leftBacktestRanges, rightBacktestRanges]);
+  const leftBacktestParameters = kind === "backtest" ? backtestReportParameters(left.parameters) : null;
+  const rightBacktestParameters = kind === "backtest" ? backtestReportParameters(right.parameters) : null;
 
   useEffect(() => {
     if (!leftFactors.includes(leftFactor)) setLeftFactor(leftFactors[0] ?? "");
@@ -132,11 +132,11 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
       ? <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <ResultColumn accent="border-l-sky-500">
           <FactorTabs factor={leftFactor} factors={leftFactors} onChange={setLeftFactor} />
-          {left.workflow_instance_id && leftFactor && hasCompleteReturnSpecs(leftFactorParameters!) ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={leftFactorParameters!} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} /></Suspense> : <MissingResult />}
+          {left.workflow_instance_id && leftFactor && leftFactorParameters ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={leftFactor} key={`${left.workflow_instance_id}:${leftFactor}`} parameters={leftFactorParameters} workflowInstanceId={left.workflow_instance_id} onChartRanges={setLeftFactorRanges} /></Suspense> : <MissingResult />}
         </ResultColumn>
         <ResultColumn accent="border-l-amber-500">
           <FactorTabs factor={rightFactor} factors={rightFactors} onChange={setRightFactor} />
-          {right.workflow_instance_id && rightFactor && hasCompleteReturnSpecs(rightFactorParameters!) ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={rightFactorParameters!} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} /></Suspense> : <MissingResult />}
+          {right.workflow_instance_id && rightFactor && rightFactorParameters ? <Suspense fallback={<ReportLoading />}><FactorAnalysisReport chartRanges={factorRanges} factor={rightFactor} key={`${right.workflow_instance_id}:${rightFactor}`} parameters={rightFactorParameters} workflowInstanceId={right.workflow_instance_id} onChartRanges={setRightFactorRanges} /></Suspense> : <MissingResult />}
         </ResultColumn>
       </div>
       : null}
@@ -144,8 +144,8 @@ export function VersionCompareResult({ kind, left, leftProjectTitle, right, righ
       ? <>
       <Tabs value={activeTab} onValueChange={setActiveTab}><TabsList scrollable>{backtestTabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>)}</TabsList></Tabs>
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <ResultColumn accent="border-l-sky-500">{left.workflow_instance_id ? <Suspense fallback={<ReportLoading />}><BacktestReport activeTab={activeTab} annualTradingDays={(left.parameters as BacktestParameters).annual_trading_days} chartRanges={backtestRanges} riskFreeRate={(left.parameters as BacktestParameters).risk_free_rate} showTabs={false} workflowInstanceId={left.workflow_instance_id} onActiveTabChange={setActiveTab} onChartRanges={setLeftBacktestRanges} /></Suspense> : <MissingResult />}</ResultColumn>
-        <ResultColumn accent="border-l-amber-500">{right.workflow_instance_id ? <Suspense fallback={<ReportLoading />}><BacktestReport activeTab={activeTab} annualTradingDays={(right.parameters as BacktestParameters).annual_trading_days} chartRanges={backtestRanges} riskFreeRate={(right.parameters as BacktestParameters).risk_free_rate} showTabs={false} workflowInstanceId={right.workflow_instance_id} onActiveTabChange={setActiveTab} onChartRanges={setRightBacktestRanges} /></Suspense> : <MissingResult />}</ResultColumn>
+        <ResultColumn accent="border-l-sky-500">{left.workflow_instance_id && leftBacktestParameters ? <Suspense fallback={<ReportLoading />}><BacktestReport activeTab={activeTab} annualTradingDays={leftBacktestParameters.annual_trading_days} chartRanges={backtestRanges} riskFreeRate={leftBacktestParameters.risk_free_rate} showTabs={false} workflowInstanceId={left.workflow_instance_id} onActiveTabChange={setActiveTab} onChartRanges={setLeftBacktestRanges} /></Suspense> : <MissingResult />}</ResultColumn>
+        <ResultColumn accent="border-l-amber-500">{right.workflow_instance_id && rightBacktestParameters ? <Suspense fallback={<ReportLoading />}><BacktestReport activeTab={activeTab} annualTradingDays={rightBacktestParameters.annual_trading_days} chartRanges={backtestRanges} riskFreeRate={rightBacktestParameters.risk_free_rate} showTabs={false} workflowInstanceId={right.workflow_instance_id} onActiveTabChange={setActiveTab} onChartRanges={setRightBacktestRanges} /></Suspense> : <MissingResult />}</ResultColumn>
       </div>
       </>
       : null}
@@ -169,7 +169,7 @@ function mergeBacktestRanges(left?: BacktestChartRanges, right?: BacktestChartRa
 }
 
 function VersionSummary({ accent, kind, projectTitle, version }: { accent: string; kind: "factor" | "backtest"; projectTitle: string; version: CompareVersion }) {
-  const fields = kind === "factor" ? factorSummary(version.parameters as FactorAnalysisParameters) : backtestSummary(version.parameters as BacktestParameters);
+  const fields = kind === "factor" ? factorSummary(version.parameters) : backtestSummary(version.parameters);
   return <div className={`min-w-0 space-y-3 rounded-md border border-l-4 bg-card p-3 ${accent}`}>
     <div><div className="truncate text-sm font-medium">{projectTitle}</div><div className="mt-0.5 text-xs text-muted-foreground">v{version.version}{version.saved ? "" : " · 未保存"}</div></div>
     <div className={`h-24 overflow-y-auto whitespace-pre-wrap break-words rounded-md border bg-muted/20 px-3 py-2 text-sm leading-6 ${version.remark.trim() ? "text-muted-foreground" : "text-muted-foreground/70"}`}>{version.remark.trim() || "无备注"}</div>
@@ -185,22 +185,19 @@ function FactorTabs({ factor, factors, onChange }: { factor: string; factors: st
   return <Tabs className="mb-4" value={factor} onValueChange={onChange}><TabsList scrollable>{factors.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}</TabsList></Tabs>;
 }
 
-function normalizeCompareVersion(kind: "factor" | "backtest", version: CompareVersion): CompareVersion {
-  return kind === "factor"
-    ? { ...version, parameters: normalizeAnalysisParameters(version.parameters) } as FactorVersion
-    : version;
-}
-
-function factorSummary(parameters: FactorAnalysisParameters): string[][] {
-  if (!parameters.dataset_query || !Array.isArray(parameters.factor_columns) || !Array.isArray(parameters.return_columns)) return [["状态", "尚未执行"]];
+function factorSummary(parameters: unknown): string[][] {
+  if (!isFactorAnalysisParameters(parameters)) {
+    const report = factorReportParameters(parameters);
+    return [["参数状态", "结构不完整"], ["因子", report?.factor_columns.join(", ") || "—"], ["收益列", report?.return_columns.join(", ") || "—"]];
+  }
   const pool = stockPoolLabel(parameters);
-  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["股票池", pool], ["回溯周期", parameters.dataset_query.lookback], ["分组数量", String(parameters.n_groups)], ["极端股票数", String(parameters.n_select)], ["因子", parameters.factor_columns.join(", ") || "—"], ["收益列", parameters.return_columns.join(", ") || "—"]];
+  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["股票池", pool], ["回溯周期", parameters.dataset_query.lookback], ["分组数量", String(parameters.n_groups)], ["极端股票数", String(parameters.n_select)], ["因子", parameters.factor_columns.join(", ")], ["收益列", parameters.return_columns.join(", ")]];
 }
 
-function backtestSummary(parameters: BacktestParameters): string[][] {
-  if (!parameters.dataset_query) return [["状态", "尚未执行"]];
+function backtestSummary(parameters: unknown): string[][] {
+  if (!isBacktestParameters(parameters)) return [["参数状态", "结构不完整"]];
   const benchmark = typeof parameters.config.benchmark === "string"
     ? stockPools.find((option) => option.value === parameters.config.benchmark)?.label ?? parameters.config.benchmark
     : "不使用";
-  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["初始资金", Number(parameters.config.cash ?? 0).toLocaleString("zh-CN")], ["复权方式", parameters.adj ?? "不复权"], ["基准指数", benchmark], ["年化交易日", String(parameters.annual_trading_days)], ["无风险利率", String(parameters.risk_free_rate)], ["回溯周期", parameters.dataset_query.lookback]];
+  return [["日期范围", `${parameters.dataset_query.start_date} — ${parameters.dataset_query.end_date}`], ["初始资金", Number(parameters.config.cash).toLocaleString("zh-CN")], ["复权方式", parameters.adj ?? "不复权"], ["基准指数", benchmark], ["年化交易日", String(parameters.annual_trading_days)], ["无风险利率", String(parameters.risk_free_rate)], ["回溯周期", parameters.dataset_query.lookback]];
 }

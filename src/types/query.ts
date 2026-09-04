@@ -1,4 +1,5 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
+import { jsonDslSource } from "@/assets/lib/dslSource";
 
 export type QueryProjectSortField = "id" | "title" | "state" | "workflow_instance_id" | "updated_at";
 
@@ -7,7 +8,7 @@ export type QueryWorkflowSummary = {
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
-  parameters: FactorQuery;
+  parameters: unknown;
   updated_at: string;
 };
 
@@ -40,14 +41,18 @@ export type QueryOutput = { name: "source_data" | "computed_data" | "filtered_da
 export type QueryCatalog = DslCatalog;
 
 export function defaultQueryParameters(): FactorQuery {
+  const dsl: DslDocument = {
+    factors: ["close", "vol"],
+    derivatives: {},
+    filters: []
+  };
   return {
     start_date: "2020-01-01",
     end_date: "2026-01-01",
     lookback: "P0D",
     codes: ["000001.SZ", "600000.SH"],
-    factors: ["close", "vol"],
-    derivatives: {},
-    filters: []
+    ...dsl,
+    dsl_source: jsonDslSource(dsl)
   };
 }
 

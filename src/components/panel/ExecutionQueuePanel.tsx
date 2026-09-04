@@ -18,6 +18,7 @@ type ExecutionQueuePanelProps<T> = {
   deletingId: string | null;
   executing: boolean;
   items: ProjectQueueItem<T>[];
+  loadError?: string | null;
   open: boolean;
   savingId: string | null;
   validate: (value: unknown) => value is T;
@@ -27,7 +28,7 @@ type ExecutionQueuePanelProps<T> = {
   onUpdate: (item: ProjectQueueItem<T>, remark: string, parameters: T) => Promise<void>;
 };
 
-export default function ExecutionQueuePanel<T>({ deletingId, executing, items, open, savingId, validate, onDelete, onExecute, onOpenChange, onUpdate }: ExecutionQueuePanelProps<T>) {
+export default function ExecutionQueuePanel<T>({ deletingId, executing, items, loadError, open, savingId, validate, onDelete, onExecute, onOpenChange, onUpdate }: ExecutionQueuePanelProps<T>) {
   const [editing, setEditing] = useState<ProjectQueueItem<T> | null>(null);
   const [remark, setRemark] = useState("");
   const [source, setSource] = useState("");
@@ -64,6 +65,7 @@ export default function ExecutionQueuePanel<T>({ deletingId, executing, items, o
           <QueueStat icon={<CheckCircle2 />} label="已保存" value={stats.succeeded} />
           <QueueStat icon={<CircleX />} label="失败" value={stats.failed} />
         </div>
+        {loadError ? <div className="mx-5 mt-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{loadError}</div> : null}
         {stats.pending > maxBatchRunItems ? <div className="mx-5 mt-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">一次最多执行 {maxBatchRunItems} 个待执行任务，请先删除多余任务。</div> : null}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {items.map((item, index) => {

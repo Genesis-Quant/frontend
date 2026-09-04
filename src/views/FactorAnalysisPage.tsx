@@ -11,7 +11,7 @@ import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ProjectCompareDialog from "@/components/modal/ProjectCompareDialog";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import FactorProjectTable from "@/components/table/FactorProjectTable";
-import type { FactorProjectListItem, FactorProjectPage, FactorProjectSortField } from "@/types/factor";
+import { defaultAnalysisParameters, type FactorProjectListItem, type FactorProjectPage, type FactorProjectSortField } from "@/types/factor";
 import type { ProjectSortOrder } from "@/types/project";
 import { Button } from "@/ui/button";
 
@@ -60,7 +60,7 @@ export default function FactorAnalysisPage() {
     setSaving(true);
     setError("");
     try {
-      const project = await factorApi.createProject(title.trim());
+      const project = await factorApi.createProject(title.trim(), defaultAnalysisParameters());
       setCreateOpen(false);
       navigate(`/factor/projects/${project.id}`);
     } catch (reason) { setError(errorMessage(reason)); }

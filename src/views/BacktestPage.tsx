@@ -11,7 +11,7 @@ import { CreateProjectDialog } from "@/components/modal/ProjectDialogs";
 import ProjectCompareDialog from "@/components/modal/ProjectCompareDialog";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import BacktestProjectTable from "@/components/table/BacktestProjectTable";
-import type { BacktestProjectListItem, BacktestProjectPage, BacktestProjectSortField } from "@/types/backtest";
+import { defaultBacktestParameters, type BacktestProjectListItem, type BacktestProjectPage, type BacktestProjectSortField } from "@/types/backtest";
 import type { ProjectSortOrder } from "@/types/project";
 import { Button } from "@/ui/button";
 
@@ -60,7 +60,7 @@ export default function BacktestPage() {
     setSaving(true);
     setError("");
     try {
-      const project = await backtestApi.createProject(title.trim());
+      const project = await backtestApi.createProject(title.trim(), defaultBacktestParameters());
       setCreateOpen(false);
       navigate(`/backtest/projects/${project.id}`);
     } catch (reason) { setError(errorMessage(reason)); }

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { configureDslLanguage, isDslDocument, registerDslLanguageProviders } from "@/assets/lib/dslLanguage";
 import { formatJsonDslSource, formatPythonDslSource } from "@/assets/lib/dslFormatting";
-import { dslSourceText, effectiveDslSource, updateDslSourceText } from "@/assets/lib/dslSource";
+import { dslSourceText, updateDslSourceText } from "@/assets/lib/dslSource";
 import { registerPythonDslLanguageProviders } from "@/assets/lib/pythonDslLanguage";
 import { client } from "@/assets/lib/request";
 import MonacoEditorFrame from "@/components/editor/MonacoEditorFrame";
@@ -19,7 +19,7 @@ type DslEditorProps = {
   compileEndpoint: string;
   modelPath: string;
   readOnly?: boolean;
-  source?: DslSource;
+  source: DslSource;
   value: DslDocument;
   onChange: (value: DslDocument, source: DslSource, valid: boolean) => void;
   onValidityChange?: (valid: boolean) => void;
@@ -27,19 +27,13 @@ type DslEditorProps = {
 
 export default function DslEditor({ catalog, compileEndpoint, modelPath, onChange, onValidityChange, readOnly = false, source, value }: DslEditorProps) {
   const theme = useAppStore((state) => state.theme);
-  const serializedValue = useMemo(() => JSON.stringify(value, null, 2), [value]);
-  const externalSource = useMemo(
-    () => effectiveDslSource(value, source),
-    [serializedValue, source?.json_source, source?.language, source?.python_source]
-  );
-  const externalKey = `${modelPath}\u0000${serializedValue}\u0000${sourceKey(externalSource)}`;
-  const [activeSource, setActiveSource] = useState(externalSource);
+  const serializedValue = useMemo(() => JSON.stringify(value), [value]);
+  const [activeSource, setActiveSource] = useState(source);
   const currentDocument = useRef(value);
-  const currentSource = useRef(externalSource);
+  const currentSource = useRef(source);
+  const observedSource = useRef("");
   const compileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const compilation = useRef(0);
-  const observedExternal = useRef("");
-  const validatedExternal = useRef("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const disposables = useRef<Array<{ dispose: () => void }>>([]);
@@ -49,49 +43,43 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
   onValidityChangeRef.current = onValidityChange;
 
   useEffect(() => {
-    if (observedExternal.current === externalKey) return;
-    observedExternal.current = externalKey;
-    if (JSON.stringify(currentDocument.current) !== serializedValue) currentDocument.current = value;
-    if (!sameSource(currentSource.current, externalSource)) {
-      currentSource.current = externalSource;
-      setActiveSource(externalSource);
-      clearMarkers();
+    currentDocument.current = value;
+    const key = sourceKey(source);
+    if (!sameSource(currentSource.current, source)) {
+      currentSource.current = source;
+      setActiveSource(source);
     }
-    const key = sourceKey(externalSource);
-    if (validatedExternal.current === key) return;
-    validatedExternal.current = key;
-    if (externalSource.language === "python") {
-      onValidityChangeRef.current?.(false);
-      schedulePythonCompilation(externalSource);
-    } else {
-      onValidityChangeRef.current?.(validJsonSource(externalSource.json_source));
-    }
-  }, [externalKey, externalSource, serializedValue, value]);
+    if (observedSource.current === key) return;
+    validateSource(source, false);
+  }, [serializedValue, source.json_source, source.language, source.python_source]);
 
   useEffect(() => () => {
     compilation.current += 1;
     if (compileTimer.current !== null) clearTimeout(compileTimer.current);
     disposables.current.forEach((disposable) => disposable.dispose());
-    disposables.current = [];
   }, []);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => refreshLanguageProviders());
+    const frame = window.requestAnimationFrame(refreshLanguageProviders);
     return () => window.cancelAnimationFrame(frame);
-  }, [catalog, modelPath]);
+  }, [activeSource.language, catalog, modelPath]);
 
   const mount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     refreshLanguageProviders();
+    validateSource(currentSource.current, false);
   };
+
+  function editorModelPath(language: DslLanguage) {
+    return `${modelPath}.${language}`;
+  }
 
   function refreshLanguageProviders() {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
-    if (!editor || !monaco) return;
-    const uri = editor.getModel()?.uri.toString();
-    if (!uri) return;
+    const uri = editor?.getModel()?.uri.toString();
+    if (!editor || !monaco || !uri) return;
     disposables.current.forEach((disposable) => disposable.dispose());
     disposables.current = [
       ...registerDslLanguageProviders(monaco, uri, catalog),
@@ -99,60 +87,78 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
     ];
   }
 
-  function change(nextText = "", language = activeSource.language) {
-    const nextSource = updateDslSourceText(currentSource.current, language, nextText);
+  function edit(nextText: string | undefined) {
+    if (nextText === undefined) return;
+    const nextSource = updateDslSourceText(
+      currentSource.current,
+      activeSource.language,
+      nextText
+    );
+    if (sameSource(currentSource.current, nextSource)) return;
     currentSource.current = nextSource;
     setActiveSource(nextSource);
-    compilation.current += 1;
-    if (compileTimer.current !== null) clearTimeout(compileTimer.current);
+    validateSource(nextSource, true);
+  }
 
-    if (language === "json") {
+  function switchLanguage(language: DslLanguage) {
+    if (language === currentSource.current.language) return;
+    const nextSource = { ...currentSource.current, language };
+    currentSource.current = nextSource;
+    setActiveSource(nextSource);
+    validateSource(nextSource, true);
+  }
+
+  function validateSource(nextSource: DslSource, publish: boolean) {
+    observedSource.current = sourceKey(nextSource);
+    compilation.current += 1;
+    if (compileTimer.current !== null) {
+      clearTimeout(compileTimer.current);
+      compileTimer.current = null;
+    }
+
+    if (nextSource.language === "json") {
       const errors: ParseError[] = [];
-      const document = parse(nextText, errors, { allowTrailingComma: false, disallowComments: true }) as unknown;
+      const document = parse(nextSource.json_source, errors, {
+        allowTrailingComma: false,
+        disallowComments: true
+      }) as unknown;
       const valid = errors.length === 0 && isDslDocument(document);
       onValidityChangeRef.current?.(valid);
       if (!valid) {
-        markError("JSON DSL 结构或语法无效");
+        markError("JSON DSL 结构或语法无效", "json");
+        if (publish) onChangeRef.current(currentDocument.current, nextSource, false);
         return;
       }
-      validatedExternal.current = sourceKey(nextSource);
       currentDocument.current = document;
-      clearMarkers();
-      onChangeRef.current(document, nextSource, true);
+      clearMarkers("json");
+      scheduleCompilation(nextSource, publish, document);
       return;
     }
 
-    onValidityChangeRef.current?.(false);
-    clearMarkers();
-    schedulePythonCompilation(nextSource);
+    clearMarkers("python");
+    scheduleCompilation(nextSource, publish, currentDocument.current);
   }
 
-  function schedulePythonCompilation(nextSource: DslSource) {
-    compilation.current += 1;
-    if (compileTimer.current !== null) clearTimeout(compileTimer.current);
+  function scheduleCompilation(nextSource: DslSource, publish: boolean, provisionalDocument: DslDocument) {
+    onValidityChangeRef.current?.(false);
+    if (publish) onChangeRef.current(provisionalDocument, nextSource, false);
     const version = compilation.current;
     compileTimer.current = setTimeout(() => {
       compileTimer.current = null;
       client.post<DslDocument>(compileEndpoint, nextSource, { timeout: 30000 })
         .then((document) => {
           if (version !== compilation.current || !sameSource(currentSource.current, nextSource)) return;
-          validatedExternal.current = sourceKey(nextSource);
           currentDocument.current = document;
-          clearMarkers();
+          clearMarkers(nextSource.language);
           onValidityChangeRef.current?.(true);
-          onChangeRef.current(document, nextSource, true);
+          if (publish) onChangeRef.current(document, nextSource, true);
         })
         .catch((error: unknown) => {
           if (version !== compilation.current || !sameSource(currentSource.current, nextSource)) return;
           onValidityChangeRef.current?.(false);
-          markError(error instanceof Error ? error.message : "Python DSL 编译失败");
+          markError(error instanceof Error ? error.message : "DSL 编译失败", nextSource.language);
         });
     }, 350);
-  }
-
-  function switchLanguage(language: DslLanguage) {
-    if (language === activeSource.language) return;
-    change(dslSourceText(currentSource.current, language), language);
   }
 
   async function format() {
@@ -174,26 +180,30 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
     editor.pushUndoStop();
   }
 
-  function clearMarkers() {
-    const editor = editorRef.current;
+  function model(language: DslLanguage) {
     const monaco = monacoRef.current;
-    const model = editor?.getModel();
-    if (model && monaco) monaco.editor.setModelMarkers(model, "dsl-source", []);
+    if (!monaco) return null;
+    return monaco.editor.getModel(monaco.Uri.parse(editorModelPath(language)));
   }
 
-  function markError(message: string) {
-    const editor = editorRef.current;
+  function clearMarkers(language: DslLanguage) {
     const monaco = monacoRef.current;
-    const model = editor?.getModel();
-    if (!model || !monaco) return;
-    const line = Math.min(model.getLineCount(), Math.max(1, Number(/第\s*(\d+)\s*行/.exec(message)?.[1] ?? 1)));
-    monaco.editor.setModelMarkers(model, "dsl-source", [{
-      endColumn: model.getLineMaxColumn(line),
-      endLineNumber: line,
+    const target = model(language);
+    if (target && monaco) monaco.editor.setModelMarkers(target, "dsl-source", []);
+  }
+
+  function markError(message: string, language: DslLanguage) {
+    const monaco = monacoRef.current;
+    const target = model(language);
+    if (!target || !monaco) return;
+    const range = locateErrorRange(message, language, target);
+    monaco.editor.setModelMarkers(target, "dsl-source", [{
+      endColumn: range.endColumn ?? target.getLineMaxColumn(range.line),
+      endLineNumber: range.line,
       message,
       severity: monaco.MarkerSeverity.Error,
-      startColumn: 1,
-      startLineNumber: line
+      startColumn: range.startColumn ?? 1,
+      startLineNumber: range.line
     }]);
   }
 
@@ -211,7 +221,7 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
     beforeMount={configureDslLanguage}
     height="100%"
     language={activeSource.language}
-    onChange={(next) => change(next)}
+    onChange={edit}
     onMount={mount}
     options={{
       acceptSuggestionOnCommitCharacter: false,
@@ -243,7 +253,7 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
       wordBasedSuggestions: "off",
       wordWrap: "off"
     }}
-    path={modelPath}
+    path={editorModelPath(activeSource.language)}
     theme={theme === "dark" ? "vs-dark" : "light"}
     value={dslSourceText(activeSource)}
   /></MonacoEditorFrame>;
@@ -259,8 +269,78 @@ function sourceKey(source: DslSource) {
   return `${source.language}\u0000${source.json_source}\u0000${source.python_source}`;
 }
 
-function validJsonSource(source: string) {
-  const errors: ParseError[] = [];
-  const document = parse(source, errors, { allowTrailingComma: false, disallowComments: true }) as unknown;
-  return errors.length === 0 && isDslDocument(document);
+type SourceModel = {
+  getLineContent: (lineNumber: number) => string;
+  getLineCount: () => number;
+};
+
+type ErrorRange = {
+  line: number;
+  startColumn?: number;
+  endColumn?: number;
+};
+
+function locateErrorRange(
+  message: string,
+  language: DslLanguage,
+  model: SourceModel
+): ErrorRange {
+  const explicit = /第\s*(\d+)\s*行|line\s*#?\s*(\d+)/i.exec(message);
+  const explicitLine = Number(explicit?.[1] ?? explicit?.[2]);
+  if (Number.isInteger(explicitLine) && explicitLine > 0) {
+    return { line: Math.min(model.getLineCount(), explicitLine) };
+  }
+
+  const unknownFieldRange = locateUnknownFieldRange(message, model);
+  if (unknownFieldRange) return unknownFieldRange;
+
+  const derivativeNames = [
+    ...Array.from(message.matchAll(/derivatives\[['"]([^'"]+)['"]\]/g), (match) => match[1]),
+    ...Array.from(message.matchAll(/derivatives\.([A-Za-z_]\w*)/g), (match) => match[1])
+  ];
+  for (const name of derivativeNames) {
+    if (!name) continue;
+    const escaped = escapeRegExp(name);
+    const pattern = language === "python"
+      ? new RegExp(`^\\s*${escaped}\\s*(?::[^=]+)?=`)
+      : new RegExp(`^[^"]*"${escaped}"\\s*:`);
+    for (let line = 1; line <= model.getLineCount(); line += 1) {
+      if (pattern.test(model.getLineContent(line))) return { line };
+    }
+  }
+  return { line: 1 };
+}
+
+function locateUnknownFieldRange(message: string, model: SourceModel): ErrorRange | null {
+  const unknownFields = /不存在的数据字段[：:]\s*\[([^\]]*)\]/.exec(message)?.[1];
+  const fieldNames = unknownFields
+    ? Array.from(unknownFields.matchAll(/['"]([^'"]+)['"]/g), (match) => match[1])
+    : [];
+  for (const name of fieldNames) {
+    if (!name) continue;
+    const matches: Array<ErrorRange & { fieldValue: boolean }> = [];
+    for (let line = 1; line <= model.getLineCount(); line += 1) {
+      const source = model.getLineContent(line);
+      for (const value of [`"${name}"`, `'${name}'`]) {
+        let index = source.indexOf(value);
+        while (index >= 0) {
+          matches.push({
+            line,
+            startColumn: index + 1,
+            endColumn: index + value.length + 1,
+            fieldValue: /(?:\b[A-Za-z_]\w*\s*=|"[^"]+"\s*:)\s*$/.test(source.slice(0, index))
+          });
+          index = source.indexOf(value, index + value.length);
+        }
+      }
+    }
+    const match = matches.find((candidate) => candidate.fieldValue)
+      ?? matches.at(matches.length > 1 ? 1 : 0);
+    if (match) return match;
+  }
+  return null;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

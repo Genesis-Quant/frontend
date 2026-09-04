@@ -11,7 +11,6 @@ import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
 import { chartRange, formatAxisLabel, thresholdMarkLine } from "@/assets/lib/chart";
-import { isApiRequestStatus } from "@/assets/lib/httpError";
 import { errorMessage } from "@/assets/lib/utils";
 import {
   FactorAnalytics,
@@ -28,7 +27,7 @@ import EChart from "@/components/chart/EChart";
 import SortableCardStack from "@/components/layout/SortableCardStack";
 import { useAppStore } from "@/store";
 import type { AxisFormat, ChartRange, FactorChartRanges } from "@/types/chart";
-import type { FactorAnalysisParameters, FactorMetrics } from "@/types/factor";
+import type { FactorMetrics, FactorReportParameters } from "@/types/factor";
 import { Button } from "@/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 
@@ -36,11 +35,15 @@ type DualChartRanges = { primary?: ChartRange; secondary?: ChartRange };
 type DisplayMetric = { label: string; value: string };
 
 const IC_MOVING_AVERAGE_WINDOW = 22;
+const executionPercentageFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "percent",
+  maximumFractionDigits: 2
+});
 
 type FactorAnalysisReportProps = {
   chartRanges?: FactorChartRanges;
   factor: string;
-  parameters: FactorAnalysisParameters;
+  parameters: FactorReportParameters;
   workflowInstanceId: number;
   onChartRanges?: (ranges: FactorChartRanges) => void;
 };
@@ -51,7 +54,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const analytics = useRef<FactorAnalytics | null>(null);
   const factorColumnsKey = parameters.factor_columns.join("\u0001");
   const returnColumnsKey = parameters.return_columns.join("\u0001");
-  const firstReturnColumn = parameters.return_columns[0] ?? "";
+  const firstReturnColumn = parameters.return_columns[0];
   const [metrics, setMetrics] = useState<FactorMetrics | null>(null);
   const [icReturnColumn, setIcReturnColumn] = useState(firstReturnColumn);
   const [returnColumn, setReturnColumn] = useState(firstReturnColumn);
@@ -62,9 +65,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [groups, setGroups] = useState<GroupPoint[]>([]);
   const [groupStatistics, setGroupStatistics] = useState<GroupStatistic[]>([]);
   const [decay, setDecay] = useState<DecayPoint[]>([]);
-  const [executionStatisticsAvailable, setExecutionStatisticsAvailable] = useState(false);
   const [executionStatistics, setExecutionStatistics] = useState<ExecutionStatisticPoint[]>([]);
-  const [turnoverAvailable, setTurnoverAvailable] = useState(false);
   const [turnoverPeriods, setTurnoverPeriods] = useState<number[]>([]);
   const [turnoverPeriod, setTurnoverPeriod] = useState<number | null>(null);
   const [turnover, setTurnover] = useState<TurnoverSummary | null>(null);
@@ -102,22 +103,18 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     setLoading(true);
     setError("");
     setMetrics(null);
-    setExecutionStatisticsAvailable(false);
     setExecutionStatistics([]);
-    setTurnoverAvailable(false);
     async function loadResults() {
       try {
+        const outputs = await factorApi.outputs(workflowInstanceId);
+        const available = new Set(outputs.map((output) => output.name));
+        const missingRequired = ["information_coefficient", "group_returns"].filter((name) => !available.has(name as "information_coefficient" | "group_returns"));
+        if (missingRequired.length) throw new Error(`工作流缺少因子报告必需结果：${missingRequired.join(", ")}`);
         const [informationBuffer, groupBuffer, turnoverBuffer, executionStatisticsBuffer] = await Promise.all([
           factorApi.output(workflowInstanceId, "information_coefficient"),
           factorApi.output(workflowInstanceId, "group_returns"),
-          factorApi.output(workflowInstanceId, "group_turnover").catch((reason: unknown) => {
-            if (isApiRequestStatus(reason, 404)) return null;
-            throw reason;
-          }),
-          factorApi.output(workflowInstanceId, "execution_statistics").catch((reason: unknown) => {
-            if (isApiRequestStatus(reason, 404)) return null;
-            throw reason;
-          })
+          available.has("group_turnover") ? factorApi.output(workflowInstanceId, "group_turnover") : Promise.resolve(null),
+          available.has("execution_statistics") ? factorApi.output(workflowInstanceId, "execution_statistics") : Promise.resolve(null)
         ]);
         session = await FactorAnalytics.create(
           workflowInstanceId,
@@ -129,8 +126,6 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
           return;
         }
         analytics.current = session;
-        setTurnoverAvailable(turnoverBuffer !== null);
-        setExecutionStatisticsAvailable(executionStatisticsBuffer !== null);
         const calculated = await session.metrics();
         if (cancelled) return;
         setMetrics(calculated);
@@ -156,7 +151,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     Promise.all([
       session.dateRange(factor, firstReturnColumn),
       session.informationSeries(factor, firstReturnColumn),
-      executionStatisticsAvailable ? session.executionStatistics() : Promise.resolve([])
+      session.executionStatistics()
     ])
       .then(([range, rows, statistics]) => {
         if (cancelled) return;
@@ -175,7 +170,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       })
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); });
     return () => { cancelled = true; };
-  }, [executionStatisticsAvailable, factor, firstReturnColumn, metrics]);
+  }, [factor, firstReturnColumn, metrics]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -203,7 +198,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
 
   useEffect(() => {
     const session = analytics.current;
-    if (!session || !metrics || !factor || !executionStatisticsAvailable || rangeFactor !== factor) return undefined;
+    if (!session || !metrics || !factor || rangeFactor !== factor) return undefined;
     let cancelled = false;
     setExecutionStatisticsLoading(true);
     session.executionStatistics({ start: startDate, end: endDate })
@@ -211,7 +206,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); })
       .finally(() => { if (!cancelled) setExecutionStatisticsLoading(false); });
     return () => { cancelled = true; };
-  }, [endDate, executionStatisticsAvailable, factor, metrics, rangeFactor, startDate]);
+  }, [endDate, factor, metrics, rangeFactor, startDate]);
 
   useEffect(() => {
     const session = analytics.current;
@@ -314,19 +309,17 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     <SortableCardStack
       storageKey="arena.factor-analysis.overview-card-order"
       items={[
-        ...executionStatisticsAvailable
-          ? [{
-            id: "execution-statistics",
-            content: <ReportCard title="DSL 执行统计">
-              <p className="text-xs leading-5 text-muted-foreground">区域总上沿是当日过滤前股票数；各色带依次表示过滤条件的边际剔除数量和最终保留数量。</p>
-              <ChartPanel title="每日股票域与过滤去向">
-                <SeriesContent loading={executionStatisticsLoading} count={executionStatistics.length} height={360}>
-                  {executionStatistics.length > 0 && <EChart option={executionStatisticsOption(executionStatistics, theme, chartRanges?.executionStatistics)} height={360} />}
-                </SeriesContent>
-              </ChartPanel>
-            </ReportCard>
-          }]
-          : [],
+        {
+          id: "execution-statistics",
+          content: <ReportCard title="DSL 执行统计">
+            <p className="text-xs leading-5 text-muted-foreground">区域总上沿是当日过滤前股票数；色带从上到下严格按 FILTERS 顺序表示各条件的边际剔除数量，底部为最终截面。</p>
+            <ChartPanel title="每日股票域与过滤去向">
+              <SeriesContent loading={executionStatisticsLoading} count={executionStatistics.length} height={360}>
+                {executionStatistics.length > 0 && <EChart option={executionStatisticsOption(executionStatistics, theme, chartRanges?.executionStatistics)} height={360} />}
+              </SeriesContent>
+            </ChartPanel>
+          </ReportCard>
+        },
         {
           id: "information",
           content: <ReportCard title="IC 分析">
@@ -365,26 +358,24 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
             </ChartPanel>
           </ReportCard>
         },
-        ...turnoverAvailable
-          ? [{
-            id: "turnover",
-            content: <ReportCard title="换手分析">
-              <CardToolbar end={
-                <Tabs value={turnoverPeriod === null ? "" : String(turnoverPeriod)} onValueChange={(value) => setTurnoverPeriod(Number(value))}>
-                  <TabsList variant="line">{turnoverPeriods.map((periods) => <TabsTrigger key={periods} value={String(periods)}>{periods} 日</TabsTrigger>)}</TabsList>
-                </Tabs>
-              }>
-                <span className="text-xs text-muted-foreground">持有期（交易日）</span>
-              </CardToolbar>
-              <MetricGrid items={turnoverMetrics(turnover)} />
-              <ChartPanel title="各组合平均换手率">
-                <SeriesContent loading={turnoverLoading} count={turnover?.groups.filter((row) => row.value !== null).length ?? 0} height={330}>
-                  {turnover?.groups.some((row) => row.value !== null) && <EChart option={turnoverOption(turnover.groups, theme, chartRanges?.turnover)} height={330} />}
-                </SeriesContent>
-              </ChartPanel>
-            </ReportCard>
-          }]
-          : [],
+        {
+          id: "turnover",
+          content: <ReportCard title="换手分析">
+            <CardToolbar end={
+              <Tabs value={turnoverPeriod === null ? "" : String(turnoverPeriod)} onValueChange={(value) => setTurnoverPeriod(Number(value))}>
+                <TabsList variant="line">{turnoverPeriods.map((periods) => <TabsTrigger key={periods} value={String(periods)}>{periods} 日</TabsTrigger>)}</TabsList>
+              </Tabs>
+            }>
+              <span className="text-xs text-muted-foreground">持有期（交易日）</span>
+            </CardToolbar>
+            <MetricGrid items={turnoverMetrics(turnover)} />
+            <ChartPanel title="各组合平均换手率">
+              <SeriesContent loading={turnoverLoading} count={turnover?.groups.filter((row) => row.value !== null).length ?? 0} height={330}>
+                {turnover?.groups.some((row) => row.value !== null) && <EChart option={turnoverOption(turnover.groups, theme, chartRanges?.turnover)} height={330} />}
+              </SeriesContent>
+            </ChartPanel>
+          </ReportCard>
+        },
         {
           id: "decay",
           content: <ReportCard title="衰减分析">
@@ -548,11 +539,7 @@ function executionStatisticsOption(rows: ExecutionStatisticPoint[], theme: strin
     name: `${name} 剔除`,
     type: "line",
     stack: "stocks",
-    data: rows.map((row) => {
-      const previous = filterIndex === 0 ? row.sourceCount : row.filters[filterIndex - 1]?.count ?? row.filteredCount;
-      const remaining = row.filters[filterIndex]?.count ?? row.filteredCount;
-      return Math.max(0, previous - remaining);
-    }),
+    data: rows.map((row) => executionFilterRemovedCount(row, filterIndex)),
     showSymbol: false,
     symbol: "none",
     lineStyle: { width: 0.8, color: executionFilterColor(filterIndex) },
@@ -561,7 +548,7 @@ function executionStatisticsOption(rows: ExecutionStatisticPoint[], theme: strin
   }));
   const option: Record<string, unknown> = baseOption(theme, rows.map((row) => row.time), [
     {
-      name: "最终保留",
+      name: "最终截面",
       type: "line",
       stack: "stocks",
       data: rows.map((row) => row.filteredCount),
@@ -571,26 +558,34 @@ function executionStatisticsOption(rows: ExecutionStatisticPoint[], theme: strin
       areaStyle: { color: "#2563eb", opacity: 0.86 },
       itemStyle: { color: "#2563eb" }
     },
-    ...filterSeries
+    ...[...filterSeries].reverse()
   ], range);
   const maximum = range?.max ?? Math.max(...rows.map((row) => row.sourceCount), 0);
   option.grid = { ...(option.grid as Record<string, unknown>), top: 48 };
-  option.legend = { ...(option.legend as Record<string, unknown>), type: "scroll", right: 0 };
+  option.legend = {
+    ...(option.legend as Record<string, unknown>),
+    data: [...filterSeries.map((series) => series.name), "最终截面"],
+    type: "scroll",
+    right: 0
+  };
   option.xAxis = { ...(option.xAxis as Record<string, unknown>), boundaryGap: false };
   option.yAxis = { ...axis(theme, true, { min: 0, max: Math.ceil(maximum * 1.04) }, "integer"), min: 0 };
   option.tooltip = {
     ...(option.tooltip as Record<string, unknown>),
     axisPointer: { type: "line" },
-    formatter: (items: Array<{ dataIndex: number; marker: string; seriesName: string; value: number }>) => {
+    formatter: (items: Array<{ dataIndex: number }>) => {
       const item = items[0];
       const row = item ? rows[item.dataIndex] : undefined;
       if (!row) return "";
-      const details = items.map((entry) => `${entry.marker}${escapeHtml(entry.seriesName)}：${Number(entry.value).toLocaleString("zh-CN")}`);
+      const details = row.filters.map((filter, filterIndex) => {
+        const removed = executionFilterRemovedCount(row, filterIndex);
+        return `${escapeHtml(filter.name)} 剔除：${removed.toLocaleString("zh-CN")}（${executionPercentage(-removed, row.sourceCount)}）`;
+      });
       return [
         escapeHtml(row.time),
-        `原始股票：${row.sourceCount.toLocaleString("zh-CN")}`,
-        `最终保留：${row.filteredCount.toLocaleString("zh-CN")}（${format(row.retentionRate, "percent")}）`,
-        ...details.slice(1)
+        `原始股票：${row.sourceCount.toLocaleString("zh-CN")}（${row.sourceCount > 0 ? "100%" : "—"}）`,
+        ...details,
+        `最终截面：${row.filteredCount.toLocaleString("zh-CN")}（${executionPercentage(row.filteredCount, row.sourceCount)}）`
       ].join("<br/>");
     }
   };
@@ -743,6 +738,19 @@ function format(value: number | null | undefined, type: "number" | "percent" = "
   return type === "percent" ? `${(value * 100).toFixed(2)}%` : value.toFixed(4);
 }
 
-function returnPeriodsOf(parameters: FactorAnalysisParameters, returnColumn: string) {
-  return parameters.return_specs[returnColumn]?.periods ?? 1;
+function returnPeriodsOf(parameters: FactorReportParameters, returnColumn: string) {
+  return parameters.return_specs[returnColumn].periods;
+}
+
+function executionFilterRemovedCount(row: ExecutionStatisticPoint, filterIndex: number) {
+  const previous = filterIndex === 0
+    ? row.sourceCount
+    : row.filters[filterIndex - 1]?.count ?? row.filteredCount;
+  const remaining = row.filters[filterIndex]?.count ?? row.filteredCount;
+  return Math.max(0, previous - remaining);
+}
+
+function executionPercentage(value: number, sourceCount: number) {
+  if (sourceCount <= 0) return "—";
+  return executionPercentageFormatter.format(value / sourceCount);
 }

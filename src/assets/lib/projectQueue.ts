@@ -6,23 +6,28 @@ type QueueApplication = "factor" | "backtest";
 const queueSchemaVersion = 1;
 export const maxBatchRunItems = 100;
 
-export function loadProjectQueue<T>(userId: number, application: QueueApplication, projectId: number, validateParameters: (value: unknown) => value is T): ProjectQueueItem<T>[] {
+export type ProjectQueueLoadResult<T> = {
+  error: string | null;
+  items: ProjectQueueItem<T>[];
+};
+
+export function loadProjectQueue<T>(userId: number, application: QueueApplication, projectId: number, validateParameters: (value: unknown) => value is T): ProjectQueueLoadResult<T> {
   const key = queueStorageKey(userId, application, projectId);
   const source = localStorage.getItem(key);
-  if (source === null) return [];
+  if (source === null) return { error: null, items: [] };
   try {
     const stored: unknown = JSON.parse(source);
-    const values = Array.isArray(stored)
-      ? stored
-      : isRecord(stored) && stored.schema_version === queueSchemaVersion
-        ? stored.items
-        : null;
+    const values = isRecord(stored) && stored.schema_version === queueSchemaVersion
+      ? stored.items
+      : null;
     if (!Array.isArray(values) || !values.every((value) => isProjectQueueItem(value, validateParameters))) throw new Error("队列结构或参数版本不兼容");
-    return values;
+    return { error: null, items: values };
   } catch (reason) {
-    console.warn(`已清除无效的本地执行队列 ${key}`, reason);
-    localStorage.removeItem(key);
-    return [];
+    console.error(`无法读取本地执行队列 ${key}`, reason);
+    return {
+      error: "本地执行队列结构无效，原始数据已保留；添加新任务后才会替换该队列。",
+      items: []
+    };
   }
 }
 

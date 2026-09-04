@@ -7,6 +7,7 @@ import { errorMessage } from "@/assets/lib/utils";
 import AnalysisWorkspace from "@/components/layout/AnalysisWorkspace";
 import SecondaryQueryControlsPanel from "@/components/panel/SecondaryQueryControlsPanel";
 import SecondaryQueryResultsPanel from "@/components/panel/SecondaryQueryResultsPanel";
+import { isFactorQuery } from "@/types/factor";
 import type { QueryProjectListItem } from "@/types/query";
 
 const PREVIEW_LIMIT = 200;
@@ -42,7 +43,8 @@ export default function SecondaryQueryPage() {
         const project = await queryApi.getProject(source.id);
         const expectedWorkflowInstanceId = source.current?.workflow_instance_id;
         const current = project.current;
-        const parameters = current && current.workflow_instance_id === expectedWorkflowInstanceId ? current.parameters : undefined;
+        const storedParameters = current && current.workflow_instance_id === expectedWorkflowInstanceId ? current.parameters : undefined;
+        const parameters = isFactorQuery(storedParameters) ? storedParameters : null;
         const table: SqlTableSchema = {
           columns: parameters
             ? [

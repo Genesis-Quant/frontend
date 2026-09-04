@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { backtestApi, isBacktestParameters, validBacktestParameters } from "@/assets/lib/backtest";
+import { backtestApi, backtestReportParameters, isBacktestParameters, validBacktestParameters } from "@/assets/lib/backtest";
 import { applyAcceptedBatch, createProjectQueueItem, loadProjectQueue, maxBatchRunItems, pendingBatchRequest, queueNeedsPolling, refreshProjectQueue, saveProjectQueue } from "@/assets/lib/projectQueue";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
@@ -21,7 +21,7 @@ import BacktestResultsPanel from "@/components/panel/BacktestResultsPanel";
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import ExecutionQueuePanel from "@/components/panel/ExecutionQueuePanel";
 import TaskLogPanel from "@/components/panel/TaskLogPanel";
-import { defaultBacktestParameters, type BacktestCatalog, type BacktestParameters, type BacktestProject, type BacktestVersion, type BacktestVersionListItem } from "@/types/backtest";
+import type { BacktestCatalog, BacktestParameters, BacktestProject, BacktestVersion, BacktestVersionListItem } from "@/types/backtest";
 import type { ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 import { useAppStore } from "@/store";
@@ -34,7 +34,7 @@ export default function BacktestDetailPage() {
   const [versions, setVersions] = useState<BacktestVersionListItem[]>([]);
   const [currentVersion, setCurrentVersion] = useState<BacktestVersion | null>(null);
   const [catalog, setCatalog] = useState<BacktestCatalog | null>(null);
-  const [parameters, setParameters] = useState<BacktestParameters>(defaultBacktestParameters());
+  const [parameters, setParameters] = useState<BacktestParameters | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [workflowInstanceId, setWorkflowInstanceId] = useState<number | null>(null);
   const [workflowState, setWorkflowState] = useState("IDLE");
@@ -55,7 +55,9 @@ export default function BacktestDetailPage() {
   const [renameProjectOpen, setRenameProjectOpen] = useState(false);
   const [renameVersionOpen, setRenameVersionOpen] = useState(false);
   const [deleteVersionOpen, setDeleteVersionOpen] = useState(false);
-  const [queueItems, setQueueItems] = useState<ProjectQueueItem<BacktestParameters>[]>(() => loadProjectQueue(userId, "backtest", projectId, isBacktestParameters));
+  const [initialQueue] = useState(() => loadProjectQueue(userId, "backtest", projectId, isBacktestParameters));
+  const [queueItems, setQueueItems] = useState<ProjectQueueItem<BacktestParameters>[]>(initialQueue.items);
+  const [queueLoadError, setQueueLoadError] = useState(initialQueue.error);
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueSubmitOpen, setQueueSubmitOpen] = useState(false);
   const [queueRemark, setQueueRemark] = useState("");
@@ -72,15 +74,21 @@ export default function BacktestDetailPage() {
   const versionRequest = useRef(0);
   const queueVersionsRequest = useRef(0);
   const queueItemsRef = useRef(queueItems);
+  const queueStorageWritable = useRef(initialQueue.error === null);
+  const storedParameters = currentVersion?.parameters ?? parameters ?? project?.draft.parameters ?? null;
+  const displayedParameters = isBacktestParameters(storedParameters) ? storedParameters : null;
+  const parameterError = storedParameters === null || displayedParameters
+    ? null
+    : "该记录缺少当前回测格式要求的完整 DSL 双源码、配置或回调，历史结果仍可查看；再次执行前请在原始 JSON 中补全参数。";
   const displayedWorkflowInstanceId = currentVersion ? currentVersion.workflow_instance_id : workflowInstanceId;
-  const displayedParameters = currentVersion?.parameters ?? parameters;
-  const resultParameters = currentVersion?.parameters ?? project?.draft?.parameters ?? parameters;
+  const resultSourceParameters = currentVersion?.parameters ?? project?.draft.parameters ?? null;
+  const resultParameters = backtestReportParameters(resultSourceParameters);
   const displayedState = currentVersion ? currentVersion.saved ? "SUCCESS" : "IDLE" : workflowState;
   const displayedWorkflowError = currentVersion ? null : workflowError;
   const readOnly = currentVersion !== null;
   const activeWorkflow = !currentVersion && workflowInstanceId !== null && !terminalStates.has(workflowState);
   const running = submitting || activeWorkflow;
-  const ready = editorValid && validBacktestParameters(parameters);
+  const ready = parameters !== null && editorValid && validBacktestParameters(parameters);
 
   useEffect(() => {
     if (!Number.isInteger(projectId) || projectId <= 0) { navigate("/backtest", { replace: true }); return; }
@@ -139,7 +147,10 @@ export default function BacktestDetailPage() {
     return () => { disposed = true; window.clearInterval(timer); };
   }, [queuePolling]);
 
-  useEffect(() => { queueItemsRef.current = queueItems; saveProjectQueue(userId, "backtest", projectId, queueItems); }, [projectId, queueItems, userId]);
+  useEffect(() => {
+    queueItemsRef.current = queueItems;
+    if (queueStorageWritable.current) saveProjectQueue(userId, "backtest", projectId, queueItems);
+  }, [projectId, queueItems, userId]);
 
   useEffect(() => {
     if (!projectLoaded || !completedQueueVersions) return;
@@ -160,6 +171,9 @@ export default function BacktestDetailPage() {
       const latestVersion = nextProject.latest_version === null
         ? null
         : await backtestApi.getVersion(projectId, nextProject.latest_version);
+      const draftParameters = isBacktestParameters(nextProject.draft.parameters)
+        ? structuredClone(nextProject.draft.parameters)
+        : null;
       if (requestId !== loadRequest.current) return;
       setProject(nextProject);
       setVersions(nextVersions);
@@ -170,7 +184,7 @@ export default function BacktestDetailPage() {
       setWorkflowInstanceId(null);
       setWorkflowState("IDLE");
       setWorkflowError(null);
-      setParameters(isBacktestParameters(nextProject.draft.parameters) ? nextProject.draft.parameters : defaultBacktestParameters());
+      setParameters(draftParameters);
       setWorkflowInstanceId(nextProject.draft.workflow_instance_id);
       setWorkflowState(nextProject.draft.state);
       setWorkflowError(nextProject.draft.error);
@@ -179,7 +193,7 @@ export default function BacktestDetailPage() {
   }
 
   async function run() {
-    if (!ready || running || readOnly) return;
+    if (!parameters || !ready || running || readOnly) return;
     setSubmitting(true);
     setStopping(false);
     setError("");
@@ -241,6 +255,10 @@ export default function BacktestDetailPage() {
 
   function continueFromVersion() {
     if (!currentVersion) return;
+    if (!isBacktestParameters(currentVersion.parameters)) {
+      setError("该版本参数不符合当前回测契约，无法直接继续；原始参数和历史结果未被修改。");
+      return;
+    }
     setParameters(structuredClone(currentVersion.parameters));
     setCurrentVersion(null);
     setSelectedVersion(null);
@@ -251,11 +269,13 @@ export default function BacktestDetailPage() {
   }
 
   function submitToQueue() {
-    if (!ready || readOnly || queueExecuting) return;
+    if (!parameters || !ready || readOnly || queueExecuting) return;
     if (queueItems.filter((item) => item.workspace_id === null).length >= maxBatchRunItems) {
       setError(`执行队列最多保留 ${maxBatchRunItems} 个待执行任务。`);
       return;
     }
+    queueStorageWritable.current = true;
+    setQueueLoadError(null);
     setQueueItems((current) => [...current, createProjectQueueItem(queueRemark, parameters)]);
     setQueueRemark("");
     setQueueSubmitOpen(false);
@@ -332,14 +352,14 @@ export default function BacktestDetailPage() {
         const nextVersion = await backtestApi.getVersion(projectId, nextProject.latest_version);
         setCurrentVersion(nextVersion);
         setSelectedVersion(nextVersion.version);
-        setParameters(nextProject.draft.parameters);
+        setParameters(isBacktestParameters(nextProject.draft.parameters) ? structuredClone(nextProject.draft.parameters) : null);
         setWorkflowInstanceId(null);
         setWorkflowState("IDLE");
         setWorkflowError(null);
       } else if (nextProject.draft) {
         setCurrentVersion(null);
         setSelectedVersion(null);
-        setParameters(nextProject.draft.parameters);
+        setParameters(isBacktestParameters(nextProject.draft.parameters) ? structuredClone(nextProject.draft.parameters) : null);
         setWorkflowInstanceId(nextProject.draft.workflow_instance_id);
         setWorkflowState(nextProject.draft.state);
         setWorkflowError(nextProject.draft.error);
@@ -380,20 +400,20 @@ export default function BacktestDetailPage() {
   if (!project || !catalog) return <div className="mx-auto w-full max-w-xl py-20"><ErrorPanel message={error} /></div>;
 
   return <>
-    <AnalysisWorkspace backTo="/backtest" sidebar={<BacktestControlsPanel activeWorkflow={activeWorkflow} catalog={catalog} displayedParameters={displayedParameters} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} onFeeAnalysis={() => setFeeAnalysisOpen(true)} onOptimization={() => setOptimizationOpen(true)} onSensitivity={() => setSensitivityOpen(true)} project={project} projectId={projectId} queueCount={queueItems.length} readOnly={readOnly} ready={ready} selectedVersion={selectedVersion} stopping={stopping} submitting={submitting} workflowState={workflowState} versions={versions} onCompare={() => setCompareOpen(true)} onContinue={continueFromVersion} onDeleteVersion={() => { setError(""); setDeleteVersionOpen(true); }} onLogs={openTaskLog} onOpenQueue={() => setQueueOpen(true)} onParameters={setParameters} onQueue={() => { setQueueRemark(""); setQueueSubmitOpen(true); }} onRenameProject={() => { setError(""); setProjectTitle(project.title); setRenameProjectOpen(true); }} onRenameVersion={() => { setError(""); setVersionTitle(versions.find((version) => version.version === selectedVersion)?.remark ?? ""); setRenameVersionOpen(true); }} onRun={run} onSave={() => setSaveOpen(true)} onShowParameters={() => setParametersOpen(true)} onStop={stopBacktest} onValidity={setEditorValid} onVersion={selectVersion} />}>
-      {activeWorkflow && workflowInstanceId ? <TaskLogPanel className="h-[calc(100dvh-9rem)] min-h-[32rem]" taskInstanceId={null} workflowInstanceId={workflowInstanceId} /> : <BacktestResultsPanel annualTradingDays={resultParameters.annual_trading_days} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} error={error} readOnly={readOnly} riskFreeRate={resultParameters.risk_free_rate} running={running} workflowError={displayedWorkflowError} />}
+    <AnalysisWorkspace backTo="/backtest" sidebar={<BacktestControlsPanel activeWorkflow={activeWorkflow} catalog={catalog} displayedParameters={displayedParameters} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} onFeeAnalysis={() => setFeeAnalysisOpen(true)} onOptimization={() => setOptimizationOpen(true)} onSensitivity={() => setSensitivityOpen(true)} parameterError={parameterError} project={project} projectId={projectId} queueCount={queueItems.length} readOnly={readOnly} ready={ready} selectedVersion={selectedVersion} stopping={stopping} submitting={submitting} workflowState={workflowState} versions={versions} onCompare={() => setCompareOpen(true)} onContinue={continueFromVersion} onDeleteVersion={() => { setError(""); setDeleteVersionOpen(true); }} onLogs={openTaskLog} onOpenQueue={() => setQueueOpen(true)} onParameters={setParameters} onQueue={() => { setQueueRemark(""); setQueueSubmitOpen(true); }} onRenameProject={() => { setError(""); setProjectTitle(project.title); setRenameProjectOpen(true); }} onRenameVersion={() => { setError(""); setVersionTitle(versions.find((version) => version.version === selectedVersion)?.remark ?? ""); setRenameVersionOpen(true); }} onRun={run} onSave={() => setSaveOpen(true)} onShowParameters={() => setParametersOpen(true)} onStop={stopBacktest} onValidity={setEditorValid} onVersion={selectVersion} />}>
+      {activeWorkflow && workflowInstanceId ? <TaskLogPanel className="h-[calc(100dvh-9rem)] min-h-[32rem]" taskInstanceId={null} workflowInstanceId={workflowInstanceId} /> : <BacktestResultsPanel annualTradingDays={resultParameters?.annual_trading_days ?? null} displayedState={displayedState} displayedWorkflowInstanceId={displayedWorkflowInstanceId} error={error} readOnly={readOnly} riskFreeRate={resultParameters?.risk_free_rate ?? null} running={running} workflowError={displayedWorkflowError} />}
     </AnalysisWorkspace>
     <SaveVersionDialog version={project.draft.version} open={saveOpen} remark={remark} submitting={saving} onClose={() => setSaveOpen(false)} onRemark={setRemark} onSave={saveVersion} />
     <VersionCompareDialog currentVersion={currentVersion} currentVersionNumber={currentVersion?.version ?? project.draft.version} kind="backtest" loadVersion={(version) => backtestApi.getVersion(projectId, version)} open={compareOpen} projectTitle={project.title} versions={versions} onOpenChange={setCompareOpen} />
     <FeeAnalysisDialog open={feeAnalysisOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setFeeAnalysisOpen} />
-    <ParameterOptimizationDialog baseParameters={displayedParameters} open={optimizationOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setOptimizationOpen} />
-    <SensitivityAnalysisDialog baseParameters={displayedParameters} open={sensitivityOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setSensitivityOpen} />
-    <RequestBodyDialog editable={!readOnly} endpoint={`/api/v1/backtest/projects/${projectId}/runs`} open={parametersOpen} value={displayedParameters} validate={(value) => isBacktestParameters(value) ? null : "回测参数结构不完整。"} onApply={setParameters} onClose={() => setParametersOpen(false)} />
+    {displayedParameters ? <ParameterOptimizationDialog baseParameters={displayedParameters} open={optimizationOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setOptimizationOpen} /> : null}
+    {displayedParameters ? <SensitivityAnalysisDialog baseParameters={displayedParameters} open={sensitivityOpen} projectId={projectId} projectTitle={project.title} version={selectedVersion} onOpenChange={setSensitivityOpen} /> : null}
+    <RequestBodyDialog editable={!readOnly} endpoint={`/api/v1/backtest/projects/${projectId}/runs`} open={parametersOpen} value={storedParameters} validate={(value) => isBacktestParameters(value) ? null : "回测参数结构不完整。"} onApply={(value) => { if (isBacktestParameters(value)) setParameters(structuredClone(value)); }} onClose={() => setParametersOpen(false)} />
     <TaskLogModal open={logsOpen} workflowInstanceId={displayedWorkflowInstanceId} taskInstanceId={logTaskInstanceId} onOpenChange={setLogsOpen} />
     <RenameDialog description="项目名称会同步更新到项目列表和研究页面。" error={renameProjectOpen ? error : undefined} inputId="backtest-project-title" label="项目名称" maxLength={128} open={renameProjectOpen} submitting={renaming} title="重命名项目" value={projectTitle} onOpenChange={setRenameProjectOpen} onRename={renameProject} onValue={setProjectTitle} />
     <RenameDialog description={`修改 v${selectedVersion ?? ""} 的显示名称，不影响版本参数和结果。`} error={renameVersionOpen ? error : undefined} inputId="backtest-version-title" label="版本名称" maxLength={512} open={renameVersionOpen} submitting={renaming} title={`重命名版本 v${selectedVersion ?? ""}`} value={versionTitle} onOpenChange={setRenameVersionOpen} onRename={renameVersion} onValue={setVersionTitle} />
     <DeleteVersionDialog error={deleteVersionOpen ? error : undefined} open={deleteVersionOpen} submitting={deletingVersion} version={selectedVersion} onDelete={deleteVersion} onOpenChange={setDeleteVersionOpen} />
     <QueueSubmitDialog open={queueSubmitOpen} remark={queueRemark} submitting={queueExecuting} onOpenChange={setQueueSubmitOpen} onRemark={setQueueRemark} onSubmit={submitToQueue} />
-    <ExecutionQueuePanel deletingId={queueDeletingId} executing={queueExecuting} items={queueItems} open={queueOpen} savingId={queueSavingId} validate={isBacktestParameters} onDelete={deleteQueueItem} onExecute={executeQueue} onOpenChange={setQueueOpen} onUpdate={updateQueueItem} />
+    <ExecutionQueuePanel deletingId={queueDeletingId} executing={queueExecuting} items={queueItems} loadError={queueLoadError} open={queueOpen} savingId={queueSavingId} validate={isBacktestParameters} onDelete={deleteQueueItem} onExecute={executeQueue} onOpenChange={setQueueOpen} onUpdate={updateQueueItem} />
   </>;
 }

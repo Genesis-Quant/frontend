@@ -127,15 +127,15 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
 
   async function submit() {
     if (version === null || submitting) return;
-    const rates = parseRateText(rateText);
-    if (!rates.length) {
-      setError("请输入至少一个 0 到 100 之间的手续费率，多个值用逗号分隔");
+    const parsed = parseRateText(rateText);
+    if (parsed.error !== null) {
+      setError(parsed.error);
       return;
     }
     setSubmitting(true);
     setError("");
     try {
-      const created = await backtestApi.createFeeAnalysis(projectId, version, rates.map((rate) => rate / 100));
+      const created = await backtestApi.createFeeAnalysis(projectId, version, parsed.rates.map((rate) => rate / 100));
       setResearch(created);
       setHistory((items) => [created, ...items.filter((item) => item.id !== created.id)]);
     } catch (reason) {
@@ -226,7 +226,14 @@ function FeeResultTable({ results }: { results: SensitivityResultRow[] }) {
 }
 
 function MetricCell({ currency = false, percent = false, value }: { currency?: boolean; percent?: boolean; value: number | null | undefined }) { return <TableCell className="text-right font-mono tabular-nums">{formatMetric(value, percent, currency)}</TableCell>; }
-function parseRateText(value: string) { const rates = value.split(/[，,\s]+/).filter(Boolean).map(Number); if (!rates.length || rates.some((rate) => !Number.isFinite(rate) || rate < 0 || rate > 100)) return []; return [...new Set(rates)].sort((left, right) => left - right); }
+function parseRateText(value: string): { error: string | null; rates: number[] } {
+  const rates = value.split(/[，,\s]+/).filter(Boolean).map(Number);
+  if (!rates.length || rates.some((rate) => !Number.isFinite(rate) || rate < 0 || rate > 100)) {
+    return { error: "请输入至少一个 0 到 100 之间的手续费率，多个值用逗号分隔", rates: [] };
+  }
+  if (new Set(rates).size !== rates.length) return { error: "手续费率不能重复", rates: [] };
+  return { error: null, rates };
+}
 function feeLabel(commission: number) { return `${(commission * 100).toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}%`; }
 function formatMetric(value: number | null | undefined, percent = false, currency = false) { if (value === null || value === undefined || !Number.isFinite(value)) return "—"; if (percent) return `${(value * 100).toFixed(2)}%`; if (currency) return `¥${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`; return value.toFixed(3); }
 function percentValue(value: number | null) { return value === null ? null : value * 100; }

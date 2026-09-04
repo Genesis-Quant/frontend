@@ -47,7 +47,7 @@ type CallContext = {
 };
 
 const namespaces: OperatorType[] = ["DIRECT", "TS", "CS"];
-const resultVariables = ["FACTORS", "DERIVATIVES", "FILTERS"] as const;
+const resultVariables = ["FACTORS", "FILTERS"] as const;
 const semanticTokenTypes = ["type", "annotation", "constant", "variable.parameter", "key", "variable"];
 const semanticTokenTypeByRole: Record<SemanticRole, number> = {
   class: 0,
@@ -323,11 +323,7 @@ function operatorCompletionItems(monaco: Monaco, model: TextModel, position: Pos
     endColumn: position.column
   }));
   const outputName = assignment ?? (
-    resultList === "FILTERS"
-      ? "filter_name"
-      : resultList === "DERIVATIVES"
-        ? "factor_name"
-        : undefined
+    resultList === "FILTERS" ? "filter_name" : undefined
   );
   const items = operators.map((operator): CompletionItem => {
     const alias = shortAlias(operator.op);
@@ -420,11 +416,11 @@ function resultListItems(monaco: Monaco, result: typeof resultVariables[number],
   }
   const operations = symbols.filter((symbol) => symbol.kind === "operation" || symbol.kind === "operation-list");
   return operations
-    .filter((symbol) => result !== "FILTERS" || symbol.outputKind === "BOOL")
+    .filter((symbol) => symbol.outputKind === "BOOL")
     .map((symbol) => ({
       label: symbol.kind === "operation-list" ? `*${symbol.name}` : symbol.name,
       detail: symbol.kind === "operation-list" ? `${symbol.outputKind} OP 列表` : `${symbol.outputKind} OP`,
-      documentation: result === "FILTERS" ? "仅返回 BOOL 的算符可以加入 FILTERS" : "加入 DERIVATIVES",
+      documentation: "仅返回 BOOL 的算符可以加入 FILTERS",
       insertText: symbol.kind === "operation-list" ? `*${symbol.name}` : symbol.name,
       kind: symbol.kind === "operation-list" ? monaco.languages.CompletionItemKind.Variable : monaco.languages.CompletionItemKind.Reference,
       range: target.range,
@@ -439,9 +435,9 @@ function topLevelItems(monaco: Monaco, source: string, symbols: PythonSymbol[], 
     const factor = catalog.factors.includes("close") ? "close" : catalog.factors[0] ?? "field";
     items.push({
       label: "DSL 完整声明",
-      detail: "创建 FACTORS、DERIVATIVES、FILTERS",
-      documentation: "Python DSL 必须定义这三个结果变量。",
-      insertText: `FACTORS = ["\${1:${escapeSnippet(factor)}}"]\nDERIVATIVES = [\${2}]\nFILTERS = [\${3}]`,
+      detail: "创建 FACTORS、FILTERS",
+      documentation: "Python DSL 必须定义这两个结果变量；所有有名称的 OP 会自动输出。",
+      insertText: `FACTORS = ["\${1:${escapeSnippet(factor)}}"]\nFILTERS = [\${2}]`,
       insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
       kind: monaco.languages.CompletionItemKind.Snippet,
       range: target.range,
@@ -699,7 +695,7 @@ function enclosingResultList(masked: string, offset: number): typeof resultVaria
   const open = stack.at(-1);
   if (open?.char !== "[") return undefined;
   const prefix = masked.slice(Math.max(0, open.index - 160), open.index);
-  const match = /\b(FACTORS|DERIVATIVES|FILTERS)\s*(?::[^=\n]+)?=\s*$/.exec(prefix);
+  const match = /\b(FACTORS|FILTERS)\s*(?::[^=\n]+)?=\s*$/.exec(prefix);
   return match?.[1] as typeof resultVariables[number] | undefined;
 }
 
@@ -854,7 +850,6 @@ function operatorDocumentation(operator: DslOperator, namespace: OperatorType, c
 
 function resultVariableDescription(name: typeof resultVariables[number]) {
   if (name === "FACTORS") return "原始数据字段列表，类型必须为 list[str]。";
-  if (name === "DERIVATIVES") return "需要输出的命名 OP 列表；被引用的依赖会自动加入 JSON。";
   return "过滤条件的命名 BOOL OP 列表。";
 }
 

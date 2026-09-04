@@ -39,7 +39,9 @@ export default function SqlEditor({ modelPath, onChange, tables, value }: { mode
     });
   };
 
-  return <MonacoEditorFrame className="min-h-64"><Editor height="100%" language="sql" onChange={(source) => onChange(source ?? "")} onMount={mount} options={{ acceptSuggestionOnEnter: "smart", automaticLayout: true, bracketPairColorization: { enabled: true }, cursorBlinking: "smooth", fixedOverflowWidgets: true, fontFamily: "\"Cascadia Code\", \"JetBrains Mono\", Consolas, monospace", fontLigatures: true, fontSize: 13, lineHeight: 21, minimap: { enabled: false }, padding: { top: 14, bottom: 14 }, quickSuggestions: { comments: false, other: true, strings: false }, scrollBeyondLastLine: false, snippetSuggestions: "inline", suggestOnTriggerCharacters: true, tabCompletion: "on", tabSize: 2, wordBasedSuggestions: "off", wordWrap: "off" }} path={modelPath} theme={theme === "dark" ? "vs-dark" : "light"} value={value} /></MonacoEditorFrame>;
+  return <MonacoEditorFrame className="min-h-64"><Editor height="100%" language="sql" onChange={(source) => {
+    if (source !== undefined) onChange(source);
+  }} onMount={mount} options={{ acceptSuggestionOnEnter: "smart", automaticLayout: true, bracketPairColorization: { enabled: true }, cursorBlinking: "smooth", fixedOverflowWidgets: true, fontFamily: "\"Cascadia Code\", \"JetBrains Mono\", Consolas, monospace", fontLigatures: true, fontSize: 13, lineHeight: 21, minimap: { enabled: false }, padding: { top: 14, bottom: 14 }, quickSuggestions: { comments: false, other: true, strings: false }, scrollBeyondLastLine: false, snippetSuggestions: "inline", suggestOnTriggerCharacters: true, tabCompletion: "on", tabSize: 2, wordBasedSuggestions: "off", wordWrap: "off" }} path={modelPath} theme={theme === "dark" ? "vs-dark" : "light"} value={value} /></MonacoEditorFrame>;
 }
 
 function completionKind(monaco: Parameters<OnMount>[1], kind: SqlCompletionKind) {

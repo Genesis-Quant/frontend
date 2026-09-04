@@ -21,7 +21,7 @@ export default function QueryDetailPage() {
   const navigate = useNavigate();
   const [project, setProject] = useState<QueryProject | null>(null);
   const [catalog, setCatalog] = useState<QueryCatalog | null>(null);
-  const [parameters, setParameters] = useState<FactorQuery>(defaultQueryParameters());
+  const [parameters, setParameters] = useState<FactorQuery | null>(null);
   const [dslValid, setDslValid] = useState(true);
   const [workflowInstanceId, setWorkflowInstanceId] = useState<number | null>(null);
   const [workflowState, setWorkflowState] = useState("IDLE");
@@ -36,6 +36,10 @@ export default function QueryDetailPage() {
   const loadRequest = useRef(0);
   const activeWorkflow = workflowInstanceId !== null && !terminalStates.has(workflowState);
   const running = submitting || activeWorkflow;
+  const storedParameters = parameters ?? project?.current?.parameters ?? null;
+  const parameterError = storedParameters === null || parameters
+    ? null
+    : "该记录缺少当前查询格式要求的完整 DSL 双源码，历史结果仍可查看；再次执行前请在原始 JSON 中补全参数。";
 
   useEffect(() => {
     if (!Number.isInteger(projectId) || projectId <= 0) { navigate("/query", { replace: true }); return; }
@@ -81,17 +85,17 @@ export default function QueryDetailPage() {
       setWorkflowState("IDLE");
       setWorkflowError(null);
       if (nextProject.current) {
-        setParameters(nextProject.current.parameters);
+        setParameters(isFactorQuery(nextProject.current.parameters) ? structuredClone(nextProject.current.parameters) : null);
         setWorkflowInstanceId(nextProject.current.workflow_instance_id);
         setWorkflowState(nextProject.current.state);
         setWorkflowError(nextProject.current.error);
-      }
+      } else setParameters(defaultQueryParameters());
     } catch (reason) { if (requestId === loadRequest.current) setError(errorMessage(reason)); }
     finally { if (requestId === loadRequest.current) setLoading(false); }
   }
 
   async function runQuery() {
-    if (!dslValid || running) return;
+    if (!parameters || !dslValid || running) return;
     setSubmitting(true);
     setStopping(false);
     setError("");
@@ -135,10 +139,10 @@ export default function QueryDetailPage() {
   if (!project || !catalog) return <div className="mx-auto w-full max-w-xl py-20"><ErrorPanel message={error} /></div>;
 
   return <>
-    <AnalysisWorkspace backTo="/query" sidebar={<QueryControlsPanel activeWorkflow={activeWorkflow} catalog={catalog} dslValid={dslValid} parameters={parameters} project={project} projectId={projectId} stopping={stopping} submitting={submitting} workflowInstanceId={workflowInstanceId} workflowState={workflowState} onLogs={openTaskLog} onParameters={setParameters} onRun={runQuery} onShowParameters={() => setParametersOpen(true)} onStop={stopQuery} onValidity={setDslValid} />} sidebarLabel="查询参数">
+    <AnalysisWorkspace backTo="/query" sidebar={<QueryControlsPanel activeWorkflow={activeWorkflow} catalog={catalog} dslValid={dslValid} parameterError={parameterError} parameters={parameters} project={project} projectId={projectId} stopping={stopping} submitting={submitting} workflowInstanceId={workflowInstanceId} workflowState={workflowState} onLogs={openTaskLog} onParameters={setParameters} onRun={runQuery} onShowParameters={() => setParametersOpen(true)} onStop={stopQuery} onValidity={setDslValid} />} sidebarLabel="查询参数">
       {activeWorkflow && workflowInstanceId ? <TaskLogPanel className="h-[calc(100dvh-9rem)] min-h-[32rem]" taskInstanceId={null} workflowInstanceId={workflowInstanceId} /> : <QueryResultPanel error={error} running={running} state={workflowState} timeColumn="time" workflowError={workflowError} workflowInstanceId={workflowInstanceId} />}
     </AnalysisWorkspace>
-    <RequestBodyDialog editable endpoint={`/api/v1/query/projects/${projectId}/queries`} open={parametersOpen} value={parameters} validate={(value) => isFactorQuery(value) ? null : "查询参数结构不完整。"} onApply={setParameters} onClose={() => setParametersOpen(false)} />
+    <RequestBodyDialog editable endpoint={`/api/v1/query/projects/${projectId}/queries`} open={parametersOpen} value={storedParameters} validate={(value) => isFactorQuery(value) ? null : "查询参数结构不完整。"} onApply={(value) => { if (isFactorQuery(value)) setParameters(structuredClone(value)); }} onClose={() => setParametersOpen(false)} />
     <TaskLogModal open={logsOpen} workflowInstanceId={workflowInstanceId} taskInstanceId={logTaskInstanceId} onOpenChange={setLogsOpen} />
   </>;
 }

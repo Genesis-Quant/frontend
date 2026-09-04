@@ -1,4 +1,4 @@
-import { CircleAlert, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { max as statisticsMax, mean as statisticsMean, sum } from "simple-statistics";
 
@@ -27,20 +27,18 @@ const tableTabs = [
 
 type MetricFormat = "decimal" | "percent" | "integer" | "currency";
 type Metric = { label: string; value: number | null; format?: MetricFormat };
-type BacktestOutputState = "available" | "missing";
-
 type BacktestReportProps = {
   activeTab?: string;
-  annualTradingDays?: number;
+  annualTradingDays: number;
   chartRanges?: BacktestChartRanges;
   onActiveTabChange?: (value: string) => void;
   onChartRanges?: (ranges: BacktestChartRanges) => void;
-  riskFreeRate?: number;
+  riskFreeRate: number;
   showTabs?: boolean;
   workflowInstanceId: number;
 };
 
-export default function BacktestReport({ activeTab, annualTradingDays = 252, chartRanges, onActiveTabChange, onChartRanges, riskFreeRate = 0, showTabs = true, workflowInstanceId }: BacktestReportProps) {
+export default function BacktestReport({ activeTab, annualTradingDays, chartRanges, onActiveTabChange, onChartRanges, riskFreeRate, showTabs = true, workflowInstanceId }: BacktestReportProps) {
   const theme = useAppStore((state) => state.theme);
   const analytics = useRef<BacktestAnalytics | null>(null);
   const [localTab, setLocalTab] = useState("overview");
@@ -49,7 +47,6 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [availableOutputs, setAvailableOutputs] = useState<ReadonlySet<string> | null>(null);
   const [tablePage, setTablePage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(20);
   const [tableQuery, setTableQuery] = useState<ParquetTableQuery>(emptyParquetTableQuery);
@@ -58,7 +55,6 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
   const [tableError, setTableError] = useState("");
   const selectedTab = activeTab ?? localTab;
   const tableName = isBacktestTableName(selectedTab) ? selectedTab : null;
-  const tableOutputState = backtestOutputState(tableName, availableOutputs);
   const tableRequestKey = createTableRequestKey(workflowInstanceId, tableName, startDate, endDate, tablePage, tablePageSize, tableQuery);
   const [tableLoadedKey, setTableLoadedKey] = useState("");
 
@@ -72,16 +68,11 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
     let cancelled = false;
     setLoading(true);
     setError("");
-    setAvailableOutputs(null);
-    Promise.all([
-      backtestApi.outputs(workflowInstanceId),
-      backtestApi.output(workflowInstanceId, "daily_portfolios")
-    ])
-      .then(async ([outputs, dailyPortfolios]) => {
+    backtestApi.output(workflowInstanceId, "daily_portfolios")
+      .then(async (dailyPortfolios) => {
         const instance = await BacktestAnalytics.create(workflowInstanceId, dailyPortfolios);
         if (cancelled) { await instance.close(); return; }
         analytics.current = instance;
-        setAvailableOutputs(new Set(outputs.map((output) => output.name)));
         const nextPortfolio = await instance.portfolios();
         if (cancelled) return;
         setPortfolio(nextPortfolio);
@@ -95,7 +86,7 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
 
   useEffect(() => {
     const activeInstance = analytics.current;
-    if (!tableName || tableOutputState !== "available" || !activeInstance || loading || error || !startDate || !endDate) return undefined;
+    if (!tableName || !activeInstance || loading || error || !startDate || !endDate) return undefined;
     const instance = activeInstance;
     const name = tableName;
     const requestKey = tableRequestKey;
@@ -109,7 +100,7 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
     }
     loadTable().catch((reason) => { if (!cancelled) { setTableError(reason instanceof Error ? reason.message : String(reason)); setTableLoadedKey(requestKey); } }).finally(() => { if (!cancelled) setTableLoading(false); });
     return () => { cancelled = true; };
-  }, [endDate, error, loading, startDate, tableName, tableOutputState, tablePage, tablePageSize, tableQuery, tableRequestKey, workflowInstanceId]);
+  }, [endDate, error, loading, startDate, tableName, tablePage, tablePageSize, tableQuery, tableRequestKey, workflowInstanceId]);
 
   const selectedPortfolio = useMemo(() => portfolio.filter((row) => (!startDate || row.time >= startDate) && (!endDate || row.time <= endDate)), [endDate, portfolio, startDate]);
   const rangePoints = useMemo(() => portfolio.map((row) => ({ time: row.time, value: row.dailyReturn })), [portfolio]);
@@ -130,10 +121,10 @@ export default function BacktestReport({ activeTab, annualTradingDays = 252, cha
 
   const overview = renderOverview({ chartRanges, error, loading, portfolio: selectedPortfolio, report, theme });
 
-  const tableContent = tableName ? renderParquetContent({ data: tableData, download: { fileName: `backtest-${workflowInstanceId}-${tableName}.xlsx`, loadRows: () => loadRawTable(tableName) }, error: tableLoadedKey === tableRequestKey ? tableError : "", loading: tableLoading || tableLoadedKey !== tableRequestKey, name: tableName, outputState: tableOutputState, page: tablePage, pageSize: tablePageSize, query: tableQuery, onPage: setTablePage, onPageSize: (nextPageSize) => { setTablePage(1); setTablePageSize(nextPageSize); }, onQuery: (nextQuery) => { setTablePage(1); setTableQuery(nextQuery); } }) : null;
+  const tableContent = tableName ? renderParquetContent({ data: tableData, download: { fileName: `backtest-${workflowInstanceId}-${tableName}.xlsx`, loadRows: () => loadRawTable(tableName) }, error: tableLoadedKey === tableRequestKey ? tableError : "", loading: tableLoading || tableLoadedKey !== tableRequestKey, name: tableName, page: tablePage, pageSize: tablePageSize, query: tableQuery, onPage: setTablePage, onPageSize: (nextPageSize) => { setTablePage(1); setTablePageSize(nextPageSize); }, onQuery: (nextQuery) => { setTablePage(1); setTableQuery(nextQuery); } }) : null;
 
   return <Tabs value={selectedTab} onValueChange={(value) => { setTablePage(1); setTableQuery(emptyParquetTableQuery()); setLocalTab(value); onActiveTabChange?.(value); }} className="relative">
-    {showTabs ? <div className="sticky top-20 z-30 mb-2 max-w-full pb-1"><TabsList scrollable><TabsTrigger value="overview">回测概览</TabsTrigger>{tableTabs.map((tab) => <TabsTrigger disabled={loading || Boolean(error)} key={tab.value} value={tab.value}><BacktestTabLabel availableOutputs={availableOutputs} tab={tab} /></TabsTrigger>)}</TabsList></div> : null}
+    {showTabs ? <div className="sticky top-20 z-30 mb-2 max-w-full pb-1"><TabsList scrollable><TabsTrigger value="overview">回测概览</TabsTrigger>{tableTabs.map((tab) => <TabsTrigger disabled={loading || Boolean(error)} key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>)}</TabsList></div> : null}
     {!loading && !error && portfolio.length ? <DateRangeBar endDate={endDate} maximumDate={portfolio.at(-1)?.time ?? ""} minimumDate={portfolio[0]?.time ?? ""} points={rangePoints} startDate={startDate} theme={theme} onRangeChange={(nextStartDate, nextEndDate) => { setTablePage(1); setStartDate(nextStartDate); setEndDate(nextEndDate); }} onReset={() => { setTablePage(1); setStartDate(portfolio[0]?.time ?? ""); setEndDate(portfolio.at(-1)?.time ?? ""); }} /> : null}
     <TabsContent value="overview" className="space-y-4">{overview}</TabsContent>
     {tableTabs.map((tab) => <TabsContent className="min-h-[calc(100dvh-20rem)]" key={tab.value} value={tab.value}>{selectedTab === tab.value ? tableContent : null}</TabsContent>)}
@@ -192,23 +183,6 @@ function ChartCard({ children, title }: { children: ReactNode; title: ReactNode 
 function MetricGrid({ metrics }: { metrics: Metric[] }) { return <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{metrics.map((metric) => <div className="rounded-md border bg-card px-4 py-3 shadow-sm" key={metric.label}><div className="text-xs text-muted-foreground">{metric.label}</div><p className="mt-2 text-lg font-semibold tabular-nums tracking-tight">{formatMetric(metric.value, metric.format)}</p></div>)}</div>; }
 function ReportLoading() { return <div className="grid min-h-80 place-items-center rounded-md border bg-card"><div className="text-center"><Loader2 className="mx-auto animate-spin text-primary" /><p className="mt-3 text-sm text-muted-foreground">DuckDB 正在读取回测结果...</p></div></div>; }
 
-function BacktestTabLabel({ availableOutputs, tab }: { availableOutputs: ReadonlySet<string> | null; tab: typeof tableTabs[number] }) {
-  const outputState = backtestOutputState(tab.value, availableOutputs);
-  const stateLabel = outputState === "missing" ? "未生成" : "";
-  return <>{tab.label}{stateLabel ? <span className="ml-1 text-[10px] text-muted-foreground">{stateLabel}</span> : null}</>;
-}
-
-function UnavailableBacktestOutput({ name }: { name: BacktestTableName }) {
-  const label = tableTabs.find((tab) => tab.value === name)?.label ?? name;
-  return <div className="grid min-h-64 place-items-center rounded-md border border-dashed bg-muted/15 px-6 py-10 text-center">
-    <div className="max-w-md">
-      <CircleAlert className="mx-auto size-5 text-muted-foreground" />
-      <p className="mt-3 text-sm font-medium">本次运行未生成{label}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">该工作流没有可用的结果文件，可能未请求该输出或历史产物已不再保留。</p>
-    </div>
-  </div>;
-}
-
 function PerformanceTable({ report }: { report: QuantStatsReport }) {
   const longestDrawdown = report.drawdownPeriods.length ? statisticsMax(report.drawdownPeriods.map((row) => row.days)) : null;
   const rows = [
@@ -242,8 +216,7 @@ function DrawdownTable({ rows }: { rows: DrawdownPeriod[] }) {
   return <div className="overflow-auto rounded-md border"><Table><TableHeader className="bg-muted/70"><TableRow><TableHead>开始</TableHead><TableHead>谷底</TableHead><TableHead>结束</TableHead><TableHead className="text-right">天数</TableHead><TableHead className="text-right">最大回撤</TableHead><TableHead className="text-right">99% 最大回撤</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={`${row.start}-${row.end}`}><TableCell>{row.start}</TableCell><TableCell>{row.valley}</TableCell><TableCell>{row.end}</TableCell><TableCell className="text-right tabular-nums">{row.days}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetric(row.maxDrawdownPercent / 100, "percent")}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatMetric(row.maxDrawdown99Percent / 100, "percent")}</TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
-function renderParquetContent({ data, download, error, loading, name, onPage, onPageSize, onQuery, outputState, page, pageSize, query }: { data: BacktestTablePage | null; download: { fileName: string; loadRows: () => Promise<Record<string, unknown>[]> }; error: string; loading: boolean; name: BacktestTableName; onPage: (page: number) => void; onPageSize: (pageSize: number) => void; onQuery: (query: ParquetTableQuery) => void; outputState: BacktestOutputState; page: number; pageSize: number; query: ParquetTableQuery }): ReactNode {
-  if (outputState !== "available") return <UnavailableBacktestOutput name={name} />;
+function renderParquetContent({ data, download, error, loading, name, onPage, onPageSize, onQuery, page, pageSize, query }: { data: BacktestTablePage | null; download: { fileName: string; loadRows: () => Promise<Record<string, unknown>[]> }; error: string; loading: boolean; name: BacktestTableName; onPage: (page: number) => void; onPageSize: (pageSize: number) => void; onQuery: (query: ParquetTableQuery) => void; page: number; pageSize: number; query: ParquetTableQuery }): ReactNode {
   if (loading && !data) return <div className="grid min-h-64 place-items-center rounded-md border bg-card"><Loader2 className="animate-spin text-primary" /></div>;
   if (error) return <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>;
   if (!data) return null;
@@ -276,10 +249,6 @@ function formatMetric(value: number | null | undefined, format: MetricFormat = "
 }
 
 function isBacktestTableName(value: string): value is BacktestTableName { return tableTabs.some((tab) => tab.value === value); }
-function backtestOutputState(name: BacktestTableName | null, availableOutputs: ReadonlySet<string> | null): BacktestOutputState {
-  if (!name || !availableOutputs || availableOutputs.has(name)) return "available";
-  return "missing";
-}
 function createTableRequestKey(workflowInstanceId: number, name: BacktestTableName | null, startDate: string, endDate: string, page: number, pageSize: number, query: ParquetTableQuery) { return name ? `${workflowInstanceId}:${name}:${startDate}:${endDate}:${page}:${pageSize}:${JSON.stringify(query)}` : ""; }
 function portfolioOption(rows: PortfolioPoint[], report: QuantStatsReport, theme: string, ranges?: BacktestChartRanges) { const benchmark = benchmarkValues(rows); const series: Record<string, unknown>[] = [{ name: "策略净值", type: "line", data: report.netValue.map((row) => row.value), showSymbol: false, lineStyle: { width: 2.2 }, color: "#2563eb" }]; if (benchmark.some((value) => value !== null)) series.push({ name: "基准净值", type: "line", data: benchmark, showSymbol: false, lineStyle: { width: 1.8 }, color: "#d97706" }); series.push({ name: "总资产", type: "line", yAxisIndex: 1, data: rows.map((row) => row.totalEquity), showSymbol: false, lineStyle: { width: 1.5 }, color: "#059669" }); return baseOption(theme, rows.map((row) => row.time), series, ranges?.netValue, ranges?.totalEquity, true, "decimal", "integer"); }
 function benchmarkValues(rows: PortfolioPoint[]) { const base = rows.find((row) => row.benchmarkNetValue !== null && row.benchmarkNetValue > 0)?.benchmarkNetValue; return rows.map((row) => base && row.benchmarkNetValue !== null ? row.benchmarkNetValue / base : null); }

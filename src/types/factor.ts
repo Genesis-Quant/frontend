@@ -1,3 +1,5 @@
+import { jsonDslSource } from "@/assets/lib/dslSource";
+
 export type DerivativeNode = {
   type: "DIRECT" | "TS" | "CS";
   op: string;
@@ -28,7 +30,7 @@ export type QueryParameters = {
 };
 
 export type FactorQuery = QueryParameters & DslDocument & {
-  dsl_source?: DslSource;
+  dsl_source: DslSource;
 };
 
 export type FactorReturnSpec = {
@@ -51,6 +53,11 @@ export type FactorAnalysisParameters = {
   industry_column: IndustryField;
 };
 
+export type FactorReportParameters = Pick<
+  FactorAnalysisParameters,
+  "factor_columns" | "return_columns" | "return_specs" | "n_groups" | "n_select"
+>;
+
 export function isFactorQuery(value: unknown): value is FactorQuery {
   if (!isRecord(value)) return false;
   return typeof value.start_date === "string"
@@ -60,7 +67,7 @@ export function isFactorQuery(value: unknown): value is FactorQuery {
     && isStringArray(value.factors)
     && isRecord(value.derivatives)
     && isStringArray(value.filters)
-    && (value.dsl_source === undefined || isDslSource(value.dsl_source));
+    && isDslSource(value.dsl_source);
 }
 
 export function isDslSource(value: unknown): value is DslSource {
@@ -71,30 +78,24 @@ export function isDslSource(value: unknown): value is DslSource {
 }
 
 export function isFactorAnalysisParameters(value: unknown): value is FactorAnalysisParameters {
+  return isFactorAnalysisDraftParameters(value)
+    && isNonEmptyUniqueStringArray(value.factor_columns)
+    && isNonEmptyUniqueStringArray(value.return_columns)
+    && isReturnSpecs(value.return_specs, value.return_columns);
+}
+
+export function isFactorAnalysisDraftParameters(value: unknown): value is FactorAnalysisParameters {
   if (!isRecord(value)) return false;
   return (value.codes_query === null || isFactorQuery(value.codes_query))
     && isFactorQuery(value.dataset_query)
     && isStringArray(value.factor_columns)
     && isStringArray(value.return_columns)
     && isReturnSpecs(value.return_specs, value.return_columns)
-    && typeof value.n_groups === "number"
-    && Number.isFinite(value.n_groups)
-    && typeof value.n_select === "number"
-    && Number.isInteger(value.n_select)
-    && value.n_select >= 1
+    && isIntegerAtLeast(value.n_groups, 2)
+    && isIntegerAtLeast(value.n_select, 1)
     && typeof value.preprocess === "boolean"
-    && typeof value.market_value_column === "string"
+    && isNonEmptyString(value.market_value_column)
     && isIndustryField(value.industry_column);
-}
-
-export function canNormalizeFactorAnalysisParameters(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  return isFactorQuery(value.dataset_query)
-    && (value.codes_query === null || isFactorQuery(value.codes_query));
-}
-
-export function hasCompleteReturnSpecs(parameters: FactorAnalysisParameters) {
-  return isReturnSpecs(parameters.return_specs, parameters.return_columns);
 }
 
 export type StockPoolCode = "ALL" | "000016.SH" | "000300.SH" | "000905.SH" | "000852.SH";
@@ -158,7 +159,7 @@ export type FactorWorkflowSummary = {
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
-  parameters: FactorAnalysisParameters;
+  parameters: unknown;
   updated_at: string;
 };
 
@@ -226,7 +227,7 @@ export type FactorVersion = {
   saved: boolean;
   is_current: boolean;
   remark: string;
-  parameters: FactorAnalysisParameters;
+  parameters: unknown;
   metrics: FactorMetrics | null;
   created_at: string;
   updated_at: string;
@@ -274,11 +275,7 @@ export type FactorOutput = {
 export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string, endDate: string): FactorQuery => {
   const factor = stockPools.find((item) => item.value === stockPool)?.factor;
   if (!factor) throw new Error(`不支持的指数股票池：${stockPool}`);
-  return {
-    start_date: startDate,
-    end_date: endDate,
-    lookback: "P0D",
-    codes: [],
+  const dsl: DslDocument = {
     factors: [],
     derivatives: {
       stock_pool_member: {
@@ -289,6 +286,14 @@ export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string,
       }
     },
     filters: ["stock_pool_member"]
+  };
+  return {
+    start_date: startDate,
+    end_date: endDate,
+    lookback: "P0D",
+    codes: [],
+    ...dsl,
+    dsl_source: jsonDslSource(dsl)
   };
 };
 
@@ -336,43 +341,75 @@ export const analysisDsl = (parameters: FactorAnalysisParameters): DslDocument =
   filters: parameters.dataset_query.filters.filter((filter) => filter !== "stock_pool_member")
 });
 
-export const applyAnalysisSettings = (parameters: FactorAnalysisParameters, dsl: DslDocument, settings = analysisSettings(parameters)): FactorAnalysisParameters => {
-  const configuredFactor = parameters.factor_columns.length === 1 ? parameters.factor_columns[0] : "";
-  const outputs = new Set([...dsl.factors, ...Object.keys(dsl.derivatives)]);
-  const factor = outputs.has(configuredFactor) ? configuredFactor : Object.keys(dsl.derivatives).at(-1) ?? dsl.factors.at(-1) ?? "";
-  const customPool = settings.stockPool === "CUSTOM";
-  const returnColumns = analysisReturnColumns(settings.maxLags);
-  const datasetQuery = {
-    ...parameters.dataset_query,
-    codes: customPool ? parameters.dataset_query.codes : [],
-    factors: [...dsl.factors],
-    derivatives: {
-      ...dsl.derivatives,
-      ...forwardReturnDerivatives(settings.priceField, settings.maxLags)
-    },
-    filters: [...dsl.filters]
-  };
+export const setAnalysisStockPool = (parameters: FactorAnalysisParameters, stockPool: StockPoolCode): FactorAnalysisParameters => ({
+  ...parameters,
+  codes_query: stockPool === "ALL"
+    ? null
+    : stockPoolQuery(stockPool, parameters.dataset_query.start_date, parameters.dataset_query.end_date),
+  dataset_query: { ...parameters.dataset_query, codes: [] }
+});
+
+export const setAnalysisReturns = (parameters: FactorAnalysisParameters, priceField: PriceField, maxLags: number): FactorAnalysisParameters => {
+  const previousReturns = new Set(parameters.return_columns);
+  const derivatives = Object.fromEntries(
+    Object.entries(parameters.dataset_query.derivatives).filter(([name]) => !previousReturns.has(name))
+  );
+  const returnColumns = analysisReturnColumns(maxLags);
   return {
-    codes_query: settings.stockPool === "CUSTOM"
-      ? parameters.codes_query
-      : settings.stockPool === "ALL"
-        ? null
-        : stockPoolQuery(settings.stockPool, datasetQuery.start_date, datasetQuery.end_date),
-    dataset_query: datasetQuery,
-    factor_columns: factor ? [factor] : [],
+    ...parameters,
+    dataset_query: {
+      ...parameters.dataset_query,
+      derivatives: {
+        ...derivatives,
+        ...forwardReturnDerivatives(priceField, maxLags)
+      }
+    },
     return_columns: returnColumns,
-    return_specs: oneDayLogReturnSpecs(returnColumns),
-    n_groups: settings.nGroups,
-    n_select: settings.nSelect,
-    preprocess: parameters.preprocess,
-    market_value_column: settings.marketValueField,
-    industry_column: settings.industryField
+    return_specs: oneDayLogReturnSpecs(returnColumns)
   };
+};
+
+export const setAnalysisDsl = (parameters: FactorAnalysisParameters, dsl: DslDocument, source: DslSource): FactorAnalysisParameters => {
+  const returnDerivatives = Object.fromEntries(
+    parameters.return_columns.flatMap((name) => {
+      const derivative = parameters.dataset_query.derivatives[name];
+      return derivative === undefined ? [] : [[name, derivative]];
+    })
+  );
+  return {
+    ...parameters,
+    dataset_query: {
+      ...parameters.dataset_query,
+      factors: [...dsl.factors],
+      derivatives: { ...returnDerivatives, ...dsl.derivatives },
+      filters: [...dsl.filters],
+      dsl_source: source
+    },
+    factor_columns: Object.keys(dsl.derivatives).slice(-1)
+  };
+};
+
+export const analysisExecutionParameters = (parameters: FactorAnalysisParameters): FactorAnalysisParameters => {
+  if (parameters.factor_columns.length > 0) return parameters;
+  const factor = Object.keys(analysisDsl(parameters).derivatives).at(-1);
+  return factor === undefined ? parameters : { ...parameters, factor_columns: [factor] };
 };
 
 export const defaultCodesQuery = (): FactorQuery => stockPoolQuery("000300.SH", "2020-01-01", "2026-01-01");
 
 export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
+  const dsl: DslDocument = {
+    factors: [],
+    derivatives: {
+      momentum_20d: {
+        type: "TS",
+        op: "unary.pct_change",
+        fields: { col: "close_hfq" },
+        params: { periods: 20 }
+      }
+    },
+    filters: []
+  };
   const parameters: FactorAnalysisParameters = {
     codes_query: defaultCodesQuery(),
     dataset_query: {
@@ -380,75 +417,86 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
       end_date: "2026-01-01",
       lookback: "P30D",
       codes: [],
-      factors: [],
+      factors: [...dsl.factors],
       derivatives: {
-        momentum_20d: {
-          type: "TS",
-          op: "unary.pct_change",
-          fields: { col: "close_hfq" },
-          params: { periods: 20 }
-        }
+        ...dsl.derivatives,
+        ...forwardReturnDerivatives("close_hfq", 10)
       },
-      filters: []
+      filters: [...dsl.filters],
+      dsl_source: jsonDslSource(dsl)
     },
-    factor_columns: [],
-    return_columns: [],
-    return_specs: {},
+    factor_columns: ["momentum_20d"],
+    return_columns: analysisReturnColumns(10),
+    return_specs: oneDayLogReturnSpecs(analysisReturnColumns(10)),
     n_groups: 5,
     n_select: 10,
     preprocess: true,
     market_value_column: "circ_mv",
     industry_column: "industry"
   };
-  return applyAnalysisSettings(parameters, analysisDsl(parameters), { stockPool: "000300.SH", priceField: "close_hfq", marketValueField: "circ_mv", industryField: "industry", nGroups: 5, nSelect: 10, maxLags: 10 });
+  return parameters;
 };
 
-export function normalizeAnalysisParameters(value: unknown): FactorAnalysisParameters {
-  const defaults = defaultAnalysisParameters();
-  if (isFactorAnalysisParameters(value)) {
-    return structuredClone(value);
-  }
-  if (!canNormalizeFactorAnalysisParameters(value)) return defaults;
-
-  const input = value as Record<string, unknown>;
-  const datasetQuery = structuredClone(input.dataset_query as FactorQuery);
-  const returnColumns = isStringArray(input.return_columns)
-    ? [...input.return_columns]
-    : [];
-  const factorColumns = isStringArray(input.factor_columns)
-    ? [...input.factor_columns]
-    : [];
-  const storedReturnSpecs = isRecord(input.return_specs)
-    ? Object.fromEntries(Object.entries(input.return_specs).filter((entry): entry is [string, FactorReturnSpec] => isReturnSpec(entry[1])))
-    : {};
-  return {
-    codes_query: input.codes_query === null
-      ? null
-      : structuredClone(input.codes_query as FactorQuery),
-    dataset_query: datasetQuery,
-    factor_columns: factorColumns,
-    return_columns: returnColumns,
-    return_specs: storedReturnSpecs,
-    n_groups: typeof input.n_groups === "number" && Number.isFinite(input.n_groups) && input.n_groups >= 2
-      ? input.n_groups
-      : defaults.n_groups,
-    n_select: validSelectionCount(input.n_select)
-      ? input.n_select
-      : defaults.n_select,
-    preprocess: typeof input.preprocess === "boolean"
-      ? input.preprocess
-      : defaults.preprocess,
-    market_value_column: typeof input.market_value_column === "string" && input.market_value_column.length > 0
-      ? input.market_value_column
-      : defaults.market_value_column,
-    industry_column: isIndustryField(input.industry_column)
-      ? input.industry_column
-      : defaults.industry_column
-  };
+export function requireFactorAnalysisParameters(value: unknown): FactorAnalysisParameters {
+  const issues = factorAnalysisParameterIssues(value);
+  if (issues.length || !isFactorAnalysisParameters(value)) throw new Error(`因子分析参数不可执行：${issues.join("；")}`);
+  return structuredClone(value);
 }
 
-function validSelectionCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+export function factorReportParameters(value: unknown): FactorReportParameters | null {
+  if (factorReportParameterIssues(value).length || !isRecord(value)) return null;
+  return structuredClone({
+    factor_columns: value.factor_columns,
+    return_columns: value.return_columns,
+    return_specs: value.return_specs,
+    n_groups: value.n_groups,
+    n_select: value.n_select
+  }) as FactorReportParameters;
+}
+
+export function requireFactorReportParameters(value: unknown): FactorReportParameters {
+  const issues = factorReportParameterIssues(value);
+  if (issues.length) throw new Error(`因子分析结果参数不完整：${issues.join("；")}`);
+  return factorReportParameters(value)!;
+}
+
+export function factorAnalysisParameterIssues(value: unknown): string[] {
+  if (!isRecord(value)) return ["参数必须是对象"];
+  const issues = [
+    ...factorQueryIssues(value.codes_query, "codes_query", true),
+    ...factorQueryIssues(value.dataset_query, "dataset_query", false),
+    ...factorReportParameterIssues(value)
+  ];
+  if (typeof value.preprocess !== "boolean") issues.push("preprocess 必须是布尔值");
+  if (!isNonEmptyString(value.market_value_column)) issues.push("market_value_column 必须是非空字符串");
+  if (!isIndustryField(value.industry_column)) issues.push("industry_column 缺失或不受支持");
+  return issues;
+}
+
+export function factorAnalysisParameterError(value: unknown): string | null {
+  const issues = factorAnalysisParameterIssues(value);
+  return issues.length ? `该记录的参数不可再次执行：${issues.join("；")}。原始参数和历史结果未被修改。` : null;
+}
+
+export function factorReportParameterIssues(value: unknown): string[] {
+  if (!isRecord(value)) return ["参数必须是对象"];
+  const issues: string[] = [];
+  if (!isNonEmptyUniqueStringArray(value.factor_columns)) issues.push("factor_columns 必须是非空且不重复的字符串数组");
+  if (!isNonEmptyUniqueStringArray(value.return_columns)) {
+    issues.push("return_columns 必须是非空且不重复的字符串数组");
+  } else if (!isReturnSpecs(value.return_specs, value.return_columns)) {
+    issues.push("return_specs 必须完整对应 return_columns");
+  }
+  if (!isIntegerAtLeast(value.n_groups, 2)) issues.push("n_groups 必须是至少为 2 的整数");
+  if (!isIntegerAtLeast(value.n_select, 1)) issues.push("n_select 必须是至少为 1 的整数");
+  return issues;
+}
+
+export function requireFactorQuery(value: unknown): FactorQuery {
+  if (!isFactorQuery(value)) {
+    throw new Error("查询参数结构无效，缺少完整 DSL 双源码。");
+  }
+  return structuredClone(value);
 }
 
 function forwardReturnDerivatives(priceField: PriceField, maxLags: number): Record<string, DerivativeNode> {
@@ -531,5 +579,28 @@ function isZeroLookback(value: string) {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
+function isNonEmptyString(value: unknown): value is string { return typeof value === "string" && value.length > 0; }
+function isIntegerAtLeast(value: unknown, minimum: number): value is number { return typeof value === "number" && Number.isInteger(value) && value >= minimum; }
 function isStringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every((item) => typeof item === "string"); }
+function isNonEmptyUniqueStringArray(value: unknown): value is string[] {
+  return isStringArray(value)
+    && value.length > 0
+    && value.every((item) => item.length > 0)
+    && new Set(value).size === value.length;
+}
+
+function factorQueryIssues(value: unknown, path: string, nullable: boolean): string[] {
+  if (nullable && value === null) return [];
+  if (!isRecord(value)) return [`${path} 必须是${nullable ? " null 或" : ""}完整查询对象`];
+  const issues: string[] = [];
+  if (typeof value.start_date !== "string") issues.push(`${path}.start_date 必须是字符串`);
+  if (typeof value.end_date !== "string") issues.push(`${path}.end_date 必须是字符串`);
+  if (typeof value.lookback !== "string") issues.push(`${path}.lookback 必须是字符串`);
+  if (!isStringArray(value.codes)) issues.push(`${path}.codes 必须是字符串数组`);
+  if (!isStringArray(value.factors)) issues.push(`${path}.factors 必须是字符串数组`);
+  if (!isRecord(value.derivatives)) issues.push(`${path}.derivatives 必须是对象`);
+  if (!isStringArray(value.filters)) issues.push(`${path}.filters 必须是字符串数组`);
+  if (!isDslSource(value.dsl_source)) issues.push(`${path}.dsl_source 缺少完整 JSON/Python 双源码`);
+  return issues;
+}
 function isIndustryField(value: unknown): value is IndustryField { return industryFields.some((field) => field.value === value); }

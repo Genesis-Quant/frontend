@@ -1,7 +1,7 @@
 import studentTCdf from "@stdlib/stats-base-dists-t-cdf";
 
 import { BrowserDuckDb, duckDbDateValue } from "@/assets/lib/duckdb";
-import type { FactorAnalysisParameters, FactorMetricSummary, FactorMetrics } from "@/types/factor";
+import type { FactorMetricSummary, FactorMetrics, FactorReportParameters } from "@/types/factor";
 
 export type InformationPoint = { time: string; ic: number | null; rankIc: number | null; icCumulative: number | null; rankIcCumulative: number | null };
 export type LongShortPoint = { time: string; value: number | null; cumulative: number | null };
@@ -21,40 +21,34 @@ export class FactorAnalytics {
     private readonly groupsFile: string,
     private readonly turnoverFile: string | null,
     private readonly executionStatisticsFile: string | null,
-    private readonly parameters: FactorAnalysisParameters,
-    private readonly groupColumns: Set<string>,
-    private readonly turnoverColumns: Set<string>,
+    private readonly parameters: FactorReportParameters,
     private readonly executionFilterIndices: number[]
   ) {}
 
   static async create(
     workflowInstanceId: number,
     files: { information: ArrayBuffer; groups: ArrayBuffer; turnover?: ArrayBuffer | null; executionStatistics?: ArrayBuffer | null },
-    parameters: FactorAnalysisParameters
+    parameters: FactorReportParameters
   ) {
     const informationFile = `factor-${workflowInstanceId}-information.parquet`;
     const groupsFile = `factor-${workflowInstanceId}-groups.parquet`;
     const turnoverFile = files.turnover ? `factor-${workflowInstanceId}-turnover.parquet` : null;
     const executionStatisticsFile = files.executionStatistics ? `factor-${workflowInstanceId}-execution-statistics.parquet` : null;
-    const registeredFiles: Record<string, ArrayBuffer> = { [informationFile]: files.information, [groupsFile]: files.groups };
+    const registeredFiles: Record<string, ArrayBuffer> = {
+      [informationFile]: files.information,
+      [groupsFile]: files.groups
+    };
     if (turnoverFile && files.turnover) registeredFiles[turnoverFile] = files.turnover;
     if (executionStatisticsFile && files.executionStatistics) registeredFiles[executionStatisticsFile] = files.executionStatistics;
     const database = await BrowserDuckDb.create(registeredFiles);
-    const schema = await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(groupsFile)})`);
-    const groupColumns = new Set(schema.map((row) => String(row.column_name)));
-    const turnoverSchema = turnoverFile
-      ? await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(turnoverFile)})`)
+    const executionFilterIndices = executionStatisticsFile
+      ? (await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(executionStatisticsFile)})`))
+        .map((row) => /^filter(\d+)_count$/.exec(String(row.column_name)))
+        .filter((match): match is RegExpExecArray => match !== null)
+        .map((match) => Number(match[1]))
+        .sort((left, right) => left - right)
       : [];
-    const turnoverColumns = new Set(turnoverSchema.map((row) => String(row.column_name)));
-    const executionStatisticsSchema = executionStatisticsFile
-      ? await database.rows(`DESCRIBE SELECT * FROM read_parquet(${literal(executionStatisticsFile)})`)
-      : [];
-    const executionFilterIndices = executionStatisticsSchema
-      .map((row) => /^filter(\d+)_count$/.exec(String(row.column_name)))
-      .filter((match): match is RegExpExecArray => match !== null)
-      .map((match) => Number(match[1]))
-      .sort((left, right) => left - right);
-    return new FactorAnalytics(database, informationFile, groupsFile, turnoverFile, executionStatisticsFile, parameters, groupColumns, turnoverColumns, executionFilterIndices);
+    return new FactorAnalytics(database, informationFile, groupsFile, turnoverFile, executionStatisticsFile, parameters, executionFilterIndices);
   }
 
   async metrics(): Promise<FactorMetrics> {
@@ -64,9 +58,7 @@ export class FactorAnalytics {
       this.groupsFile,
       this.parameters.factor_columns,
       this.parameters.return_columns,
-      this.parameters.return_specs,
-      this.parameters.n_groups,
-      this.groupColumns
+      this.parameters.return_specs
     ));
     for (const row of rows) {
       const factor = String(row.factor_name);
@@ -105,7 +97,7 @@ export class FactorAnalytics {
   }
 
   async longShortSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<LongShortPoint[]> {
-    const [lowColumn, highColumn] = endpointColumnNames(this.groupColumns, factor, returnColumn, nGroups);
+    const [lowColumn, highColumn] = endpointColumnNames(factor, returnColumn);
     const low = identifier(lowColumn);
     const high = identifier(highColumn);
     const spec = this.returnSpec(returnColumn);
@@ -131,7 +123,7 @@ export class FactorAnalytics {
 
   async groupSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<GroupPoint[]> {
     const spec = this.returnSpec(returnColumn);
-    const definitions = groupDefinitions(this.groupColumns, factor, returnColumn, nGroups, this.parameters.n_select);
+    const definitions = groupDefinitions(factor, returnColumn, nGroups, this.parameters.n_select);
     const columns = definitions.map((definition, index) => {
       const source = identifier(definition.column);
       const cumulative = spec.periods !== 1
@@ -150,7 +142,7 @@ export class FactorAnalytics {
 
   async groupStatistics(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<GroupStatistic[]> {
     const spec = this.returnSpec(returnColumn);
-    const definitions = groupDefinitions(this.groupColumns, factor, returnColumn, nGroups, this.parameters.n_select);
+    const definitions = groupDefinitions(factor, returnColumn, nGroups, this.parameters.n_select);
     const statements = definitions.map((definition) => {
       const source = identifier(definition.column);
       const realized = spec.kind === "log" ? `exp(${source}) - 1` : source;
@@ -194,8 +186,8 @@ export class FactorAnalytics {
   }
 
   async turnoverSummary(factor: string, periods: number, nGroups: number, range?: FactorDateRange): Promise<TurnoverSummary> {
-    if (!this.turnoverFile) return { periods, rankAutocorrelation: null, groups: [] };
-    const definitions = turnoverDefinitions(this.turnoverColumns, nGroups, this.parameters.n_select);
+    const definitions = turnoverDefinitions(nGroups, this.parameters.n_select);
+    if (!this.turnoverFile) return { periods, rankAutocorrelation: null, groups: definitions.map((definition) => ({ group: definition.label, value: null })) };
     const groupColumns = definitions.map((definition, index) => `avg(${identifier(definition.column)}) AS ${identifier(`turnover_${index}`)}`);
     const row = (await this.rows(`
       SELECT avg(rank_autocorrelation) AS rank_autocorrelation, ${groupColumns.join(", ")}
@@ -252,14 +244,12 @@ function factorMetricsSql(
   groupsFile: string,
   factors: string[],
   returnColumns: string[],
-  returnSpecs: FactorAnalysisParameters["return_specs"],
-  nGroups: number,
-  groupColumns: Set<string>
+  returnSpecs: FactorReportParameters["return_specs"]
 ) {
   const pairs = factors.flatMap((factor) => returnColumns.map((returnColumn) => ({ factor, returnColumn })));
   const information = pairs.map(({ factor, returnColumn }) => `SELECT ${literal(factor)} AS factor_name, ${literal(returnColumn)} AS return_column, ${identifier(`${factor}_${returnColumn}_ic`)} AS ic, ${identifier(`${factor}_${returnColumn}_rank_ic`)} AS rank_ic FROM read_parquet(${literal(informationFile)})`).join(" UNION ALL ");
   const returns = pairs.map(({ factor, returnColumn }) => {
-    const [lowColumn, highColumn] = endpointColumnNames(groupColumns, factor, returnColumn, nGroups);
+    const [lowColumn, highColumn] = endpointColumnNames(factor, returnColumn);
     const low = identifier(lowColumn);
     const high = identifier(highColumn);
     const spec = returnSpecs[returnColumn];
@@ -297,28 +287,22 @@ function factorMetricsSql(
   `;
 }
 
-function endpointColumnNames(groupColumns: Set<string>, factor: string, returnColumn: string, nGroups: number): [string, string] {
-  const bottom = `${factor}_${returnColumn}_bottom`;
-  const top = `${factor}_${returnColumn}_top`;
-  return groupColumns.has(bottom) && groupColumns.has(top)
-    ? [bottom, top]
-    : [`${factor}_${returnColumn}_group0`, `${factor}_${returnColumn}_group${nGroups - 1}`];
+function endpointColumnNames(factor: string, returnColumn: string): [string, string] {
+  return [`${factor}_${returnColumn}_bottom`, `${factor}_${returnColumn}_top`];
 }
 
-function groupDefinitions(groupColumns: Set<string>, factor: string, returnColumn: string, nGroups: number, nSelect: number) {
+function groupDefinitions(factor: string, returnColumn: string, nGroups: number, nSelect: number) {
   const groups = Array.from({ length: nGroups }, (_, group) => ({
     column: `${factor}_${returnColumn}_group${group}`,
     label: `Group ${group + 1}`
   }));
   const bottom = `${factor}_${returnColumn}_bottom`;
   const top = `${factor}_${returnColumn}_top`;
-  return groupColumns.has(bottom) && groupColumns.has(top)
-    ? [
-      { column: bottom, label: `最小 ${nSelect} 支` },
-      ...groups,
-      { column: top, label: `最大 ${nSelect} 支` }
-    ]
-    : groups;
+  return [
+    { column: bottom, label: `最小 ${nSelect} 支` },
+    ...groups,
+    { column: top, label: `最大 ${nSelect} 支` }
+  ];
 }
 
 function metricSummary(information: Record<string, unknown>, longShort: Record<string, unknown>): FactorMetricSummary {
@@ -354,18 +338,16 @@ function dateFilter(range?: FactorDateRange) {
   return `WHERE time BETWEEN DATE ${literal(range.start)} AND DATE ${literal(range.end)}`;
 }
 
-function turnoverDefinitions(turnoverColumns: Set<string>, nGroups: number, nSelect: number) {
+function turnoverDefinitions(nGroups: number, nSelect: number) {
   const groups = Array.from({ length: nGroups }, (_, group) => ({
     column: `group${group}`,
     label: `Group ${group + 1}`
   }));
-  return turnoverColumns.has("bottom") && turnoverColumns.has("top")
-    ? [
-      { column: "bottom", label: `最小 ${nSelect} 支` },
-      ...groups,
-      { column: "top", label: `最大 ${nSelect} 支` }
-    ]
-    : groups;
+  return [
+    { column: "bottom", label: `最小 ${nSelect} 支` },
+    ...groups,
+    { column: "top", label: `最大 ${nSelect} 支` }
+  ];
 }
 
 function dateAndFilter(range?: FactorDateRange) {

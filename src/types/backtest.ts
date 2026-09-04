@@ -1,4 +1,5 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
+import { jsonDslSource } from "@/assets/lib/dslSource";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
@@ -40,7 +41,7 @@ export type BacktestWorkflowSummary = {
   workflow_instance_id: number | null;
   state: string;
   error: string | null;
-  parameters: BacktestParameters;
+  parameters: unknown;
   updated_at: string;
 };
 
@@ -80,7 +81,7 @@ export type BacktestVersion = {
   saved: boolean;
   is_current: boolean;
   remark: string;
-  parameters: BacktestParameters;
+  parameters: unknown;
   summary: BacktestSummary | null;
   created_at: string;
   updated_at: string;
@@ -216,7 +217,7 @@ export type BatchResearchPage = {
 };
 
 export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "start_date" | "end_date">): FactorQuery {
-  return {
+  return withInitialDslSource({
     start_date: datasetQuery?.start_date ?? "2020-01-01",
     end_date: datasetQuery?.end_date ?? "2026-01-01",
     lookback: "P0D",
@@ -231,7 +232,7 @@ export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "star
       }
     },
     filters: ["stock_pool_member"]
-  };
+  });
 }
 
 export function setBacktestStockPoolType(parameters: BacktestParameters, dynamic: boolean): BacktestParameters {
@@ -252,8 +253,8 @@ export const defaultBacktestParameters = (): BacktestParameters => ({
     riskParityRebalanceBars: 5,
     riskParityMinimumMomentum: 0
   },
-  codes_query: null,
-  dataset_query: {
+  codes_query: defaultBacktestCodesQuery(),
+  dataset_query: withInitialDslSource({
     start_date: "2020-01-01",
     end_date: "2026-01-01",
     lookback: "P180D",
@@ -316,7 +317,7 @@ export const defaultBacktestParameters = (): BacktestParameters => ({
       }
     },
     filters: []
-  },
+  }),
   adj: "hfq",
   annual_trading_days: 250,
   risk_free_rate: 0.04,
@@ -480,6 +481,15 @@ def solveRiskParity(covariance, tolerance=0.000000000001, maxIterations=1000l) {
 }`
   }
 });
+
+function withInitialDslSource(query: Omit<FactorQuery, "dsl_source">): FactorQuery {
+  const document: DslDocument = {
+    factors: query.factors,
+    derivatives: query.derivatives,
+    filters: query.filters
+  };
+  return { ...query, dsl_source: jsonDslSource(document) };
+}
 
 export function backtestCodesDsl(parameters: BacktestParameters): DslDocument {
   const { factors, derivatives, filters } = parameters.codes_query ?? { factors: [], derivatives: {}, filters: [] };

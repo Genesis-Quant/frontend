@@ -67,7 +67,8 @@ export default function DolphinDbEditor({ completions = [], modelPath, onChange,
     });
   };
 
-  function change(source = "") {
+  function change(source: string | undefined) {
+    if (source === undefined) return;
     onChange(source);
     if (onValidityChange && validate) onValidityChange(validate(source));
   }

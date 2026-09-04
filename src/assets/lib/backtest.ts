@@ -148,22 +148,48 @@ export function isBacktestParameters(value: unknown): value is BacktestParameter
   if (!Object.keys(value).every((name) => BACKTEST_PARAMETER_NAMES.has(name))) return false;
   const callbacks = value.callbacks;
   if (!isRecord(callbacks)) return false;
+  const config = value.config;
+  if (!isRecord(config)) return false;
   return [
-    isRecord(value.config),
-    isRecord(value.params),
+    positiveFiniteNumber(config.cash),
+    nonNegativeFiniteNumber(config.commission),
+    nonNegativeFiniteNumber(config.tax),
+    typeof config.enableMinimumPerTransactionFee === "boolean",
+    config.benchmark === undefined || typeof config.benchmark === "string" && config.benchmark.length > 0,
+    isStrategyParameters(value.params),
     value.codes_query === null || isFactorQuery(value.codes_query),
     isFactorQuery(value.dataset_query),
     value.adj === null || value.adj === "hfq" || value.adj === "qfq",
-    typeof value.annual_trading_days === "number" && Number.isFinite(value.annual_trading_days),
+    typeof value.annual_trading_days === "number" && Number.isInteger(value.annual_trading_days) && value.annual_trading_days >= 1,
     typeof value.risk_free_rate === "number" && Number.isFinite(value.risk_free_rate),
     typeof value.utils === "string",
-    callbackNames.every((name) => typeof callbacks[name] === "string")
+    Object.keys(callbacks).length === callbackNames.length,
+    callbackNames.every((name) => typeof callbacks[name] === "string" && validCallback(name, callbacks[name] as string))
   ].every(Boolean);
+}
+
+export function requireBacktestParameters(value: unknown): BacktestParameters {
+  if (!isBacktestParameters(value)) {
+    throw new Error("策略回测参数结构无效，无法打开项目或版本。");
+  }
+  return structuredClone(value);
+}
+
+export type BacktestReportParameters = Pick<BacktestParameters, "annual_trading_days" | "risk_free_rate">;
+
+export function backtestReportParameters(value: unknown): BacktestReportParameters | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.annual_trading_days !== "number" || !Number.isInteger(value.annual_trading_days) || value.annual_trading_days < 1) return null;
+  if (!finiteNumber(value.risk_free_rate)) return null;
+  return {
+    annual_trading_days: value.annual_trading_days,
+    risk_free_rate: value.risk_free_rate
+  };
 }
 
 export const backtestApi = {
   listProjects: (params: ProjectListParams<BacktestProjectSortField> = {}) => client.get<BacktestProjectPage>("/backtest/projects", { params }),
-  createProject: (title: string) => client.post<BacktestProject>("/backtest/projects", { title }),
+  createProject: (title: string, parameters: BacktestParameters) => client.post<BacktestProject>("/backtest/projects", { title, parameters }),
   getProject: (projectId: number) => client.get<BacktestProject>(`/backtest/projects/${projectId}`),
   updateProject: (projectId: number, title: string) => client.patch<BacktestProject>(`/backtest/projects/${projectId}`, { title }),
   deleteProject: (projectId: number) => client.delete<{ id: number }>(`/backtest/projects/${projectId}`),
@@ -193,3 +219,12 @@ export const backtestApi = {
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
+function finiteNumber(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
+function positiveFiniteNumber(value: unknown): value is number { return finiteNumber(value) && value > 0; }
+function nonNegativeFiniteNumber(value: unknown): value is number { return finiteNumber(value) && value >= 0; }
+function isStrategyParameters(value: unknown): value is BacktestParameters["params"] {
+  return isRecord(value) && Object.values(value).every((item) => item === null
+    || typeof item === "string"
+    || typeof item === "boolean"
+    || finiteNumber(item));
+}

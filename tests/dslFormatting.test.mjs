@@ -21,10 +21,10 @@ test("formats JSON without changing an integer outside JavaScript's safe range",
 });
 
 test("formats Python DSL assignments, calls and result variables", () => {
-  const source = 'x=DIRECT.binary.add("x",left="close",right=1)\nFACTORS=[]\nDERIVATIVES=[x]\nFILTERS=[]';
+  const source = 'x=DIRECT.binary.add("x",left="close",right=1)\nFACTORS=[]\nFILTERS=[]';
   assert.equal(
     formatPythonDslSource(source),
-    'x = DIRECT.binary.add("x", left="close", right=1)\nFACTORS = []\nDERIVATIVES = [x]\nFILTERS = []'
+    'x = DIRECT.binary.add("x", left="close", right=1)\nFACTORS = []\nFILTERS = []'
   );
 });
 

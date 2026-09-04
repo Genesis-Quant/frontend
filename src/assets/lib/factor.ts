@@ -1,21 +1,21 @@
 import { client } from "@/assets/lib/request";
-import type {
-  DslCatalog,
-  FactorAnalysisParameters,
-  FactorWorkflowSubmitted,
-  FactorOutput,
-  FactorProject,
-  FactorProjectPage,
-  FactorProjectSortField,
-  FactorVersion,
-  FactorVersionListItem
+import {
+  type DslCatalog,
+  type FactorAnalysisParameters,
+  type FactorWorkflowSubmitted,
+  type FactorOutput,
+  type FactorProject,
+  type FactorProjectPage,
+  type FactorProjectSortField,
+  type FactorVersion,
+  type FactorVersionListItem
 } from "@/types/factor";
 import type { ProjectListParams } from "@/types/project";
 import type { BatchRunAccepted, BatchRunRequest } from "@/types/queue";
 
 export const factorApi = {
   listProjects: (params: ProjectListParams<FactorProjectSortField> = {}) => client.get<FactorProjectPage>("/factor/projects", { params }),
-  createProject: (title: string) => client.post<FactorProject>("/factor/projects", { title }),
+  createProject: (title: string, parameters: FactorAnalysisParameters) => client.post<FactorProject>("/factor/projects", { title, parameters }),
   getProject: (projectId: number) => client.get<FactorProject>(`/factor/projects/${projectId}`),
   updateProject: (projectId: number, title: string) => client.patch<FactorProject>(`/factor/projects/${projectId}`, { title }),
   deleteProject: (projectId: number) => client.delete<{ id: number }>(`/factor/projects/${projectId}`),

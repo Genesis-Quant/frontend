@@ -51,7 +51,9 @@ export default function CodeEditor({
         beforeMount={(monaco) => ensureBasicCodeLanguage(monaco, language)}
         height="100%"
         language={language}
-        onChange={(source) => onChange?.(source ?? "")}
+        onChange={(source) => {
+          if (source !== undefined) onChange?.(source);
+        }}
         onMount={onMount}
         options={{
           acceptSuggestionOnCommitCharacter: false,
