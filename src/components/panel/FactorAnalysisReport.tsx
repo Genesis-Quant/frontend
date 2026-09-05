@@ -312,7 +312,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
         {
           id: "execution-statistics",
           content: <ReportCard title="DSL 执行统计">
-            <p className="text-xs leading-5 text-muted-foreground">区域总上沿是当日过滤前股票数；色带从上到下严格按 FILTERS 顺序表示各条件的边际剔除数量，底部为最终截面。</p>
+            <p className="text-xs leading-5 text-muted-foreground">区域总上沿是当日过滤前股票数；色带从上到下按实际过滤顺序展示剔除数量，底部为最终截面。比例均以原始股票数为基准。</p>
             <ChartPanel title="每日股票域与过滤去向">
               <SeriesContent loading={executionStatisticsLoading} count={executionStatistics.length} height={360}>
                 {executionStatistics.length > 0 && <EChart option={executionStatisticsOption(executionStatistics, theme, chartRanges?.executionStatistics)} height={360} />}
