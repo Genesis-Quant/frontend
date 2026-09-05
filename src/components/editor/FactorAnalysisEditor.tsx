@@ -12,6 +12,7 @@ import {
   setAnalysisStockPool,
   stockPools,
   type DslCatalog,
+  type DslCompilation,
   type DslDocument,
   type DslSource,
   type FactorAnalysisParameters,
@@ -26,14 +27,15 @@ const DslEditor = lazy(() => import("@/components/editor/DslEditor"));
 
 type FactorAnalysisEditorProps = {
   catalog: DslCatalog;
+  editorScope: string;
   parameters: FactorAnalysisParameters;
   projectId: number;
   readOnly?: boolean;
   onChange: (parameters: FactorAnalysisParameters) => void;
-  onValidityChange: (valid: boolean) => void;
+  onValidityChange: (valid: boolean, compilation?: DslCompilation) => void;
 };
 
-export default function FactorAnalysisEditor({ catalog, onChange, onValidityChange, parameters, projectId, readOnly = false }: FactorAnalysisEditorProps) {
+export default function FactorAnalysisEditor({ catalog, editorScope, onChange, onValidityChange, parameters, projectId, readOnly = false }: FactorAnalysisEditorProps) {
   const dsl = analysisDsl(parameters);
   const settings = analysisSettings(parameters);
   const stockPoolOptions = settings.stockPool === "CUSTOM"
@@ -52,9 +54,8 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
     onChange({ ...parameters, codes_query: codesQuery, dataset_query: datasetQuery });
   }
 
-  function updateDsl(nextDsl: DslDocument, source: DslSource, valid: boolean) {
+  function updateDsl(nextDsl: DslDocument, source: DslSource) {
     onChange(setAnalysisDsl(parameters, nextDsl, source));
-    onValidityChange(valid && Object.keys(nextDsl.derivatives).length > 0);
   }
 
   return <div className="space-y-5">
@@ -78,9 +79,10 @@ export default function FactorAnalysisEditor({ catalog, onChange, onValidityChan
         <DslEditor
           catalog={catalog}
           compileEndpoint="/factor/dsl/compile"
-          modelPath={`factor-dsl://project/${projectId}/dataset.json`}
+          key={editorScope}
+          modelPath={`factor-dsl://factor/${projectId}/${editorScope}/dataset`}
           onChange={updateDsl}
-          onValidityChange={(valid) => onValidityChange(valid && Object.keys(dsl.derivatives).length > 0)}
+          onValidityChange={onValidityChange}
           readOnly={readOnly}
           source={parameters.dataset_query.dsl_source}
           value={dsl}

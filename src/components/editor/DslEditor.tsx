@@ -1,16 +1,16 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { parse, type ParseError } from "jsonc-parser";
-import { AlignLeft } from "lucide-react";
+import { AlignLeft, FileJson2, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { configureDslLanguage, isDslDocument, registerDslLanguageProviders } from "@/assets/lib/dslLanguage";
 import { formatJsonDslSource, formatPythonDslSource } from "@/assets/lib/dslFormatting";
-import { dslSourceText, updateDslSourceText } from "@/assets/lib/dslSource";
-import { registerPythonDslLanguageProviders } from "@/assets/lib/pythonDslLanguage";
+import { dslSourceKey, dslSourceText, updateDslSourceText } from "@/assets/lib/dslSource";
+import { pythonDslDiagnostics, registerPythonDslLanguageProviders, type PythonDslDiagnostic } from "@/assets/lib/pythonDslLanguage";
 import { client } from "@/assets/lib/request";
 import MonacoEditorFrame from "@/components/editor/MonacoEditorFrame";
 import { useAppStore } from "@/store";
-import type { DslCatalog, DslDocument, DslLanguage, DslSource } from "@/types/factor";
+import type { DslCatalog, DslCompilation, DslDocument, DslLanguage, DslSource } from "@/types/factor";
 import { Button } from "@/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 
@@ -21,16 +21,20 @@ type DslEditorProps = {
   readOnly?: boolean;
   source: DslSource;
   value: DslDocument;
-  onChange: (value: DslDocument, source: DslSource, valid: boolean) => void;
-  onValidityChange?: (valid: boolean) => void;
+  onChange: (value: DslDocument, source: DslSource) => void;
+  onValidityChange?: (valid: boolean, compilation?: DslCompilation) => void;
 };
 
 export default function DslEditor({ catalog, compileEndpoint, modelPath, onChange, onValidityChange, readOnly = false, source, value }: DslEditorProps) {
   const theme = useAppStore((state) => state.theme);
   const serializedValue = useMemo(() => JSON.stringify(value), [value]);
   const [activeSource, setActiveSource] = useState(source);
+  const [visibleLanguage, setVisibleLanguage] = useState<DslLanguage>(source.language);
+  const [compilingPython, setCompilingPython] = useState(false);
+  const [pythonCompileError, setPythonCompileError] = useState<string | null>(null);
   const currentDocument = useRef(value);
   const currentSource = useRef(source);
+  const currentModelPath = useRef(modelPath);
   const observedSource = useRef("");
   const compileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const compilation = useRef(0);
@@ -44,14 +48,18 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
 
   useEffect(() => {
     currentDocument.current = value;
-    const key = sourceKey(source);
-    if (!sameSource(currentSource.current, source)) {
+    const documentChanged = currentModelPath.current !== modelPath;
+    currentModelPath.current = modelPath;
+    const key = sourceObservationKey(modelPath, source);
+    if (documentChanged || !sameSource(currentSource.current, source)) {
       currentSource.current = source;
       setActiveSource(source);
+      setVisibleLanguage(source.language);
+      setPythonCompileError(null);
     }
     if (observedSource.current === key) return;
     validateSource(source, false);
-  }, [serializedValue, source.json_source, source.language, source.python_source]);
+  }, [modelPath, serializedValue, source.json_source, source.language, source.python_source]);
 
   useEffect(() => () => {
     compilation.current += 1;
@@ -62,11 +70,16 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
   useEffect(() => {
     const frame = window.requestAnimationFrame(refreshLanguageProviders);
     return () => window.cancelAnimationFrame(frame);
-  }, [activeSource.language, catalog, modelPath]);
+  }, [catalog, modelPath, visibleLanguage]);
 
   const mount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    const editorModel = editor.getModel();
+    const expectedSource = dslSourceText(currentSource.current, visibleLanguage);
+    if (editorModel && editorModel.getValue() !== expectedSource) {
+      editorModel.setValue(expectedSource);
+    }
     refreshLanguageProviders();
     validateSource(currentSource.current, false);
   };
@@ -89,9 +102,10 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
 
   function edit(nextText: string | undefined) {
     if (nextText === undefined) return;
+    setPythonCompileError(null);
     const nextSource = updateDslSourceText(
       currentSource.current,
-      activeSource.language,
+      visibleLanguage,
       nextText
     );
     if (sameSource(currentSource.current, nextSource)) return;
@@ -101,7 +115,10 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
   }
 
   function switchLanguage(language: DslLanguage) {
-    if (language === currentSource.current.language) return;
+    if (language === visibleLanguage) return;
+    setPythonCompileError(null);
+    setVisibleLanguage(language);
+    if (readOnly) return;
     const nextSource = { ...currentSource.current, language };
     currentSource.current = nextSource;
     setActiveSource(nextSource);
@@ -109,7 +126,7 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
   }
 
   function validateSource(nextSource: DslSource, publish: boolean) {
-    observedSource.current = sourceKey(nextSource);
+    observedSource.current = sourceObservationKey(currentModelPath.current, nextSource);
     compilation.current += 1;
     if (compileTimer.current !== null) {
       clearTimeout(compileTimer.current);
@@ -123,10 +140,10 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
         disallowComments: true
       }) as unknown;
       const valid = errors.length === 0 && isDslDocument(document);
-      onValidityChangeRef.current?.(valid);
       if (!valid) {
+        onValidityChangeRef.current?.(false);
         markError("JSON DSL 结构或语法无效", "json");
-        if (publish) onChangeRef.current(currentDocument.current, nextSource, false);
+        if (publish) onChangeRef.current(currentDocument.current, nextSource);
         return;
       }
       currentDocument.current = document;
@@ -135,13 +152,20 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
       return;
     }
 
+    const diagnostics = pythonDslDiagnostics(nextSource.python_source);
+    if (diagnostics.length) {
+      onValidityChangeRef.current?.(false);
+      markPythonDiagnostics(diagnostics);
+      if (publish) onChangeRef.current(currentDocument.current, nextSource);
+      return;
+    }
     clearMarkers("python");
     scheduleCompilation(nextSource, publish, currentDocument.current);
   }
 
   function scheduleCompilation(nextSource: DslSource, publish: boolean, provisionalDocument: DslDocument) {
     onValidityChangeRef.current?.(false);
-    if (publish) onChangeRef.current(provisionalDocument, nextSource, false);
+    if (publish) onChangeRef.current(provisionalDocument, nextSource);
     const version = compilation.current;
     compileTimer.current = setTimeout(() => {
       compileTimer.current = null;
@@ -150,8 +174,8 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
           if (version !== compilation.current || !sameSource(currentSource.current, nextSource)) return;
           currentDocument.current = document;
           clearMarkers(nextSource.language);
-          onValidityChangeRef.current?.(true);
-          if (publish) onChangeRef.current(document, nextSource, true);
+          onValidityChangeRef.current?.(true, { sourceKey: dslSourceKey(nextSource), document });
+          if (publish) onChangeRef.current(document, nextSource);
         })
         .catch((error: unknown) => {
           if (version !== compilation.current || !sameSource(currentSource.current, nextSource)) return;
@@ -171,13 +195,54 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
     }
     const model = editor.getModel();
     if (!model) return;
-    const formatted = activeSource.language === "json"
+    const formatted = visibleLanguage === "json"
       ? formatJsonDslSource(model.getValue(), model.getOptions().tabSize)
       : formatPythonDslSource(model.getValue());
     if (formatted === null || formatted === model.getValue()) return;
     editor.pushUndoStop();
     editor.executeEdits("dsl-format", [{ forceMoveMarkers: true, range: model.getFullModelRange(), text: formatted }]);
     editor.pushUndoStop();
+  }
+
+  async function compilePythonToJson() {
+    if (readOnly || compilingPython || visibleLanguage !== "json") return;
+    compilation.current += 1;
+    const version = compilation.current;
+    if (compileTimer.current !== null) {
+      clearTimeout(compileTimer.current);
+      compileTimer.current = null;
+    }
+    setCompilingPython(true);
+    setPythonCompileError(null);
+    try {
+      const document = await client.post<DslDocument>(
+        compileEndpoint,
+        { ...currentSource.current, language: "python" },
+        { timeout: 30000 }
+      );
+      if (version !== compilation.current) return;
+      const nextSource: DslSource = {
+        ...currentSource.current,
+        language: "json",
+        json_source: JSON.stringify(document, null, 2)
+      };
+      currentDocument.current = document;
+      currentSource.current = nextSource;
+      observedSource.current = sourceObservationKey(currentModelPath.current, nextSource);
+      setActiveSource(nextSource);
+      setVisibleLanguage("json");
+      clearMarkers("json");
+      clearMarkers("python");
+      onValidityChangeRef.current?.(true, { sourceKey: dslSourceKey(nextSource), document });
+      onChangeRef.current(document, nextSource);
+    } catch (error: unknown) {
+      if (version !== compilation.current) return;
+      const message = error instanceof Error ? error.message : "Python DSL 编译失败";
+      setPythonCompileError(message);
+      markError(message, "python");
+    } finally {
+      setCompilingPython(false);
+    }
   }
 
   function model(language: DslLanguage) {
@@ -207,20 +272,40 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
     }]);
   }
 
+  function markPythonDiagnostics(diagnostics: PythonDslDiagnostic[]) {
+    const monaco = monacoRef.current;
+    const target = model("python");
+    if (!target || !monaco) return;
+    monaco.editor.setModelMarkers(target, "dsl-source", diagnostics.map((diagnostic) => {
+      const start = target.getPositionAt(diagnostic.start);
+      const end = target.getPositionAt(diagnostic.end);
+      return {
+        endColumn: end.column,
+        endLineNumber: end.lineNumber,
+        message: diagnostic.message,
+        severity: monaco.MarkerSeverity.Error,
+        startColumn: start.column,
+        startLineNumber: start.lineNumber
+      };
+    }));
+  }
+
   const editorActions = <>
-    <Tabs className="gap-0" value={activeSource.language} onValueChange={(next) => switchLanguage(next as DslLanguage)}>
+    <Tabs className="gap-0" value={visibleLanguage} onValueChange={(next) => switchLanguage(next as DslLanguage)}>
       <TabsList className="h-8 rounded-md p-0.5">
-        <TabsTrigger className="h-7 px-2 text-xs" disabled={readOnly} value="json">JSON</TabsTrigger>
-        <TabsTrigger className="h-7 px-2 text-xs" disabled={readOnly} value="python">Python</TabsTrigger>
+        <TabsTrigger className="h-7 px-2 text-xs" value="python">Python</TabsTrigger>
+        <TabsTrigger className="h-7 px-2 text-xs" value="json">JSON</TabsTrigger>
       </TabsList>
     </Tabs>
     <Button aria-label="格式化代码" disabled={readOnly} onClick={format} size="sm" title="格式化代码（Shift+Alt+F）" variant="ghost"><AlignLeft />格式化</Button>
+    {visibleLanguage === "json" ? <Button aria-label="从 Python 编译为 JSON" className="monaco-editor-frame__compile-button" disabled={readOnly || compilingPython} onClick={compilePythonToJson} size="sm" title="使用后端编译当前 Python DSL，并替换 JSON 源码" variant="ghost">{compilingPython ? <Loader2 className="animate-spin" /> : <FileJson2 />}<span className="monaco-editor-frame__compile-label">从 Python 编译</span></Button> : null}
+    {visibleLanguage === "json" && pythonCompileError ? <span aria-live="polite" className="max-w-48 truncate text-xs text-destructive" title={pythonCompileError}>{pythonCompileError}</span> : null}
   </>;
 
   return <MonacoEditorFrame actions={editorActions} className="dsl-editor min-h-72"><Editor
     beforeMount={configureDslLanguage}
     height="100%"
-    language={activeSource.language}
+    language={visibleLanguage}
     onChange={edit}
     onMount={mount}
     options={{
@@ -249,13 +334,13 @@ export default function DslEditor({ catalog, compileEndpoint, modelPath, onChang
       suggestOnTriggerCharacters: true,
       suggestSelection: "first",
       tabCompletion: "on",
-      tabSize: activeSource.language === "json" ? 2 : 4,
+      tabSize: visibleLanguage === "json" ? 2 : 4,
       wordBasedSuggestions: "off",
       wordWrap: "off"
     }}
-    path={editorModelPath(activeSource.language)}
+    path={editorModelPath(visibleLanguage)}
     theme={theme === "dark" ? "vs-dark" : "light"}
-    value={dslSourceText(activeSource)}
+    value={dslSourceText(activeSource, visibleLanguage)}
   /></MonacoEditorFrame>;
 }
 
@@ -265,8 +350,8 @@ function sameSource(left: DslSource, right: DslSource) {
     && left.python_source === right.python_source;
 }
 
-function sourceKey(source: DslSource) {
-  return `${source.language}\u0000${source.json_source}\u0000${source.python_source}`;
+function sourceObservationKey(modelPath: string, source: DslSource) {
+  return `${modelPath}\u0000${dslSourceKey(source)}`;
 }
 
 type SourceModel = {

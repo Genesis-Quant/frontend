@@ -2,15 +2,36 @@
   background: var(--bg);
 
   &__toolbar {
+    container-name: monaco-editor-toolbar;
+    container-type: inline-size;
     background: var(--bg);
   }
 
-  &:fullscreen {
+  &:popover-open {
+    position: fixed;
+    inset: 0;
     width: 100dvw;
     height: 100dvh;
     min-height: 0;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
     border: 0;
     border-radius: 0;
     background: var(--bg);
+    outline: none;
+    overscroll-behavior: contain;
+  }
+}
+
+@container monaco-editor-toolbar (max-width: 32rem) {
+  .monaco-editor-frame__compile-button {
+    width: 2rem;
+    padding-inline: 0;
+  }
+
+  .monaco-editor-frame__compile-label {
+    display: none;
   }
 }

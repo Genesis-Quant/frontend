@@ -100,17 +100,6 @@ export default function CodeEditor({
   </div>;
 }
 
-export function normalizeCodeLanguage(language: string) {
-  const normalized = language.trim().toLowerCase();
-  if (normalized === "dos" || normalized === "ddb") return "dolphindb";
-  if (normalized === "bash" || normalized === "sh" || normalized === "zsh") return "shell";
-  if (normalized === "ps1" || normalized === "pwsh") return "powershell";
-  if (normalized === "py") return "python";
-  if (normalized === "md") return "markdown";
-  if (!normalized || normalized === "text" || normalized === "txt") return "plaintext";
-  return normalized;
-}
-
 function lineCount(value: string) {
   return value ? value.split(/\r?\n/).length : 1;
 }

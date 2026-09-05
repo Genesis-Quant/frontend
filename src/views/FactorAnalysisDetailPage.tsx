@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import IconLoaderCircle from "~icons/lucide/loader-circle";
 
 import { factorApi } from "@/assets/lib/factor";
-import { applyAcceptedBatch, createProjectQueueItem, loadProjectQueue, maxBatchRunItems, pendingBatchRequest, queueNeedsPolling, refreshProjectQueue, saveProjectQueue } from "@/assets/lib/projectQueue";
+import { dslSourceKey } from "@/assets/lib/dslSource";
+import { useProjectQueue } from "@/assets/lib/useProjectQueue";
 import { errorMessage } from "@/assets/lib/utils";
 import { workflowsApi } from "@/assets/lib/workflows";
 import AnalysisWorkspace from "@/components/layout/AnalysisWorkspace";
@@ -19,8 +20,7 @@ import FactorAnalysisResultsPanel from "@/components/panel/FactorAnalysisResults
 import ErrorPanel from "@/components/panel/ErrorPanel";
 import ExecutionQueuePanel from "@/components/panel/ExecutionQueuePanel";
 import TaskLogPanel from "@/components/panel/TaskLogPanel";
-import { analysisExecutionParameters, factorAnalysisParameterError, factorAnalysisParameterIssues, factorReportParameterIssues, factorReportParameters, isFactorAnalysisDraftParameters, isFactorAnalysisParameters, requireFactorAnalysisParameters, type DslCatalog, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
-import type { ProjectQueueItem } from "@/types/queue";
+import { analysisExecutionParameters, factorAnalysisParameterError, factorAnalysisParameterIssues, factorReportParameterIssues, factorReportParameters, isFactorAnalysisDraftParameters, isFactorAnalysisParameters, requireFactorAnalysisParameters, type DslCatalog, type DslCompilation, type DslDocument, type FactorAnalysisParameters, type FactorProject, type FactorVersion, type FactorVersionListItem } from "@/types/factor";
 import { terminalStates } from "@/types/workflow";
 import { useAppStore } from "@/store";
 
@@ -38,7 +38,7 @@ export default function FactorAnalysisDetailPage() {
   const [workflowState, setWorkflowState] = useState("IDLE");
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [logTaskInstanceId, setLogTaskInstanceId] = useState<number | null>(null);
-  const [dslValid, setDslValid] = useState(true);
+  const [dslCompilation, setDslCompilation] = useState<DslCompilation | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,15 +52,9 @@ export default function FactorAnalysisDetailPage() {
   const [renameProjectOpen, setRenameProjectOpen] = useState(false);
   const [renameVersionOpen, setRenameVersionOpen] = useState(false);
   const [deleteVersionOpen, setDeleteVersionOpen] = useState(false);
-  const [initialQueue] = useState(() => loadProjectQueue(userId, "factor", projectId, isFactorAnalysisParameters));
-  const [queueItems, setQueueItems] = useState<ProjectQueueItem<FactorAnalysisParameters>[]>(initialQueue.items);
-  const [queueLoadError, setQueueLoadError] = useState(initialQueue.error);
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueSubmitOpen, setQueueSubmitOpen] = useState(false);
   const [queueRemark, setQueueRemark] = useState("");
-  const [queueExecuting, setQueueExecuting] = useState(false);
-  const [queueSavingId, setQueueSavingId] = useState<string | null>(null);
-  const [queueDeletingId, setQueueDeletingId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [deletingVersion, setDeletingVersion] = useState(false);
   const [projectTitle, setProjectTitle] = useState("");
@@ -69,8 +63,16 @@ export default function FactorAnalysisDetailPage() {
   const loadRequest = useRef(0);
   const versionRequest = useRef(0);
   const queueVersionsRequest = useRef(0);
-  const queueItemsRef = useRef(queueItems);
-  const queueStorageWritable = useRef(initialQueue.error === null);
+  const queue = useProjectQueue({
+    application: "factor",
+    executeBatch: (request) => factorApi.executeBatch(projectId, request),
+    normalizeParameters: requireFactorAnalysisParameters,
+    onError: setError,
+    pollingErrorMessage: "部分因子分析队列状态读取失败，将继续重试。",
+    projectId,
+    userId,
+    validateParameters: isFactorAnalysisParameters
+  });
   const storedParameters = currentVersion?.parameters ?? parameters ?? project?.draft.parameters ?? null;
   const displayedParameters = isFactorAnalysisDraftParameters(storedParameters) ? storedParameters : null;
   const parameterError = storedParameters === null || displayedParameters ? null : factorAnalysisParameterError(storedParameters);
@@ -83,11 +85,14 @@ export default function FactorAnalysisDetailPage() {
   const readOnly = currentVersion !== null;
   const activeWorkflow = !currentVersion && workflowInstanceId !== null && !terminalStates.has(workflowState);
   const running = submitting || activeWorkflow;
-  const executableParameters = parameters === null ? null : analysisExecutionParameters(parameters);
+  const compiledDocument = parameters !== null && dslCompilation?.sourceKey === dslSourceKey(parameters.dataset_query.dsl_source)
+    ? dslCompilation.document
+    : null;
+  const executableParameters = parameters === null || compiledDocument === null ? null : analysisExecutionParameters(parameters, compiledDocument);
   const analysisReady = executableParameters !== null
     && isFactorAnalysisParameters(executableParameters)
-    && dslValid
-    && validAnalysisContract(executableParameters, catalog);
+    && compiledDocument !== null
+    && validAnalysisContract(executableParameters, compiledDocument, catalog);
 
   useEffect(() => {
     if (!Number.isInteger(projectId) || projectId <= 0) {
@@ -122,37 +127,8 @@ export default function FactorAnalysisDetailPage() {
     return () => { disposed = true; window.clearInterval(timer); };
   }, [projectId, workflowInstanceId, workflowState]);
 
-  const queuePolling = queueNeedsPolling(queueItems);
-  const completedQueueVersions = queueItems.filter((item) => item.version !== null).map((item) => `${item.id}:${item.version}`).sort().join("|");
+  const completedQueueVersions = queue.completedVersionsKey;
   const projectLoaded = project !== null;
-
-  useEffect(() => {
-    if (!queuePolling) return undefined;
-    let disposed = false;
-    let polling = false;
-    const refresh = async () => {
-      if (polling) return;
-      polling = true;
-      try {
-        const refreshed = await refreshProjectQueue(queueItemsRef.current);
-        if (disposed) return;
-        const byId = new Map(refreshed.items.map((item) => [item.id, item]));
-        setQueueItems((current) => current.map((item) => byId.get(item.id) ?? item));
-        if (refreshed.errors.length) console.warn("部分因子分析队列状态读取失败，将继续重试。", refreshed.errors);
-      } catch (reason) {
-        if (!disposed) setError(errorMessage(reason));
-      } finally {
-        polling = false;
-      }
-    };
-    const timer = window.setInterval(refresh, 2500);
-    return () => { disposed = true; window.clearInterval(timer); };
-  }, [queuePolling]);
-
-  useEffect(() => {
-    queueItemsRef.current = queueItems;
-    if (queueStorageWritable.current) saveProjectQueue(userId, "factor", projectId, queueItems);
-  }, [projectId, queueItems, userId]);
 
   useEffect(() => {
     if (!projectLoaded || !completedQueueVersions) return;
@@ -273,46 +249,10 @@ export default function FactorAnalysisDetailPage() {
   }
 
   function submitToQueue() {
-    if (!executableParameters || !analysisReady || readOnly || queueExecuting) return;
-    if (queueItems.filter((item) => item.workspace_id === null).length >= maxBatchRunItems) {
-      setError(`执行队列最多保留 ${maxBatchRunItems} 个待执行任务。`);
-      return;
-    }
-    queueStorageWritable.current = true;
-    setQueueLoadError(null);
-    setQueueItems((current) => [...current, createProjectQueueItem(queueRemark, executableParameters)]);
+    if (!executableParameters || !analysisReady || readOnly || queue.executing) return;
+    if (!queue.add(queueRemark, executableParameters)) return;
     setQueueRemark("");
     setQueueSubmitOpen(false);
-  }
-
-  async function updateQueueItem(item: ProjectQueueItem<FactorAnalysisParameters>, nextRemark: string, nextParameters: FactorAnalysisParameters) {
-    if (queueExecuting) return;
-    setQueueSavingId(item.id);
-    try {
-      setQueueItems((current) => current.map((currentItem) => currentItem.id === item.id ? { ...currentItem, remark: nextRemark.trim(), parameters: requireFactorAnalysisParameters(nextParameters), updated_at: new Date().toISOString() } : currentItem));
-    } finally { setQueueSavingId(null); }
-  }
-
-  async function deleteQueueItem(item: ProjectQueueItem<FactorAnalysisParameters>) {
-    if (queueExecuting) return;
-    setQueueDeletingId(item.id);
-    try {
-      setQueueItems((current) => current.filter((currentItem) => currentItem.id !== item.id));
-    } finally { setQueueDeletingId(null); }
-  }
-
-  async function executeQueue() {
-    if (queueExecuting) return;
-    setQueueExecuting(true);
-    setError("");
-    try {
-      const request = pendingBatchRequest(queueItems);
-      if (!request.items.length) return;
-      const accepted = await factorApi.executeBatch(projectId, request);
-      setQueueItems((current) => applyAcceptedBatch(current, accepted));
-    }
-    catch (reason) { setError(errorMessage(reason)); }
-    finally { setQueueExecuting(false); }
   }
 
   async function renameProject() {
@@ -358,9 +298,9 @@ export default function FactorAnalysisDetailPage() {
         setCurrentVersion(nextVersion);
         setSelectedVersion(nextVersion.version);
         setParameters(nextDraftParameters);
-        setWorkflowInstanceId(null);
-        setWorkflowState("IDLE");
-        setWorkflowError(null);
+        setWorkflowInstanceId(nextProject.draft.workflow_instance_id);
+        setWorkflowState(nextProject.draft.state);
+        setWorkflowError(nextProject.draft.error);
       } else if (nextProject.draft) {
         const nextDraftParameters = isFactorAnalysisDraftParameters(nextProject.draft.parameters) ? structuredClone(nextProject.draft.parameters) : null;
         setCurrentVersion(null);
@@ -415,7 +355,7 @@ export default function FactorAnalysisDetailPage() {
       dslValid={analysisReady}
       parameterError={parameterError}
       project={project}
-      queueCount={queueItems.length}
+      queueCount={queue.items.length}
       readOnly={readOnly}
       stopping={stopping}
       submitting={submitting}
@@ -437,7 +377,7 @@ export default function FactorAnalysisDetailPage() {
       onStop={stopAnalysis}
       onParameters={setParameters}
       onQueue={() => { setQueueRemark(""); setQueueSubmitOpen(true); }}
-      onValidity={setDslValid}
+      onValidity={(valid, compilation) => setDslCompilation(valid && compilation ? compilation : null)}
       onVersion={selectVersion}
     />}>
       {activeWorkflow && workflowInstanceId
@@ -475,19 +415,21 @@ export default function FactorAnalysisDetailPage() {
     <RenameDialog description="项目名称会同步更新到项目列表和研究页面。" error={renameProjectOpen ? error : undefined} inputId="factor-project-title" label="项目名称" maxLength={128} open={renameProjectOpen} submitting={renaming} title="重命名项目" value={projectTitle} onOpenChange={setRenameProjectOpen} onRename={renameProject} onValue={setProjectTitle} />
     <RenameDialog description={`修改 v${selectedVersion ?? ""} 的显示名称，不影响版本参数和结果。`} error={renameVersionOpen ? error : undefined} inputId="factor-version-title" label="版本名称" maxLength={512} open={renameVersionOpen} submitting={renaming} title={`重命名版本 v${selectedVersion ?? ""}`} value={versionTitle} onOpenChange={setRenameVersionOpen} onRename={renameVersion} onValue={setVersionTitle} />
     <DeleteVersionDialog error={deleteVersionOpen ? error : undefined} open={deleteVersionOpen} submitting={deletingVersion} version={selectedVersion} onDelete={deleteVersion} onOpenChange={setDeleteVersionOpen} />
-    <QueueSubmitDialog open={queueSubmitOpen} remark={queueRemark} submitting={queueExecuting} onOpenChange={setQueueSubmitOpen} onRemark={setQueueRemark} onSubmit={submitToQueue} />
-    <ExecutionQueuePanel deletingId={queueDeletingId} executing={queueExecuting} items={queueItems} loadError={queueLoadError} open={queueOpen} savingId={queueSavingId} validate={isFactorAnalysisParameters} onDelete={deleteQueueItem} onExecute={executeQueue} onOpenChange={setQueueOpen} onUpdate={updateQueueItem} />
+    <QueueSubmitDialog open={queueSubmitOpen} remark={queueRemark} submitting={queue.executing} onOpenChange={setQueueSubmitOpen} onRemark={setQueueRemark} onSubmit={submitToQueue} />
+    <ExecutionQueuePanel executing={queue.executing} items={queue.items} loadError={queue.loadError} open={queueOpen} validate={isFactorAnalysisParameters} onDelete={queue.remove} onExecute={queue.execute} onOpenChange={setQueueOpen} onUpdate={queue.update} />
   </>;
 }
-function validAnalysisContract(parameters: FactorAnalysisParameters, catalog: DslCatalog | null) {
+function validAnalysisContract(parameters: FactorAnalysisParameters, document: DslDocument, catalog: DslCatalog | null) {
   if (!catalog) return false;
-  const numericDerivatives = Object.entries(parameters.dataset_query.derivatives)
+  const numericDerivatives = Object.entries(document.derivatives)
     .filter(([, node]) => catalog.operators.find((operator) => operator.op === node.op)?.output_kind !== "BOOL")
     .map(([name]) => name);
-  const outputs = new Set([...parameters.dataset_query.factors, ...numericDerivatives]);
-  const derivatives = new Set(numericDerivatives);
+  const outputs = new Set([...document.factors, ...numericDerivatives]);
   return parameters.factor_columns.length > 0
     && parameters.factor_columns.every((column) => outputs.has(column))
     && parameters.return_columns.length > 0
-    && parameters.return_columns.every((column) => derivatives.has(column));
+    && parameters.return_columns.every((column) => {
+      const node = parameters.dataset_query.derivatives[column];
+      return node !== undefined && catalog.operators.find((operator) => operator.op === node.op)?.output_kind !== "BOOL";
+    });
 }

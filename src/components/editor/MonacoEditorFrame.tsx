@@ -1,5 +1,5 @@
 import { Maximize2, Minimize2 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { cn } from "@/assets/lib/utils";
 import { Button } from "@/ui/button";
@@ -9,22 +9,30 @@ export default function MonacoEditorFrame({ actions, children, className }: { ac
   const [fullScreen, setFullScreen] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const synchronize = () => setFullScreen(document.fullscreenElement === frame.current);
-    document.addEventListener("fullscreenchange", synchronize);
-    return () => {
-      document.removeEventListener("fullscreenchange", synchronize);
+  useLayoutEffect(() => {
+    const element = frame.current;
+    if (!fullScreen || !element) return undefined;
+
+    element.showPopover();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFullScreen(false);
     };
-  }, []);
+    window.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape, true);
+      if (element.matches(":popover-open")) element.hidePopover();
+    };
+  }, [fullScreen]);
 
   function toggleFullScreen() {
-    if (!frame.current) return;
-    const operation = document.fullscreenElement === frame.current ? document.exitFullscreen() : frame.current.requestFullscreen();
-    operation.catch(() => setFullScreen(false));
+    setFullScreen((current) => !current);
   }
 
-  const label = fullScreen ? "退出全屏" : "全屏编辑";
-  return <div className={cn("monaco-editor-frame flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background", className)} ref={frame}>
+  const label = fullScreen ? "退出窗口内全屏" : "窗口内全屏编辑";
+  return <div className={cn("monaco-editor-frame flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background", className)} popover={fullScreen ? "manual" : undefined} ref={frame}>
     <div className="monaco-editor-frame__toolbar flex shrink-0 items-center justify-between gap-2 border-b px-2 py-1">
       <div className="flex min-w-0 items-center gap-1.5">{actions}</div>
       <Button aria-label={label} className="shrink-0 text-muted-foreground hover:text-foreground" onClick={toggleFullScreen} size="icon-sm" title={label} variant="ghost">

@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 export const KeepAliveActiveContext = createContext(true);
 export const KeepAlivePortalContainerContext = createContext<HTMLElement | null>(null);
 
-export function useKeepAliveActive() {
+function useKeepAliveActive() {
   return useContext(KeepAliveActiveContext);
 }
 

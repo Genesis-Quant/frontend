@@ -96,7 +96,7 @@ export class FactorAnalytics {
     }));
   }
 
-  async longShortSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<LongShortPoint[]> {
+  async longShortSeries(factor: string, returnColumn: string, range?: FactorDateRange): Promise<LongShortPoint[]> {
     const [lowColumn, highColumn] = endpointColumnNames(factor, returnColumn);
     const low = identifier(lowColumn);
     const high = identifier(highColumn);

@@ -1,4 +1,4 @@
-import { jsonDslSource } from "@/assets/lib/dslSource";
+import { initialDslSource } from "@/assets/lib/dslSource";
 
 export type DerivativeNode = {
   type: "DIRECT" | "TS" | "CS";
@@ -20,6 +20,11 @@ export type DslSource = {
   language: DslLanguage;
   json_source: string;
   python_source: string;
+};
+
+export type DslCompilation = {
+  sourceKey: string;
+  document: DslDocument;
 };
 
 export type QueryParameters = {
@@ -70,7 +75,7 @@ export function isFactorQuery(value: unknown): value is FactorQuery {
     && isDslSource(value.dsl_source);
 }
 
-export function isDslSource(value: unknown): value is DslSource {
+function isDslSource(value: unknown): value is DslSource {
   return isRecord(value)
     && (value.language === "json" || value.language === "python")
     && typeof value.json_source === "string"
@@ -140,8 +145,8 @@ export const industryFields: { label: string; value: IndustryField }[] = [
   { label: "申万三级（industry_l3）", value: "industry_l3" }
 ];
 
-export const analysisReturnColumns = (maxLags: number) => Array.from({ length: maxLags }, (_, lag) => `ret${lag}`);
-export const analysisManagedFactors = [
+const analysisReturnColumns = (maxLags: number) => Array.from({ length: maxLags }, (_, lag) => `ret${lag}`);
+const analysisManagedFactors = [
   "circ_mv",
   "total_mv",
   ...industryFields.map((field) => field.value)
@@ -272,7 +277,7 @@ export type FactorOutput = {
   modified_at: string;
 };
 
-export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string, endDate: string): FactorQuery => {
+const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string, endDate: string): FactorQuery => {
   const factor = stockPools.find((item) => item.value === stockPool)?.factor;
   if (!factor) throw new Error(`不支持的指数股票池：${stockPool}`);
   const dsl: DslDocument = {
@@ -293,11 +298,11 @@ export const stockPoolQuery = (stockPool: IndexStockPoolCode, startDate: string,
     lookback: "P0D",
     codes: [],
     ...dsl,
-    dsl_source: jsonDslSource(dsl)
+    dsl_source: initialDslSource(dsl)
   };
 };
 
-export const stockPoolCode = (parameters: FactorAnalysisParameters): StockPoolSelection => {
+const stockPoolCode = (parameters: FactorAnalysisParameters): StockPoolSelection => {
   if (parameters.codes_query !== null && validAnalysisCodesQuery(parameters.codes_query)) {
     const codesFactor = managedStockPoolFactor(parameters.codes_query);
     const configured = stockPools.find((item) => item.factor !== null && item.factor === codesFactor)?.value;
@@ -389,13 +394,13 @@ export const setAnalysisDsl = (parameters: FactorAnalysisParameters, dsl: DslDoc
   };
 };
 
-export const analysisExecutionParameters = (parameters: FactorAnalysisParameters): FactorAnalysisParameters => {
+export const analysisExecutionParameters = (parameters: FactorAnalysisParameters, document: DslDocument): FactorAnalysisParameters => {
   if (parameters.factor_columns.length > 0) return parameters;
-  const factor = Object.keys(analysisDsl(parameters).derivatives).at(-1);
+  const factor = Object.keys(document.derivatives).at(-1);
   return factor === undefined ? parameters : { ...parameters, factor_columns: [factor] };
 };
 
-export const defaultCodesQuery = (): FactorQuery => stockPoolQuery("000300.SH", "2020-01-01", "2026-01-01");
+const defaultCodesQuery = (): FactorQuery => stockPoolQuery("000300.SH", "2020-01-01", "2026-01-01");
 
 export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
   const dsl: DslDocument = {
@@ -423,7 +428,7 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
         ...forwardReturnDerivatives("close_hfq", 10)
       },
       filters: [...dsl.filters],
-      dsl_source: jsonDslSource(dsl)
+      dsl_source: initialDslSource(dsl)
     },
     factor_columns: ["momentum_20d"],
     return_columns: analysisReturnColumns(10),
@@ -490,13 +495,6 @@ export function factorReportParameterIssues(value: unknown): string[] {
   if (!isIntegerAtLeast(value.n_groups, 2)) issues.push("n_groups 必须是至少为 2 的整数");
   if (!isIntegerAtLeast(value.n_select, 1)) issues.push("n_select 必须是至少为 1 的整数");
   return issues;
-}
-
-export function requireFactorQuery(value: unknown): FactorQuery {
-  if (!isFactorQuery(value)) {
-    throw new Error("查询参数结构无效，缺少完整 DSL 双源码。");
-  }
-  return structuredClone(value);
 }
 
 function forwardReturnDerivatives(priceField: PriceField, maxLags: number): Record<string, DerivativeNode> {

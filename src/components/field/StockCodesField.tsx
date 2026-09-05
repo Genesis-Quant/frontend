@@ -102,13 +102,13 @@ export default function StockCodesField({ className, codes, disabled = false, on
   const count = normalizeCodes(codes).length;
   return <div className={cn("field-block", className)}>
     <Label>股票代码</Label>
-    <Button className="w-full justify-start font-normal" disabled={disabled} type="button" variant="outline" onClick={() => setOpen(true)}>{count} 只股票</Button>
+    <Button className="w-full justify-start font-normal" disabled={disabled} type="button" variant="outline" onClick={() => setOpen(true)}>{stockCountLabel(count)}</Button>
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>股票代码</DialogTitle><DialogDescription>输入全部股票代码，或从已有查询结果的 Parquet 中导入并按 code 去重。</DialogDescription></DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3"><Label htmlFor="stock-codes-text">股票列表</Label><span className="text-xs text-muted-foreground">{draftCodes.length} 只股票</span></div>
+            <div className="flex items-center justify-between gap-3"><Label htmlFor="stock-codes-text">股票列表</Label><span className="text-xs text-muted-foreground">{stockCountLabel(draftCodes.length)}</span></div>
             <textarea id="stock-codes-text" className="min-h-72 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm leading-6 outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={readOnly || importing} placeholder={"000001.SZ\n600000.SH"} value={text} onChange={(event) => changeText(event.target.value)} />
             <p className="text-xs text-muted-foreground">支持换行、空格、逗号或分号分隔，保存时自动去重。</p>
           </div>
@@ -132,4 +132,8 @@ function normalizeCodes(codes: readonly string[]) {
 
 function formatCodes(codes: readonly string[]) {
   return normalizeCodes(codes).join("\n");
+}
+
+function stockCountLabel(count: number) {
+  return count === 0 ? "全市场" : `${count} 只股票`;
 }

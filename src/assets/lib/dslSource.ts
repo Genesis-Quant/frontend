@@ -8,12 +8,16 @@ const pythonKeywords = new Set([
   "yield"
 ]);
 
-export function jsonDslSource(document: DslDocument): DslSource {
+export function initialDslSource(document: DslDocument): DslSource {
   return {
-    language: "json",
+    language: "python",
     json_source: JSON.stringify(document, null, 2),
     python_source: dslToPython(document)
   };
+}
+
+export function dslSourceKey(source: DslSource) {
+  return `${source.language}\u0000${source.json_source}\u0000${source.python_source}`;
 }
 
 export function dslSourceText(source: DslSource, language = source.language): string {

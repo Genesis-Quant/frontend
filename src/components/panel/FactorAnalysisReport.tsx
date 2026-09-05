@@ -189,7 +189,7 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
     if (!session || !metrics || !factor || !returnColumn || rangeFactor !== factor) return undefined;
     let cancelled = false;
     setReturnLoading(true);
-    session.longShortSeries(factor, returnColumn, parameters.n_groups, { start: startDate, end: endDate })
+    session.longShortSeries(factor, returnColumn, { start: startDate, end: endDate })
       .then((rows) => { if (!cancelled) setLongShort(rows); })
       .catch((reason) => { if (!cancelled) setError(errorMessage(reason)); })
       .finally(() => { if (!cancelled) setReturnLoading(false); });

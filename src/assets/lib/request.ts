@@ -10,7 +10,7 @@ function requestKey(config: AxiosRequestConfig) {
   return JSON.stringify({ method: config.method || "GET", url: config.url, params: config.params || null, data: config.data || null, responseType: config.responseType || null });
 }
 
-export async function request<T>(config: AxiosRequestConfig): Promise<T> {
+async function request<T>(config: AxiosRequestConfig): Promise<T> {
   const token = localStorage.getItem(tokenStorageKey);
   const headers = { ...config.headers, ...token ? { Authorization: `Bearer ${token}` } : {} };
   const key = requestKey(config);

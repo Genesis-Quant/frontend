@@ -15,21 +15,21 @@ import { Label } from "@/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/ui/sheet";
 
 type ExecutionQueuePanelProps<T> = {
-  deletingId: string | null;
   executing: boolean;
   items: ProjectQueueItem<T>[];
   loadError?: string | null;
   open: boolean;
-  savingId: string | null;
   validate: (value: unknown) => value is T;
-  onDelete: (item: ProjectQueueItem<T>) => Promise<void>;
+  onDelete: (item: ProjectQueueItem<T>) => void | Promise<void>;
   onExecute: () => Promise<void>;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (item: ProjectQueueItem<T>, remark: string, parameters: T) => Promise<void>;
+  onUpdate: (item: ProjectQueueItem<T>, remark: string, parameters: T) => void | Promise<void>;
 };
 
-export default function ExecutionQueuePanel<T>({ deletingId, executing, items, loadError, open, savingId, validate, onDelete, onExecute, onOpenChange, onUpdate }: ExecutionQueuePanelProps<T>) {
+export default function ExecutionQueuePanel<T>({ executing, items, loadError, open, validate, onDelete, onExecute, onOpenChange, onUpdate }: ExecutionQueuePanelProps<T>) {
   const [editing, setEditing] = useState<ProjectQueueItem<T> | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [remark, setRemark] = useState("");
   const [source, setSource] = useState("");
   const [editError, setEditError] = useState("");
@@ -44,7 +44,8 @@ export default function ExecutionQueuePanel<T>({ deletingId, executing, items, l
   }
 
   async function save() {
-    if (!editing || executing) return;
+    if (!editing || executing || saving) return;
+    setSaving(true);
     try {
       const parsed: unknown = JSON.parse(source);
       if (!validate(parsed)) throw new Error("参数结构不完整。");
@@ -52,6 +53,18 @@ export default function ExecutionQueuePanel<T>({ deletingId, executing, items, l
       setEditing(null);
     } catch (reason) {
       setEditError(errorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(item: ProjectQueueItem<T>) {
+    if (executing || deletingId !== null) return;
+    setDeletingId(item.id);
+    try {
+      await onDelete(item);
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -81,8 +94,8 @@ export default function ExecutionQueuePanel<T>({ deletingId, executing, items, l
                   {item.error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs leading-5 text-destructive">{item.error}</div> : null}
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <Button aria-label="编辑队列任务" disabled={executing || !pending || savingId !== null} size="icon-xs" variant="ghost" onClick={() => openEditor(item)}><Pencil /></Button>
-                  <Button aria-label="删除队列任务" disabled={executing || active || deletingId !== null} size="icon-xs" variant="ghost" onClick={() => onDelete(item)}>{deletingId === item.id ? <Loader2 className="animate-spin" /> : <Trash2 />}</Button>
+                  <Button aria-label="编辑队列任务" disabled={executing || !pending || saving} size="icon-xs" variant="ghost" onClick={() => openEditor(item)}><Pencil /></Button>
+                  <Button aria-label="删除队列任务" disabled={executing || active || deletingId !== null} size="icon-xs" variant="ghost" onClick={() => remove(item)}>{deletingId === item.id ? <Loader2 className="animate-spin" /> : <Trash2 />}</Button>
                 </div>
               </div>
             </div>;
@@ -92,12 +105,12 @@ export default function ExecutionQueuePanel<T>({ deletingId, executing, items, l
         <SheetFooter className="border-t px-5 py-4"><Button disabled={executing || stats.pending === 0 || stats.pending > maxBatchRunItems} onClick={onExecute}>{executing ? <Loader2 className="animate-spin" /> : <Play />}批量执行{stats.pending ? `（${stats.pending}）` : ""}</Button></SheetFooter>
       </SheetContent>
     </Sheet>
-    <Dialog open={editing !== null} onOpenChange={(nextOpen) => { if (!nextOpen && savingId === null) setEditing(null); }}>
+    <Dialog open={editing !== null} onOpenChange={(nextOpen) => { if (!nextOpen && !saving) setEditing(null); }}>
       <DialogContent className="flex h-[82vh] max-h-[860px] flex-col overflow-hidden p-0 sm:max-w-4xl">
         <DialogHeader className="border-b px-5 py-4 pr-12"><DialogTitle>编辑队列任务</DialogTitle></DialogHeader>
         <div className="space-y-3 px-5 pt-4"><div className="space-y-2"><Label htmlFor="queue-edit-remark">备注（可选）</Label><Input disabled={executing} id="queue-edit-remark" maxLength={512} value={remark} onChange={(event) => setRemark(event.target.value)} /></div></div>
         <div className="min-h-0 flex-1 p-5 pt-3"><JsonEditor ariaLabel="队列任务 JSON 参数" modelPath={`json://execution-queue/${editing?.id ?? "draft"}/parameters.json`} readOnly={executing} value={source} onChange={(value) => { setSource(value); setEditError(""); }} /></div>
-        <DialogFooter className="border-t px-5 py-3"><span className="mr-auto text-xs text-destructive">{editError}</span><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button disabled={executing || savingId !== null} onClick={save}>{savingId !== null ? <Loader2 className="animate-spin" /> : null}保存</Button></DialogFooter>
+        <DialogFooter className="border-t px-5 py-3"><span className="mr-auto text-xs text-destructive">{editError}</span><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button disabled={executing || saving} onClick={save}>{saving ? <Loader2 className="animate-spin" /> : null}保存</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>;

@@ -1,6 +1,7 @@
 import type { Monaco } from "@monaco-editor/react";
 
 import { formatPythonDslSource } from "@/assets/lib/dslFormatting";
+import { objectSchema, resolveSchema, schemaVariants } from "@/assets/lib/dslSchema";
 import type { DslCatalog, DslOperator, JsonSchema } from "@/types/factor";
 
 type OutputKind = DslOperator["output_kind"];
@@ -29,6 +30,18 @@ type PythonSymbol = {
   outputKind: OutputKind;
   operator?: DslOperator;
   signature?: string;
+};
+type PythonDefinition = {
+  end: number;
+  name: string;
+  scopeEnd: number;
+  scopeStart: number;
+  start: number;
+};
+export type PythonDslDiagnostic = {
+  end: number;
+  message: string;
+  start: number;
 };
 type LexicalSource = {
   comments: Array<{ end: number; start: number }>;
@@ -89,6 +102,14 @@ export function registerPythonDslLanguageProviders(monaco: Monaco, uri: string, 
       provideHover(model: TextModel, position: Position) {
         if (model.uri.toString() !== uri) return null;
         return pythonHover(model, position, catalog);
+      }
+    }),
+    monaco.languages.registerDefinitionProvider(selector, {
+      provideDefinition(model: TextModel, position: Position) {
+        if (model.uri.toString() !== uri) return null;
+        const definition = pythonDslDefinition(model.getValue(), model.getOffsetAt(position));
+        if (!definition) return null;
+        return { uri: model.uri, range: rangeFromOffsets(model, definition.start, definition.end) };
       }
     }),
     monaco.languages.registerDocumentSemanticTokensProvider(selector, {
@@ -158,6 +179,142 @@ function collectSemanticContext(masked: string): SemanticContext {
     }
   }
   return { classNames, functionNames, parameterDeclarations, parameterNames };
+}
+
+export function pythonDslDiagnostics(source: string): PythonDslDiagnostic[] {
+  const masked = lexPython(source).masked;
+  const calls = operatorCallRanges(masked);
+  const containers: Array<{ close: number; open: number }> = [];
+  return calls.flatMap((call) => {
+    while (containers.length && containers.at(-1)!.close <= call.open) containers.pop();
+    const nested = containers.length > 0;
+    containers.push(call);
+    if (!nested) return [];
+    const name = nestedOperationNameRange(source, masked, call.open, call.close);
+    if (!name) return [];
+    return [{
+      ...name,
+      message: "嵌套算符是匿名列，必须省略名称；如需输出独立列，请先赋值给顶层变量"
+    }];
+  });
+}
+
+function collectDefinitions(masked: string): PythonDefinition[] {
+  const definitions: PythonDefinition[] = [];
+  const functionScopes: Array<{ end: number; start: number }> = [];
+  const functionPattern = /^([ \t]*)def[ \t]+([A-Za-z_]\w*)[ \t]*\(/gm;
+  for (const match of masked.matchAll(functionPattern)) {
+    const declarationStart = (match.index ?? 0) + match[0].indexOf(match[2]);
+    const open = (match.index ?? 0) + match[0].lastIndexOf("(");
+    const close = matchingDelimiter(masked, open, "(", ")");
+    const scopeStart = match.index ?? 0;
+    const scopeEnd = pythonBlockEnd(masked, close < 0 ? open : close, match[1].length);
+    functionScopes.push({ end: scopeEnd, start: scopeStart });
+    definitions.push({
+      end: declarationStart + match[2].length,
+      name: match[2],
+      scopeEnd: masked.length,
+      scopeStart: 0,
+      start: declarationStart
+    });
+    if (close < 0) continue;
+    for (const segment of topLevelSegmentRanges(masked, open + 1, close)) {
+      const parameter = /^[ \t]*\*{0,2}[ \t]*([A-Za-z_]\w*)/.exec(masked.slice(segment.start, segment.end));
+      if (!parameter) continue;
+      const start = segment.start + (parameter.index ?? 0) + parameter[0].lastIndexOf(parameter[1]);
+      definitions.push({
+        end: start + parameter[1].length,
+        name: parameter[1],
+        scopeEnd,
+        scopeStart,
+        start
+      });
+    }
+  }
+
+  definitions.push(...assignmentDefinitions(masked, functionScopes));
+
+  for (const match of masked.matchAll(/\bfor[ \t]+([A-Za-z_]\w*)[ \t]+in\b/g)) {
+    const start = (match.index ?? 0) + match[0].indexOf(match[1]);
+    const scope = innermostScope(functionScopes, start);
+    definitions.push({
+      end: start + match[1].length,
+      name: match[1],
+      scopeEnd: scope?.end ?? masked.length,
+      scopeStart: scope?.start ?? 0,
+      start
+    });
+  }
+  return definitions;
+}
+
+function assignmentDefinitions(masked: string, functionScopes: Array<{ end: number; start: number }>) {
+  const definitions: PythonDefinition[] = [];
+  const nestedLineStarts = lineStartsWithinDelimiter(masked);
+  for (const match of masked.matchAll(/^([ \t]*)([A-Za-z_]\w*)[ \t]*(?::[^=\n]+)?=[ \t]*/gm)) {
+    const lineStart = match.index ?? 0;
+    if (nestedLineStarts.has(lineStart)) continue;
+    const start = lineStart + match[1].length;
+    const scope = innermostScope(functionScopes, start);
+    definitions.push({
+      end: start + match[2].length,
+      name: match[2],
+      scopeEnd: scope?.end ?? masked.length,
+      scopeStart: scope?.start ?? 0,
+      start
+    });
+  }
+  return definitions;
+}
+
+function innermostScope(scopes: Array<{ end: number; start: number }>, offset: number) {
+  return scopes
+    .filter((candidate) => offset >= candidate.start && offset < candidate.end)
+    .sort((left, right) => right.start - left.start)[0];
+}
+
+function lineStartsWithinDelimiter(source: string) {
+  const nested = new Set<number>();
+  const stack: string[] = [];
+  const opening = new Set(["(", "[", "{"]);
+  const closing: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  let lineStart = true;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (lineStart) {
+      if (stack.length) nested.add(index);
+      lineStart = false;
+    }
+    if (opening.has(character)) stack.push(character);
+    else if (closing[character] && stack.at(-1) === closing[character]) stack.pop();
+    if (character === "\n") lineStart = true;
+  }
+  return nested;
+}
+
+function pythonBlockEnd(source: string, headerEnd: number, indentation: number) {
+  let lineStart = source.indexOf("\n", headerEnd);
+  if (lineStart < 0) return source.length;
+  lineStart += 1;
+  while (lineStart < source.length) {
+    const lineEnd = source.indexOf("\n", lineStart);
+    const end = lineEnd < 0 ? source.length : lineEnd;
+    const line = source.slice(lineStart, end);
+    if (line.trim() && (/^[ \t]*/.exec(line)?.[0].length ?? 0) <= indentation) return lineStart;
+    lineStart = end + 1;
+  }
+  return source.length;
+}
+
+function identifierRangeAt(source: string, offset: number) {
+  let cursor = Math.min(Math.max(offset, 0), source.length);
+  if (!/[A-Za-z0-9_]/.test(source[cursor] ?? "") && cursor > 0 && /[A-Za-z0-9_]/.test(source[cursor - 1])) cursor -= 1;
+  if (!/[A-Za-z0-9_]/.test(source[cursor] ?? "")) return null;
+  let start = cursor;
+  let end = cursor + 1;
+  while (start > 0 && /[A-Za-z0-9_]/.test(source[start - 1])) start -= 1;
+  while (end < source.length && /[A-Za-z0-9_]/.test(source[end])) end += 1;
+  return /^[A-Za-z_]\w*$/.test(source.slice(start, end)) ? { end, start } : null;
 }
 
 function semanticRole(source: string, name: string, start: number, end: number, context: SemanticContext): SemanticRole {
@@ -258,7 +415,8 @@ function pythonCompletions(monaco: Monaco, model: TextModel, position: Position,
       operatorMember[3] ?? "",
       catalog,
       target,
-      resultList
+      resultList,
+      Boolean(enclosingOperatorCall(lexical.masked, operatorMember.index ?? offset))
     );
   }
   const categoryMember = /\b(DIRECT|TS|CS)\.([A-Za-z_]\w*)?$/.exec(maskedPrefix);
@@ -310,18 +468,20 @@ function operatorCategoryItems(monaco: Monaco, namespace: OperatorType, partial:
   }));
 }
 
-function operatorCompletionItems(monaco: Monaco, model: TextModel, position: Position, namespace: OperatorType, category: string, partial: string, catalog: DslCatalog, target: CompletionTarget, resultList?: typeof resultVariables[number]): CompletionItem[] {
+function operatorCompletionItems(monaco: Monaco, model: TextModel, position: Position, namespace: OperatorType, category: string, partial: string, catalog: DslCatalog, target: CompletionTarget, resultList?: typeof resultVariables[number], nested = false): CompletionItem[] {
   const operators = catalog.operators.filter(
     (operator) => operator.type === namespace
       && operator.op.startsWith(`${category}.`)
       && (resultList !== "FILTERS" || operator.output_kind === "BOOL")
   );
-  const assignment = assignmentName(model.getValueInRange({
-    startLineNumber: position.lineNumber,
-    startColumn: 1,
-    endLineNumber: position.lineNumber,
-    endColumn: position.column
-  }));
+  const assignment = nested
+    ? undefined
+    : assignmentName(model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column
+      }));
   const outputName = assignment ?? (
     resultList === "FILTERS" ? "filter_name" : undefined
   );
@@ -750,20 +910,6 @@ function uniqueParameters(operators: DslOperator[]) {
   return [...parameters.values()];
 }
 
-function objectSchema(operator: DslOperator, key: "fields" | "params") {
-  return resolveSchema(operator.definition, operator.definition.properties?.[key]);
-}
-
-function resolveSchema(root: JsonSchema, schema: JsonSchema | undefined): JsonSchema {
-  if (!schema?.$ref?.startsWith("#/$defs/")) return schema ?? {};
-  return root.$defs?.[schema.$ref.slice("#/$defs/".length)] ?? schema;
-}
-
-function schemaVariants(root: JsonSchema, schema: JsonSchema) {
-  const resolved = resolveSchema(root, schema);
-  return resolved.anyOf?.map((variant) => resolveSchema(root, variant)) ?? [resolved];
-}
-
 function schemaTypes(root: JsonSchema, schema: JsonSchema) {
   return [...new Set(schemaVariants(root, schema).flatMap((variant) => Array.isArray(variant.type) ? variant.type : variant.type ? [variant.type] : variant.title === "Derivative" ? ["OP"] : []))];
 }
@@ -851,6 +997,25 @@ function operatorDocumentation(operator: DslOperator, namespace: OperatorType, c
 function resultVariableDescription(name: typeof resultVariables[number]) {
   if (name === "FACTORS") return "原始数据字段列表，类型必须为 list[str]。";
   return "过滤条件的命名 BOOL OP 列表。";
+}
+
+export function pythonDslDefinition(source: string, offset: number) {
+  const masked = lexPython(source).masked;
+  const reference = identifierRangeAt(masked, offset);
+  if (!reference) return null;
+  const name = source.slice(reference.start, reference.end);
+  const candidates = collectDefinitions(masked)
+    .filter((candidate) => candidate.name === name)
+    .filter((candidate) => reference.start >= candidate.scopeStart && reference.start < candidate.scopeEnd);
+  if (!candidates.length) return null;
+  const preceding = candidates.filter((candidate) => candidate.start <= reference.start);
+  const definitions = preceding.length ? preceding : candidates;
+  const definition = [...definitions]
+    .sort((left, right) => {
+      const scopeDifference = right.scopeStart - left.scopeStart;
+      return scopeDifference || right.start - left.start;
+    })[0];
+  return definition ? { end: definition.end, start: definition.start } : null;
 }
 
 function symbolDetail(symbol: PythonSymbol) {
@@ -972,9 +1137,45 @@ function matchingDelimiter(source: string, open: number, left: string, right: st
   return -1;
 }
 
+function operatorCallRanges(masked: string) {
+  const calls: Array<{ close: number; open: number }> = [];
+  for (const match of masked.matchAll(/\b(?:DIRECT|TS|CS)\.[A-Za-z_]\w*\.[A-Za-z_]\w*\s*\(/g)) {
+    const open = (match.index ?? 0) + match[0].lastIndexOf("(");
+    const close = matchingDelimiter(masked, open, "(", ")");
+    calls.push({ open, close: close < 0 ? masked.length : close });
+  }
+  return calls;
+}
+
+function nestedOperationNameRange(source: string, masked: string, open: number, close: number) {
+  const segments = topLevelSegmentRanges(masked, open + 1, close);
+  for (const segment of segments) {
+    const structure = masked.slice(segment.start, segment.end);
+    const keyword = /^\s*([A-Za-z_]\w*)\s*=/.exec(structure)?.[1];
+    if (keyword !== "name") continue;
+    const range = trimSourceRange(source, segment.start, segment.end);
+    const value = source.slice(range.start, range.end).replace(/^\s*name\s*=\s*/, "").trim();
+    if (value && value !== "None") return range;
+  }
+
+  const first = segments[0];
+  if (!first) return undefined;
+  const structure = masked.slice(first.start, first.end);
+  if (/^\s*[A-Za-z_]\w*\s*=/.test(structure)) return undefined;
+  const range = trimSourceRange(source, first.start, first.end);
+  const value = source.slice(range.start, range.end).trim();
+  return value && value !== "None" ? range : undefined;
+}
+
+function trimSourceRange(source: string, start: number, end: number) {
+  while (start < end && /\s/.test(source[start])) start += 1;
+  while (end > start && /\s/.test(source[end - 1])) end -= 1;
+  return { start, end };
+}
+
 function assignmentName(linePrefix: string) {
-  return /\b([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*(?:DIRECT|TS|CS)(?:\.[A-Za-z_]\w*)?\.[A-Za-z_]*$/.exec(linePrefix)?.[1]
-    ?? /\b([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*$/.exec(linePrefix)?.[1];
+  return /^\s*([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*(?:DIRECT|TS|CS)(?:\.[A-Za-z_]\w*)?\.[A-Za-z_]*$/.exec(linePrefix)?.[1]
+    ?? /^\s*([A-Za-z_]\w*)\s*(?::[^=]+)?=\s*$/.exec(linePrefix)?.[1];
 }
 
 function pythonLiteral(value: unknown): string {

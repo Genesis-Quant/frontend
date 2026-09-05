@@ -8,7 +8,7 @@ import { Button } from "@/ui/button";
 import { setBacktestStockPoolType, type BacktestCatalog, type BacktestParameters, type StrategyParameters } from "@/types/backtest";
 import { stockPools } from "@/types/factor";
 
-export default function BacktestEditor({ catalog, onChange, onValidityChange, parameters, projectId, readOnly = false }: { catalog: BacktestCatalog; onChange: (parameters: BacktestParameters) => void; onValidityChange: (valid: boolean) => void; parameters: BacktestParameters; projectId: number; readOnly?: boolean }) {
+export default function BacktestEditor({ catalog, editorScope, onChange, onValidityChange, parameters, projectId, readOnly = false }: { catalog: BacktestCatalog; editorScope: string; onChange: (parameters: BacktestParameters) => void; onValidityChange: (valid: boolean) => void; parameters: BacktestParameters; projectId: number; readOnly?: boolean }) {
   const [codePanel, setCodePanel] = useState<BacktestCodePanel | null>(null);
   const [codeValid, setCodeValid] = useState(true);
   const [strategyParametersValid, setStrategyParametersValid] = useState(true);
@@ -37,7 +37,7 @@ export default function BacktestEditor({ catalog, onChange, onValidityChange, pa
       <SwitchField checked={booleanConfig(parameters, "enableMinimumPerTransactionFee")} checkedText="5元" disabled={readOnly} label="最低手续费" uncheckedText="无" onChange={(enabled) => onChange(updateConfig(parameters, "enableMinimumPerTransactionFee", enabled))} />
       <SwitchField checked={parameters.codes_query !== null} checkedText="动态" disabled={readOnly} label="股票池类型" uncheckedText="静态" onChange={(dynamic) => onChange(setBacktestStockPoolType(parameters, dynamic))} />
       <SelectField className="col-span-2 space-y-2" label="基准指数" value={selectedBenchmark} options={benchmarkOptions} disabled={readOnly} onChange={(benchmark) => onChange(benchmark === "none" ? removeConfig(parameters, "benchmark") : updateConfig(parameters, "benchmark", benchmark))} />
-      <StrategyParameterField modelPath={`ini://backtest/${projectId}/strategy-parameters.ini`} parameters={parameters.params} readOnly={readOnly} onChange={(params) => onChange({ ...parameters, params })} onValidityChange={setStrategyParametersValid} />
+      <StrategyParameterField modelPath={`ini://backtest/${projectId}/${editorScope}/strategy-parameters.ini`} parameters={parameters.params} readOnly={readOnly} onChange={(params) => onChange({ ...parameters, params })} onValidityChange={setStrategyParametersValid} />
     </div>
 
     <div className="rounded-md border bg-muted/15 p-4">
@@ -50,7 +50,7 @@ export default function BacktestEditor({ catalog, onChange, onValidityChange, pa
       </div>
     </div>
 
-    <BacktestCodeModal catalog={catalog} panel={codePanel} parameters={parameters} projectId={projectId} readOnly={readOnly} onChange={onChange} onPanelChange={setCodePanel} onValidityChange={setCodeValid} />
+    <BacktestCodeModal catalog={catalog} editorScope={editorScope} key={editorScope} panel={codePanel} parameters={parameters} projectId={projectId} readOnly={readOnly} onChange={onChange} onPanelChange={setCodePanel} onValidityChange={setCodeValid} />
   </div>;
 }
 

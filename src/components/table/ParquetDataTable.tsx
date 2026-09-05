@@ -307,7 +307,7 @@ export default function ParquetDataTable({ columnConfigs, columns: suppliedColum
   </CardContent></Card>;
 }
 
-export function formatColumnName(column: string) {
+function formatColumnName(column: string) {
   const commonNames: Record<string, string> = { code: "证券代码", date: "日期", symbol: "证券代码", time: "时间" };
   return commonNames[column.toLowerCase()] ?? column;
 }

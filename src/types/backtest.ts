@@ -1,5 +1,5 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
-import { jsonDslSource } from "@/assets/lib/dslSource";
+import { initialDslSource } from "@/assets/lib/dslSource";
 
 export const callbackNames = ["initialize", "beforeTrading", "onBar", "onSnapshot", "onOrder", "onTrade", "afterTrading", "finalize"] as const;
 export type CallbackName = typeof callbackNames[number];
@@ -216,7 +216,7 @@ export type BatchResearchPage = {
   page_size: number;
 };
 
-export function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "start_date" | "end_date">): FactorQuery {
+function defaultBacktestCodesQuery(datasetQuery?: Pick<FactorQuery, "start_date" | "end_date">): FactorQuery {
   return withInitialDslSource({
     start_date: datasetQuery?.start_date ?? "2020-01-01",
     end_date: datasetQuery?.end_date ?? "2026-01-01",
@@ -488,7 +488,7 @@ function withInitialDslSource(query: Omit<FactorQuery, "dsl_source">): FactorQue
     derivatives: query.derivatives,
     filters: query.filters
   };
-  return { ...query, dsl_source: jsonDslSource(document) };
+  return { ...query, dsl_source: initialDslSource(document) };
 }
 
 export function backtestCodesDsl(parameters: BacktestParameters): DslDocument {

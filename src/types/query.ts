@@ -1,5 +1,5 @@
 import type { DslCatalog, DslDocument, DslSource, FactorQuery } from "@/types/factor";
-import { jsonDslSource } from "@/assets/lib/dslSource";
+import { initialDslSource } from "@/assets/lib/dslSource";
 
 export type QueryProjectSortField = "id" | "title" | "state" | "workflow_instance_id" | "updated_at";
 
@@ -52,7 +52,7 @@ export function defaultQueryParameters(): FactorQuery {
     lookback: "P0D",
     codes: ["000001.SZ", "600000.SH"],
     ...dsl,
-    dsl_source: jsonDslSource(dsl)
+    dsl_source: initialDslSource(dsl)
   };
 }
 

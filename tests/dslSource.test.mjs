@@ -1,7 +1,44 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dslToPython } from "../src/assets/lib/dslSource.ts";
+import { dslToPython, initialDslSource } from "../src/assets/lib/dslSource.ts";
+import { analysisExecutionParameters, defaultAnalysisParameters } from "../src/types/factor.ts";
+
+test("selects the active compiled factor instead of the stored preview without rewriting sources", () => {
+  const parameters = defaultAnalysisParameters();
+  parameters.factor_columns = [];
+  const original = structuredClone(parameters);
+  const document = {
+    factors: [],
+    derivatives: {
+      new_signal: { type: "DIRECT", op: "unary.neg", fields: { col: "close_hfq" }, params: {} }
+    },
+    filters: []
+  };
+
+  const executable = analysisExecutionParameters(parameters, document);
+
+  assert.deepEqual(executable.factor_columns, ["new_signal"]);
+  assert.deepEqual(executable.dataset_query, original.dataset_query);
+  assert.deepEqual(parameters, original);
+});
+
+test("keeps explicitly selected factors when compiling another preview", () => {
+  const parameters = defaultAnalysisParameters();
+  parameters.factor_columns = ["first", "second"];
+  const document = { factors: ["close_hfq"], derivatives: {}, filters: [] };
+
+  assert.equal(analysisExecutionParameters(parameters, document), parameters);
+  assert.deepEqual(parameters.factor_columns, ["first", "second"]);
+});
+
+test("uses Python as the active language for newly created DSL sources", () => {
+  const source = initialDslSource({ factors: ["close"], derivatives: {}, filters: [] });
+
+  assert.equal(source.language, "python");
+  assert.equal(source.python_source, 'FACTORS = ["close"]\n\nFILTERS = []');
+  assert.match(source.json_source, /"factors"/);
+});
 
 test("renders hierarchical Python DSL and omits anonymous operation names", () => {
   const source = dslToPython({

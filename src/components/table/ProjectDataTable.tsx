@@ -97,7 +97,7 @@ export default function ProjectDataTable<TData extends { id: number }, TSort ext
     state: { sorting: sortingState }
   });
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
-  const minimumWidth = columns.reduce((total, column) => total + column.size, 0);
+  const totalColumnSize = columns.reduce((total, column) => total + column.size, 0);
 
   function clearSearch() {
     setSearchInput("");
@@ -118,7 +118,8 @@ export default function ProjectDataTable<TData extends { id: number }, TSort ext
         {searchInput ? <Button aria-label="清空搜索" className="absolute right-1 top-1/2 -translate-y-1/2" size="icon-sm" variant="ghost" onClick={clearSearch}><X /></Button> : null}
       </div>
     </div>
-    <Table className="table-fixed" style={{ minWidth: minimumWidth }}>
+    <Table className="table-fixed">
+      <colgroup>{columns.map((column) => <col key={column.id} style={{ width: `${column.size / totalColumnSize * 100}%` }} />)}</colgroup>
       <TableHeader>
         {table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => {
           const config = columnById[header.column.id];
@@ -129,14 +130,14 @@ export default function ProjectDataTable<TData extends { id: number }, TSort ext
                 <button className="inline-flex min-w-0 items-center gap-1.5 text-left transition-colors hover:text-foreground" title={`按${config.label}排序`} onClick={header.column.getToggleSortingHandler()}><span className="truncate">{config.label}</span>{sortingIcon(sorted)}</button>
               </div>
             : <div className={cn("py-2", config.align === "right" && "text-right")}>{config.label}</div>;
-          return <TableHead aria-sort={ariaSortValue(sorted)} className={cn("px-3", config.align === "right" && "text-right")} key={header.id} style={{ width: header.getSize() }}>{content}</TableHead>;
+          return <TableHead aria-sort={ariaSortValue(sorted)} className={cn("px-3", config.align === "right" && "text-right")} key={header.id}>{content}</TableHead>;
         })}</TableRow>)}
       </TableHeader>
       <TableBody>
         {loading ? <ProjectTableState colSpan={columns.length}><Loader2 className="animate-spin" />正在加载...</ProjectTableState> : null}
         {!loading && table.getRowModel().rows.map((row) => <TableRow className="group cursor-pointer" key={row.id} tabIndex={0} onClick={() => onOpen(row.original)} onKeyDown={(event) => openWithKeyboard(event, row.original)}>{row.getAllCells().map((cell) => {
           const config = columnById[cell.column.id];
-          return <TableCell className={cn("px-3 py-4", config.align === "right" && "text-right", config.className)} key={cell.id} style={{ width: cell.column.getSize() }}><table.FlexRender cell={cell} /></TableCell>;
+          return <TableCell className={cn("px-3 py-4", config.align === "right" && "text-right", config.className)} key={cell.id}><table.FlexRender cell={cell} /></TableCell>;
         })}</TableRow>)}
         {!loading && !rows.length ? <ProjectTableState colSpan={columns.length}>{search.value ? "没有符合搜索条件的项目" : emptyMessage}</ProjectTableState> : null}
       </TableBody>

@@ -2,6 +2,7 @@ import type { Monaco } from "@monaco-editor/react";
 import { findNodeAtLocation, getLocation, getNodeValue, parseTree, type Node } from "jsonc-parser";
 
 import { formatJsonDslSource } from "@/assets/lib/dslFormatting";
+import { objectSchema, resolveSchema, schemaVariants } from "@/assets/lib/dslSchema";
 import { jsonDefaults } from "@/assets/lib/monaco";
 import type { DerivativeNode, DslCatalog, DslDocument, DslOperator, JsonSchema } from "@/types/factor";
 
@@ -262,20 +263,6 @@ function schemaAtPath(operator: DslOperator, relative: (string | number)[]) {
     }
   }
   return schema;
-}
-
-function objectSchema(operator: DslOperator, key: "fields" | "params") {
-  return resolveSchema(operator.definition, operator.definition.properties?.[key]);
-}
-
-function resolveSchema(root: JsonSchema, schema: JsonSchema | undefined): JsonSchema {
-  if (!schema?.$ref?.startsWith("#/$defs/")) return schema ?? {};
-  return root.$defs?.[schema.$ref.slice("#/$defs/".length)] ?? schema;
-}
-
-function schemaVariants(root: JsonSchema, schema: JsonSchema) {
-  const resolved = resolveSchema(root, schema);
-  return resolved.anyOf?.map((item) => resolveSchema(root, item)) ?? [resolved];
 }
 
 function allowsDerivative(root: JsonSchema, schema: JsonSchema) {

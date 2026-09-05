@@ -2,11 +2,11 @@
 import type { BatchRunAccepted, BatchRunRequest, ProjectQueueItem } from "@/types/queue";
 import { terminalStates } from "@/types/workflow";
 
-type QueueApplication = "factor" | "backtest";
+export type QueueApplication = "factor" | "backtest";
 const queueSchemaVersion = 1;
 export const maxBatchRunItems = 100;
 
-export type ProjectQueueLoadResult<T> = {
+type ProjectQueueLoadResult<T> = {
   error: string | null;
   items: ProjectQueueItem<T>[];
 };
@@ -51,7 +51,7 @@ export function createProjectQueueItem<T>(remark: string, parameters: T): Projec
   };
 }
 
-export function autoSavedVersion(events: Record<string, unknown>[]) {
+function autoSavedVersion(events: Record<string, unknown>[]) {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event?.event === "AUTO_VERSION_SAVED" && typeof event.version === "number") return event.version;

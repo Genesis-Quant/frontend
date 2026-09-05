@@ -30,7 +30,7 @@ export function validCallback(callback: CallbackName, source: string) {
     && new Set(names).size === names.length;
 }
 
-export function validCallbacks(callbacks: Record<CallbackName, string>) {
+function validCallbacks(callbacks: Record<CallbackName, string>) {
   return callbackNames.every((callback) => validCallback(callback, callbacks[callback]));
 }
 
@@ -126,7 +126,6 @@ function topLevelDefault(mask: string, start: number, end: number) {
 export function validBacktestParameters(parameters: BacktestParameters) {
   return parameters.dataset_query.start_date.length > 0
     && parameters.dataset_query.end_date.length > 0
-    && parameters.dataset_query.factors.length + Object.keys(parameters.dataset_query.derivatives).length > 0
     && (parameters.codes_query !== null || parameters.dataset_query.codes.length > 0)
     && validCallbacks(parameters.callbacks);
 }
@@ -166,13 +165,6 @@ export function isBacktestParameters(value: unknown): value is BacktestParameter
     Object.keys(callbacks).length === callbackNames.length,
     callbackNames.every((name) => typeof callbacks[name] === "string" && validCallback(name, callbacks[name] as string))
   ].every(Boolean);
-}
-
-export function requireBacktestParameters(value: unknown): BacktestParameters {
-  if (!isBacktestParameters(value)) {
-    throw new Error("策略回测参数结构无效，无法打开项目或版本。");
-  }
-  return structuredClone(value);
 }
 
 export type BacktestReportParameters = Pick<BacktestParameters, "annual_trading_days" | "risk_free_rate">;

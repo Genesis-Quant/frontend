@@ -81,7 +81,7 @@ type FactorCandidateSelectionReportProps = {
   versions: FactorVersionListItem[];
 };
 
-export function FactorCandidateSelectionReport({ onOpenChange, open, projectId, projectTitle, versions }: FactorCandidateSelectionReportProps) {
+function FactorCandidateSelectionReport({ onOpenChange, open, projectId, projectTitle, versions }: FactorCandidateSelectionReportProps) {
   const sortedVersions = useMemo(() => [...versions].sort((left, right) => left.version - right.version), [versions]);
   const defaultSelected = useMemo(() => sortedVersions.slice(-Math.min(4, sortedVersions.length)).map((item) => String(item.version)), [sortedVersions]);
   const [manualSelected, setManualSelected] = useState<string[] | null>(null);
@@ -246,7 +246,7 @@ async function loadCandidate(projectId: number, versionNumber: number): Promise<
     parameters
   );
   try {
-    const [information, longShort, groupStatistics] = await Promise.all([analytics.informationSeries(factorName, returnColumn), analytics.longShortSeries(factorName, returnColumn, parameters.n_groups), analytics.groupStatistics(factorName, returnColumn, parameters.n_groups)]);
+    const [information, longShort, groupStatistics] = await Promise.all([analytics.informationSeries(factorName, returnColumn), analytics.longShortSeries(factorName, returnColumn), analytics.groupStatistics(factorName, returnColumn, parameters.n_groups)]);
     return { factorName, groupStatistics, information, label: `v${version.version}`, longShort, returnSpec, version };
   } finally {
     await analytics.close();

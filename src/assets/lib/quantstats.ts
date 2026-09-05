@@ -77,7 +77,7 @@ export function quantStatsReport(rows: DatedReturn[], periods = 252, riskFreeRat
   };
 }
 
-export function prepareReturns(values: number[], riskFreeRate = 0, periods?: number) {
+function prepareReturns(values: number[], riskFreeRate = 0, periods?: number) {
   let returns = values.map((value) => Number.isFinite(value) ? value : 0);
   if (returns.length && statisticsMin(returns) >= 0 && statisticsMax(returns) > 1) returns = returns.map((value, index) => index ? value / values[index - 1] - 1 : 0);
   if (riskFreeRate > 0) {
@@ -87,9 +87,9 @@ export function prepareReturns(values: number[], riskFreeRate = 0, periods?: num
   return returns;
 }
 
-export function compoundedReturn(returns: number[]) { return product(returns.map((value) => 1 + value)) - 1; }
+function compoundedReturn(returns: number[]) { return product(returns.map((value) => 1 + value)) - 1; }
 
-export function cumulativeReturns(returns: number[]) {
+function cumulativeReturns(returns: number[]) {
   let total = 1;
   return returns.map((value) => {
     total *= 1 + value;
@@ -97,25 +97,25 @@ export function cumulativeReturns(returns: number[]) {
   });
 }
 
-export function cagr(returns: number[], periods = 252) {
+function cagr(returns: number[], periods = 252) {
   if (!returns.length) return Number.NaN;
   const growth = compoundedReturn(returns) + 1;
   return growth > 0 ? growth ** (periods / returns.length) - 1 : Number.NaN;
 }
 
-export function sharpe(annualReturn: number, annualVolatility: number, riskFreeRate = 0) {
+function sharpe(annualReturn: number, annualVolatility: number, riskFreeRate = 0) {
   return annualVolatility === 0 ? Number.NaN : (annualReturn - riskFreeRate) / annualVolatility;
 }
 
-export function sortino(returns: number[], riskFreeRate = 0, periods = 252) {
+function sortino(returns: number[], riskFreeRate = 0, periods = 252) {
   const excess = prepareReturns(returns, riskFreeRate, periods);
   const downside = excess.length ? rootMeanSquare(excess.map((value) => value < 0 ? value : 0)) : Number.NaN;
   return downside === 0 ? Number.NaN : meanOrNaN(excess) / downside * Math.sqrt(periods);
 }
 
-export function volatility(returns: number[], periods = 252) { return populationStandardDeviationOrNaN(prepareReturns(returns)) * Math.sqrt(periods); }
+function volatility(returns: number[], periods = 252) { return populationStandardDeviationOrNaN(prepareReturns(returns)) * Math.sqrt(periods); }
 
-export function toDrawdownSeries(returns: number[]) {
+function toDrawdownSeries(returns: number[]) {
   const prices = preparePrices(returns);
   const baseline = prices[0] > 1000 ? 100_000 : prices[0] > 10 ? 100 : 1;
   let peak = baseline;
@@ -126,14 +126,14 @@ export function toDrawdownSeries(returns: number[]) {
   });
 }
 
-export function maxDrawdown(returns: number[]) {
+function maxDrawdown(returns: number[]) {
   const drawdown = toDrawdownSeries(returns);
   return drawdown.length ? Math.min(0, statisticsMin(drawdown)) : 0;
 }
 
-export function calmar(annualReturn: number, drawdown: number) { return drawdown === 0 ? Number.NaN : annualReturn / Math.abs(drawdown); }
+function calmar(annualReturn: number, drawdown: number) { return drawdown === 0 ? Number.NaN : annualReturn / Math.abs(drawdown); }
 
-export function payoffRatio(returns: number[]) {
+function payoffRatio(returns: number[]) {
   const prepared = prepareReturns(returns);
   const wins = prepared.filter((value) => value > 0);
   const losses = prepared.filter((value) => value < 0);
@@ -141,28 +141,28 @@ export function payoffRatio(returns: number[]) {
   return averageLoss === 0 || !wins.length ? Number.NaN : statisticsMean(wins) / Math.abs(averageLoss);
 }
 
-export function profitFactor(returns: number[]) {
+function profitFactor(returns: number[]) {
   const prepared = prepareReturns(returns);
   const wins = sum(prepared.filter((value) => value >= 0));
   const losses = Math.abs(sum(prepared.filter((value) => value < 0)));
   return losses === 0 ? wins === 0 ? 0 : Number.POSITIVE_INFINITY : wins / losses;
 }
 
-export function recoveryFactor(returns: number[], riskFreeRate = 0) {
+function recoveryFactor(returns: number[], riskFreeRate = 0) {
   const prepared = prepareReturns(returns);
   const drawdown = Math.abs(maxDrawdown(prepared));
   return drawdown === 0 ? Number.NaN : Math.abs(sum(prepared) - riskFreeRate) / drawdown;
 }
 
-export function gainToPainRatio(returns: number[]) {
+function gainToPainRatio(returns: number[]) {
   const prepared = prepareReturns(returns);
   const pain = Math.abs(sum(prepared.filter((value) => value < 0)));
   return pain === 0 ? Number.NaN : sum(prepared) / pain;
 }
 
-export function expectedReturn(returns: number[]) { return returns.length ? product(returns.map((value) => 1 + value)) ** (1 / returns.length) - 1 : Number.NaN; }
+function expectedReturn(returns: number[]) { return returns.length ? product(returns.map((value) => 1 + value)) ** (1 / returns.length) - 1 : Number.NaN; }
 
-export function expectedAnnualReturn(rows: DatedReturn[]) {
+function expectedAnnualReturn(rows: DatedReturn[]) {
   const prepared = prepareReturns(rows.map((row) => row.value));
   const years = new Map<string, number[]>();
   rows.forEach((row, index) => {
@@ -172,27 +172,27 @@ export function expectedAnnualReturn(rows: DatedReturn[]) {
   return expectedReturn([...years.values()].map(compoundedReturn));
 }
 
-export function valueAtRisk(returns: number[], sigma = 1, confidence = 0.95) {
+function valueAtRisk(returns: number[], sigma = 1, confidence = 0.95) {
   const prepared = prepareReturns(returns);
   const probability = 1 - (confidence > 1 ? confidence / 100 : confidence);
   const deviation = sampleStandardDeviationOrNaN(prepared);
   return deviation === 0 || Number.isNaN(deviation) ? Number.NaN : meanOrNaN(prepared) + normalQuantile(probability, 0, 1) * deviation * sigma;
 }
 
-export function conditionalValueAtRisk(returns: number[], sigma = 1, confidence = 0.95) {
+function conditionalValueAtRisk(returns: number[], sigma = 1, confidence = 0.95) {
   const prepared = prepareReturns(returns);
   const threshold = valueAtRisk(prepared, sigma, confidence);
   const tail = prepared.filter((value) => value < threshold);
   return tail.length ? statisticsMean(tail) : threshold;
 }
 
-export function winRate(returns: number[]) {
+function winRate(returns: number[]) {
   const prepared = prepareReturns(returns);
   const nonZero = prepared.filter((value) => value !== 0);
   return nonZero.length ? statisticsMean(nonZero.map((value) => value > 0 ? 1 : 0)) : 0;
 }
 
-export function consecutiveLosses(returns: number[]) {
+function consecutiveLosses(returns: number[]) {
   let current = 0;
   let longest = 0;
   for (const value of prepareReturns(returns)) {
@@ -202,7 +202,7 @@ export function consecutiveLosses(returns: number[]) {
   return longest;
 }
 
-export function skew(returns: number[]) {
+function skew(returns: number[]) {
   const values = prepareReturns(returns);
   if (values.length < 3) return Number.NaN;
   const average = statisticsMean(values);
@@ -210,7 +210,7 @@ export function skew(returns: number[]) {
   return sampleSkewness(values);
 }
 
-export function kurtosis(returns: number[]) {
+function kurtosis(returns: number[]) {
   const values = prepareReturns(returns);
   if (values.length < 4) return Number.NaN;
   const average = statisticsMean(values);
@@ -218,7 +218,7 @@ export function kurtosis(returns: number[]) {
   return sampleKurtosis(values);
 }
 
-export function drawdownDetails(drawdown: DrawdownPoint[]) {
+function drawdownDetails(drawdown: DrawdownPoint[]) {
   const starts: number[] = [];
   const ends: number[] = [];
   for (let index = 1; index < drawdown.length; index += 1) {
@@ -246,7 +246,7 @@ export function drawdownDetails(drawdown: DrawdownPoint[]) {
   });
 }
 
-export function rollingSharpe(rows: DatedReturn[], riskFreeRate = 0, rollingPeriod = 126, periodsPerYear = 252) {
+function rollingSharpe(rows: DatedReturn[], riskFreeRate = 0, rollingPeriod = 126, periodsPerYear = 252) {
   const returns = prepareReturns(rows.map((row) => row.value), riskFreeRate, periodsPerYear);
   const result: RollingPoint[] = [];
   for (let index = rollingPeriod - 1; index < returns.length; index += 1) {
