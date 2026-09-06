@@ -1,6 +1,5 @@
 import normalQuantile from "@stdlib/stats-base-dists-normal-quantile";
 import {
-  max as statisticsMax,
   mean as statisticsMean,
   min as statisticsMin,
   product,
@@ -79,8 +78,7 @@ export function quantStatsReport(rows: DatedReturn[], periods = 252, riskFreeRat
 
 function prepareReturns(values: number[], riskFreeRate = 0, periods?: number) {
   let returns = values.map((value) => Number.isFinite(value) ? value : 0);
-  if (returns.length && statisticsMin(returns) >= 0 && statisticsMax(returns) > 1) returns = returns.map((value, index) => index ? value / values[index - 1] - 1 : 0);
-  if (riskFreeRate > 0) {
+  if (riskFreeRate !== 0) {
     const periodRate = periods ? (1 + riskFreeRate) ** (1 / periods) - 1 : riskFreeRate;
     returns = returns.map((value) => value - periodRate);
   }
@@ -116,9 +114,8 @@ function sortino(returns: number[], riskFreeRate = 0, periods = 252) {
 function volatility(returns: number[], periods = 252) { return populationStandardDeviationOrNaN(prepareReturns(returns)) * Math.sqrt(periods); }
 
 function toDrawdownSeries(returns: number[]) {
-  const prices = preparePrices(returns);
-  const baseline = prices[0] > 1000 ? 100_000 : prices[0] > 10 ? 100 : 1;
-  let peak = baseline;
+  const prices = cumulativeReturns(returns).map((value) => value + 1);
+  let peak = 1;
   return prices.map((price) => {
     peak = Math.max(peak, price);
     const value = price / peak - 1;
@@ -219,14 +216,13 @@ function kurtosis(returns: number[]) {
 }
 
 function drawdownDetails(drawdown: DrawdownPoint[]) {
-  const starts: number[] = [];
+  const starts: number[] = drawdown.length && drawdown[0].value !== 0 ? [0] : [];
   const ends: number[] = [];
   for (let index = 1; index < drawdown.length; index += 1) {
     if (drawdown[index].value !== 0 && drawdown[index - 1].value === 0) starts.push(index);
     if (drawdown[index].value === 0 && drawdown[index - 1].value !== 0) ends.push(index - 1);
   }
   if (!starts.length) return [];
-  if (ends.length && starts[0] > ends[0]) starts.unshift(0);
   if (!ends.length || starts.at(-1)! > ends.at(-1)!) ends.push(drawdown.length - 1);
   return starts.map((start, index) => {
     const end = ends[index];
@@ -249,22 +245,16 @@ function drawdownDetails(drawdown: DrawdownPoint[]) {
 function rollingSharpe(rows: DatedReturn[], riskFreeRate = 0, rollingPeriod = 126, periodsPerYear = 252) {
   const returns = prepareReturns(rows.map((row) => row.value), riskFreeRate, periodsPerYear);
   const result: RollingPoint[] = [];
+  if (rollingPeriod < 2) return result;
   for (let index = rollingPeriod - 1; index < returns.length; index += 1) {
     const window = returns.slice(index - rollingPeriod + 1, index + 1);
-    const value = statisticsMean(window) / sampleStandardDeviation(window) * Math.sqrt(periodsPerYear);
-    if (!Number.isNaN(value)) result.push({ time: rows[index].time, value });
+    const deviation = sampleStandardDeviation(window);
+    const scale = Math.max(...window.map(Math.abs));
+    if (deviation <= Number.EPSILON * scale * window.length) continue;
+    const value = statisticsMean(window) / deviation * Math.sqrt(periodsPerYear);
+    if (Number.isFinite(value)) result.push({ time: rows[index].time, value });
   }
   return result;
-}
-
-function preparePrices(values: number[]) {
-  const clean = values.map((value) => Number.isFinite(value) ? value : 0);
-  if (!clean.length || !(statisticsMin(clean) < 0 || statisticsMax(clean) < 1)) return clean;
-  let price = 1;
-  return clean.map((value) => {
-    price *= 1 + value;
-    return price;
-  });
 }
 
 function meanOrNaN(values: number[]) { return values.length ? statisticsMean(values) : Number.NaN; }

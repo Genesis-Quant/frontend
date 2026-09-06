@@ -106,7 +106,7 @@ export class FactorAnalytics {
       ? "NULL::DOUBLE"
       : spec.kind === "log"
         ? "exp(sum(raw_value) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) - 1"
-        : "exp(sum(ln(1 + raw_value)) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) - 1";
+        : "product(1 + raw_value) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - 1";
     const rows = await this.rows(`
       WITH daily AS (
         SELECT time, ${high} - ${low} AS raw_value
@@ -130,7 +130,7 @@ export class FactorAnalytics {
         ? "NULL::DOUBLE"
         : spec.kind === "log"
           ? `exp(sum(${source}) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))`
-          : `exp(sum(ln(1 + ${source})) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))`;
+          : `product(1 + ${source}) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`;
       return `${cumulative} AS ${identifier(`series_${index}`)}`;
     });
     const rows = await this.rows(`SELECT time, ${columns.join(", ")} FROM read_parquet(${literal(this.groupsFile)}) ${dateFilter(range)} ORDER BY time`);
@@ -268,20 +268,20 @@ function factorMetricsSql(
         count_if(rank_ic > 0)::DOUBLE / nullif(count(rank_ic), 0) AS rank_ic_positive_ratio
       FROM information_values GROUP BY factor_name, return_column
     ), nav AS (
-      SELECT *, exp(sum(ln(1 + value)) OVER (PARTITION BY factor_name, return_column ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) AS wealth
+      SELECT *, product(1 + value) OVER (PARTITION BY factor_name, return_column ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS wealth
       FROM (${returns}) WHERE eligible
     ), drawdown AS (
-      SELECT *, wealth / nullif(max(wealth) OVER (PARTITION BY factor_name, return_column ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) - 1 AS drawdown
+      SELECT *, wealth / greatest(1.0, max(wealth) OVER (PARTITION BY factor_name, return_column ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) - 1 AS drawdown
       FROM nav
     ), return_summary AS (
-      SELECT factor_name, return_column, count(value) AS return_observations, exp(sum(ln(1 + value))) AS growth,
+      SELECT factor_name, return_column, count(value) AS return_observations, product(1 + value) AS growth,
         stddev_pop(value) * sqrt(252.0) AS annual_volatility, abs(min(drawdown)) AS max_drawdown
       FROM drawdown GROUP BY factor_name, return_column
     )
     SELECT information_metrics.*, return_summary.return_observations, return_summary.growth - 1 AS cumulative_return,
-      power(return_summary.growth, 252.0 / return_summary.return_observations) - 1 AS annual_return,
+      CASE WHEN return_summary.growth >= 0 THEN power(return_summary.growth, 252.0 / return_summary.return_observations) - 1 END AS annual_return,
       return_summary.annual_volatility,
-      CASE WHEN return_summary.annual_volatility > 0 THEN (power(return_summary.growth, 252.0 / return_summary.return_observations) - 1) / return_summary.annual_volatility END AS sharpe,
+      CASE WHEN return_summary.annual_volatility > 0 AND return_summary.growth >= 0 THEN (power(return_summary.growth, 252.0 / return_summary.return_observations) - 1) / return_summary.annual_volatility END AS sharpe,
       return_summary.max_drawdown
     FROM information_metrics LEFT JOIN return_summary USING (factor_name, return_column)
   `;

@@ -198,7 +198,7 @@ function PerformanceTable({ report }: { report: QuantStatsReport }) {
     { label: "最大连续亏损交易日", value: report.maxConsecutiveLosses, format: "integer" },
     { label: "盈利因子", value: report.profitFactor },
     { label: "恢复因子", value: report.recoveryFactor },
-    { label: "预期年化收益率", value: report.expectedAnnualReturn, format: "percent" },
+    { label: "日历年收益几何均值", value: report.expectedAnnualReturn, format: "percent" },
     { label: "最长回撤持续天数", value: longestDrawdown, format: "integer" },
     { label: "日收益偏度", value: report.skew },
     { label: "日收益峰度", value: report.kurtosis },

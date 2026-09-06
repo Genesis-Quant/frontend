@@ -160,7 +160,7 @@ export function isBacktestParameters(value: unknown): value is BacktestParameter
     isFactorQuery(value.dataset_query),
     value.adj === null || value.adj === "hfq" || value.adj === "qfq",
     typeof value.annual_trading_days === "number" && Number.isInteger(value.annual_trading_days) && value.annual_trading_days >= 1,
-    typeof value.risk_free_rate === "number" && Number.isFinite(value.risk_free_rate),
+    typeof value.risk_free_rate === "number" && Number.isFinite(value.risk_free_rate) && value.risk_free_rate > -1,
     typeof value.utils === "string",
     Object.keys(callbacks).length === callbackNames.length,
     callbackNames.every((name) => typeof callbacks[name] === "string" && validCallback(name, callbacks[name] as string))
@@ -172,7 +172,7 @@ export type BacktestReportParameters = Pick<BacktestParameters, "annual_trading_
 export function backtestReportParameters(value: unknown): BacktestReportParameters | null {
   if (!isRecord(value)) return null;
   if (typeof value.annual_trading_days !== "number" || !Number.isInteger(value.annual_trading_days) || value.annual_trading_days < 1) return null;
-  if (!finiteNumber(value.risk_free_rate)) return null;
+  if (!finiteNumber(value.risk_free_rate) || value.risk_free_rate <= -1) return null;
   return {
     annual_trading_days: value.annual_trading_days,
     risk_free_rate: value.risk_free_rate
