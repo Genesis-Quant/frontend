@@ -7,8 +7,8 @@ import { Switch } from "@/ui/switch";
 
 type FieldStyleProps = { className?: string; controlClassName?: string; labelClassName?: string };
 
-export function SelectField({ className = "space-y-2", controlClassName = "w-full", disabled = false, label, labelClassName, onChange, options, value }: FieldStyleProps & { disabled?: boolean; label: string; onChange: (value: string) => void; options: { label: string; value: string }[]; value: string }) {
-  return <div className={className}><Label className={labelClassName}>{label}</Label><Select disabled={disabled} value={value} onValueChange={onChange}><SelectTrigger className={controlClassName}><SelectValue /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>;
+export function SelectField({ className = "space-y-2", controlClassName = "w-full", disabled = false, label, labelClassName, onChange, options, placeholder, value }: FieldStyleProps & { disabled?: boolean; label: string; onChange: (value: string) => void; options: { label: string; value: string }[]; placeholder?: string; value: string }) {
+  return <div className={className}><Label className={labelClassName}>{label}</Label><Select disabled={disabled} value={value} onValueChange={onChange}><SelectTrigger className={controlClassName}><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>;
 }
 
 export function TextField({ className = "space-y-2", controlClassName, disabled = false, label, labelClassName, onChange, type = "text", value }: FieldStyleProps & { disabled?: boolean; label: string; onChange: (value: string) => void; type?: string; value: string }) {

@@ -6,9 +6,10 @@ import {
   analysisSettings,
   industryFields,
   marketValueFields,
-  priceFields,
+  returnTypes,
   setAnalysisDsl,
   setAnalysisReturns,
+  setAnalysisReturnType,
   setAnalysisStockPool,
   stockPools,
   type DslCatalog,
@@ -17,9 +18,9 @@ import {
   type DslSource,
   type FactorAnalysisParameters,
   type FactorQuery,
+  type FactorReturnType,
   type IndustryField,
   type MarketValueField,
-  type PriceField,
   type StockPoolSelection
 } from "@/types/factor";
 
@@ -64,12 +65,12 @@ export default function FactorAnalysisEditor({ catalog, editorScope, onChange, o
         <TextField className="field-block" controlClassName="research-input" labelClassName="field-label" label="开始日期" value={parameters.dataset_query.start_date.replace(/-/g, ".")} disabled={readOnly} onChange={(startDate) => updateQuery({ ...parameters.dataset_query, start_date: startDate.replace(/\./g, "-") })} />
         <TextField className="field-block" controlClassName="research-input" labelClassName="field-label" label="结束日期" value={parameters.dataset_query.end_date.replace(/-/g, ".")} disabled={readOnly} onChange={(endDate) => updateQuery({ ...parameters.dataset_query, end_date: endDate.replace(/\./g, "-") })} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="股票池" value={settings.stockPool} options={stockPoolOptions} disabled={readOnly} onChange={(value) => updateStockPool(value as StockPoolSelection)} />
-        <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="价格字段" value={settings.priceField} options={priceFields} disabled={readOnly} onChange={(priceField) => onChange(setAnalysisReturns(parameters, priceField as PriceField, settings.maxLags))} />
+        <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="收益率类型" value={settings.returnType ?? ""} placeholder="自定义" options={returnTypes} disabled={readOnly} onChange={(returnType) => onChange(setAnalysisReturnType(parameters, returnType as FactorReturnType, settings.maxLags))} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="市值字段" value={settings.marketValueField} options={marketValueFields} disabled={readOnly} onChange={(marketValueField) => onChange({ ...parameters, market_value_column: marketValueField as MarketValueField })} />
         <SelectField className="field-block" controlClassName="research-input w-full" labelClassName="field-label" label="行业字段" value={settings.industryField} options={industryFields} disabled={readOnly} onChange={(industryField) => onChange({ ...parameters, industry_column: industryField as IndustryField })} />
         <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="分组数量" value={settings.nGroups} min={2} disabled={readOnly} onChange={(nGroups) => onChange({ ...parameters, n_groups: nGroups })} />
         <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="极端股票数" value={settings.nSelect} min={1} disabled={readOnly} onChange={(nSelect) => onChange({ ...parameters, n_select: nSelect })} />
-        <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="最大滞后阶数" value={settings.maxLags} min={1} max={60} disabled={readOnly} onChange={(maxLags) => onChange(setAnalysisReturns(parameters, settings.priceField, maxLags))} />
+        <NumberField className="field-block" controlClassName="research-input" labelClassName="field-label" label="最大滞后阶数" value={settings.maxLags} min={1} max={60} disabled={readOnly || settings.priceField === null} onChange={(maxLags) => { if (settings.priceField !== null) onChange(setAnalysisReturns(parameters, settings.priceField, maxLags)); }} />
         <TextField className="field-block" controlClassName="research-input" labelClassName="field-label" label="回溯周期" value={parameters.dataset_query.lookback} disabled={readOnly} onChange={(lookback) => updateQuery({ ...parameters.dataset_query, lookback })} />
       </div>
     </div>

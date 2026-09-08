@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ttest from "@stdlib/stats-ttest";
 import { motion } from "motion/react";
 import {
@@ -63,6 +63,8 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
   const [information, setInformation] = useState<InformationPoint[]>([]);
   const [longShort, setLongShort] = useState<LongShortPoint[]>([]);
   const [groups, setGroups] = useState<GroupPoint[]>([]);
+  const [reverseGroups, setReverseGroups] = useState(false);
+  const displayedGroups = useMemo(() => groupChartPoints(groups, reverseGroups), [groups, reverseGroups]);
   const [groupStatistics, setGroupStatistics] = useState<GroupStatistic[]>([]);
   const [decay, setDecay] = useState<DecayPoint[]>([]);
   const [executionStatistics, setExecutionStatistics] = useState<ExecutionStatisticPoint[]>([]);
@@ -281,11 +283,11 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
       },
       longShort: { primary: chartRange(longShort.map((row) => row.value), true), secondary: chartRange(longShort.map((row) => row.cumulative)) },
       groupStatistics: chartRange(groupStatistics.map((row) => row.mean), true),
-      groups: chartRange(groups.flatMap((row) => Object.values(row.values))),
+      groups: chartRange(displayedGroups.flatMap((row) => Object.values(row.values))),
       turnover: chartRange(turnover?.groups.map((row) => row.value) ?? [], true),
       decay: chartRange(decay.flatMap((row) => [row.icMean, row.rankIcMean]), true)
     });
-  }, [decay, executionStatistics, groupStatistics, groups, icType, information, longShort, onChartRanges, turnover]);
+  }, [decay, displayedGroups, executionStatistics, groupStatistics, icType, information, longShort, onChartRanges, turnover]);
 
   if (loading) return <ResultState icon={<IconLoaderCircle className="animate-spin" width={20} height={20} />} title="DuckDB 正在读取 Parquet" detail="正在浏览器内加载因子分析结果。" />;
   if (error && !metrics) return <ResultState icon={<IconDatabase width={20} height={20} />} title="结果读取失败" detail={error} />;
@@ -346,15 +348,23 @@ export default function FactorAnalysisReport({ chartRanges, factor, onChartRange
         {
           id: "groups",
           content: <ReportCard title="分组分析">
-            <CardToolbar end={<ReturnContract spec={groupReturnSpec} />}><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
+            <CardToolbar end={<div className="flex flex-wrap items-center gap-2">
+              <ReturnContract spec={groupReturnSpec} />
+              <Tabs value={reverseGroups ? "reverse" : "forward"} onValueChange={(value) => setReverseGroups(value === "reverse")}>
+                <TabsList aria-label="分组净值顺序">
+                  <TabsTrigger disabled={groupReturnPeriods > 1} value="forward">正序</TabsTrigger>
+                  <TabsTrigger disabled={groupReturnPeriods > 1} value="reverse">倒序</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>}><ReturnSelector value={groupReturnColumn} options={parameters.return_columns} onChange={setGroupReturnColumn} /></CardToolbar>
             <OverlappingReturnNotice periods={groupReturnPeriods} />
-            <ChartPanel title="分组平均收益与显著性 p 值">
-              <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
-            </ChartPanel>
-            <ChartPanel title="各分组净值曲线">
+            <ChartPanel title={reverseGroups ? "各分组净值曲线（倒序累计）" : "各分组净值曲线"}>
               {groupReturnPeriods > 1
                 ? <NonCompoundableChartState periods={groupReturnPeriods} height={350} />
-                : <SeriesContent loading={groupLoading} count={groups.length} height={350}>{groups.length >= 8 && <EChart option={groupOption(groups, theme, chartRanges?.groups)} height={350} />}</SeriesContent>}
+                : <SeriesContent loading={groupLoading} count={groups.length} height={350}>{groups.length >= 8 && <EChart option={groupOption(displayedGroups, theme, chartRanges?.groups)} height={350} />}</SeriesContent>}
+            </ChartPanel>
+            <ChartPanel title="分组平均收益与显著性 p 值">
+              <SeriesContent loading={groupLoading} count={groupStatistics.length} height={330}>{groupStatistics.length > 0 && <EChart option={groupStatisticsOption(groupStatistics, theme, chartRanges?.groupStatistics)} height={330} />}</SeriesContent>
             </ChartPanel>
           </ReportCard>
         },
@@ -631,6 +641,14 @@ function groupStatisticsOption(rows: GroupStatistic[], theme: string, range?: Ch
   option.xAxis = { ...(option.xAxis as Record<string, unknown>), boundaryGap: true };
   option.yAxis = [axis(theme, true, range, "percent"), { ...axis(theme, false), min: 0, max: 1 }];
   return option;
+}
+
+function groupChartPoints(rows: GroupPoint[], reverse: boolean): GroupPoint[] {
+  if (!reverse || !rows.length) return rows;
+  const latest = rows[rows.length - 1];
+  // A separate anchor keeps the latest day's return instead of discarding it.
+  const anchor = { ...latest, time: `${latest.time}（起点）`, values: Object.fromEntries(Object.keys(latest.values).map((name) => [name, 1])) };
+  return [anchor, ...rows.slice().reverse().map((row) => ({ ...row, values: row.reverseValues }))];
 }
 
 function groupOption(rows: GroupPoint[], theme: string, range?: ChartRange) {

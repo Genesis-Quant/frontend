@@ -46,7 +46,9 @@ test("factor SQL uses initial NAV, handles total loss, and agrees for log/simple
       { values: [Math.log(0.9), 0, Math.log(1.02)], kind: "log", expectedGrowth: 0.918, expectedDrawdown: 0.1 },
       { values: [-1, 0, 0.02], kind: "simple", expectedGrowth: 0, expectedDrawdown: 1 },
       { values: [0.1, 0.2, -0.1], kind: "simple", expectedGrowth: 1.188, expectedDrawdown: 0.1 },
-      { values: [-1.1, 0, 0], kind: "simple", expectedGrowth: -0.1, expectedDrawdown: 1.1 }
+      { values: [-1.1, 0, 0], kind: "simple", expectedGrowth: -0.1, expectedDrawdown: 1.1 },
+      { values: [null, 0.05, null, -0.2, null], kind: "simple", expectedGrowth: 0.84, expectedDrawdown: 0.2 },
+      { values: [null, Math.log(1.05), null, Math.log(0.8), null], kind: "log", expectedGrowth: 0.84, expectedDrawdown: 0.2 }
     ];
     for (const [index, item] of cases.entries()) {
       const rows = item.values.map((value, i) => `(DATE '2025-01-0${i + 1}', 0.0, ${value})`).join(",");
@@ -67,6 +69,25 @@ test("factor SQL uses initial NAV, handles total loss, and agrees for log/simple
       const groups = await charts.groupSeries("signal", "r1", 2);
       assert.ok(Math.abs(longShort.at(-1).cumulative - (item.expectedGrowth - 1)) < 1e-12);
       assert.ok(Math.abs(groups.at(-1).values["最大 1 支"] - item.expectedGrowth) < 1e-12);
+      assert.ok(Math.abs(groups[0].reverseValues["最大 1 支"] - item.expectedGrowth) < 1e-12);
+      for (let offset = 0; offset < item.values.length; offset += 1) {
+        const suffix = item.values.slice(offset).filter((value) => value !== null);
+        const actual = groups[offset].reverseValues["最大 1 支"];
+        if (!suffix.length) assert.equal(actual, null);
+        else {
+          const expected = item.kind === "log"
+            ? Math.exp(suffix.reduce((sum, value) => sum + value, 0))
+            : suffix.reduce((product, value) => product * (1 + value), 1);
+          assert.ok(Math.abs(actual - expected) < 1e-12);
+        }
+      }
+      const selected = await charts.groupSeries("signal", "r1", 2, { start: "2025-01-02", end: "2025-01-03" });
+      assert.equal(selected.length, 2);
+      assert.ok(Math.abs(selected[0].reverseValues["最大 1 支"] - selected.at(-1).values["最大 1 支"]) < 1e-12);
+      charts.returnSpec = () => ({ kind: item.kind, periods: 5 });
+      const overlapping = await charts.groupSeries("signal", "r1", 2);
+      assert.ok(overlapping.every((row) => Object.values(row.values).every((value) => value === null)));
+      assert.ok(overlapping.every((row) => Object.values(row.reverseValues).every((value) => value === null)));
     }
   } finally {
     connection.close();

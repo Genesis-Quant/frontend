@@ -5,7 +5,7 @@ import type { FactorMetricSummary, FactorMetrics, FactorReportParameters } from 
 
 export type InformationPoint = { time: string; ic: number | null; rankIc: number | null; icCumulative: number | null; rankIcCumulative: number | null };
 export type LongShortPoint = { time: string; value: number | null; cumulative: number | null };
-export type GroupPoint = { time: string; values: Record<string, number | null> };
+export type GroupPoint = { time: string; values: Record<string, number | null>; reverseValues: Record<string, number | null> };
 export type GroupStatistic = { group: string; mean: number | null; pValue: number | null };
 export type DecayPoint = { returnColumn: string; label: string; position: number; icMean: number | null; rankIcMean: number | null };
 export type TurnoverGroup = { group: string; value: number | null };
@@ -124,19 +124,23 @@ export class FactorAnalytics {
   async groupSeries(factor: string, returnColumn: string, nGroups: number, range?: FactorDateRange): Promise<GroupPoint[]> {
     const spec = this.returnSpec(returnColumn);
     const definitions = groupDefinitions(factor, returnColumn, nGroups, this.parameters.n_select);
-    const columns = definitions.map((definition, index) => {
+    const columns = definitions.flatMap((definition, index) => {
       const source = identifier(definition.column);
-      const cumulative = spec.periods !== 1
-        ? "NULL::DOUBLE"
-        : spec.kind === "log"
-          ? `exp(sum(${source}) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))`
-          : `product(1 + ${source}) OVER (ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`;
-      return `${cumulative} AS ${identifier(`series_${index}`)}`;
+      return ["ASC", "DESC"].map((direction) => {
+        const window = `ORDER BY time ${direction} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`;
+        const cumulative = spec.periods !== 1
+          ? "NULL::DOUBLE"
+          : spec.kind === "log"
+            ? `exp(sum(${source}) OVER (${window}))`
+            : `product(1 + ${source}) OVER (${window})`;
+        return `${cumulative} AS ${identifier(`${direction === "DESC" ? "reverse_" : ""}series_${index}`)}`;
+      });
     });
     const rows = await this.rows(`SELECT time, ${columns.join(", ")} FROM read_parquet(${literal(this.groupsFile)}) ${dateFilter(range)} ORDER BY time`);
     return rows.map((row) => ({
       time: duckDbDateValue(row.time),
-      values: Object.fromEntries(definitions.map((definition, index) => [definition.label, numberValue(row[`series_${index}`])]))
+      values: Object.fromEntries(definitions.map((definition, index) => [definition.label, numberValue(row[`series_${index}`])])),
+      reverseValues: Object.fromEntries(definitions.map((definition, index) => [definition.label, numberValue(row[`reverse_series_${index}`])]))
     }));
   }
 

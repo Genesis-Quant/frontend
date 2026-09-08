@@ -106,12 +106,14 @@ export function isFactorAnalysisDraftParameters(value: unknown): value is Factor
 export type StockPoolCode = "ALL" | "000016.SH" | "000300.SH" | "000905.SH" | "000852.SH";
 type IndexStockPoolCode = Exclude<StockPoolCode, "ALL">;
 export type StockPoolSelection = StockPoolCode | "CUSTOM";
-export type PriceField = "close" | "close_hfq";
+export type PriceField = "open" | "open_hfq" | "close" | "close_hfq";
+export type FactorReturnType = "close" | "next_open";
 export type MarketValueField = "circ_mv" | "total_mv";
 
 export type FactorAnalysisSettings = {
   stockPool: StockPoolSelection;
-  priceField: PriceField;
+  priceField: PriceField | null;
+  returnType: FactorReturnType | null;
   marketValueField: MarketValueField;
   industryField: IndustryField;
   nGroups: number;
@@ -127,9 +129,11 @@ export const stockPools: { label: string; value: StockPoolCode; factor: string |
   { label: "中证 1000", value: "000852.SH", factor: "weight_000852SH" }
 ];
 
-export const priceFields: { label: string; value: PriceField }[] = [
-  { label: "收盘价", value: "close" },
-  { label: "后复权收盘价", value: "close_hfq" }
+const priceFields: PriceField[] = ["open", "open_hfq", "close", "close_hfq"];
+
+export const returnTypes: { label: string; value: FactorReturnType }[] = [
+  { label: "当日收盘", value: "close" },
+  { label: "下日开盘", value: "next_open" }
 ];
 
 export const marketValueFields: { label: string; value: MarketValueField }[] = [
@@ -330,15 +334,19 @@ export const stockPoolLabel = (parameters: FactorAnalysisParameters): string => 
     : stockPools.find((item) => item.value === code)?.label ?? code;
 };
 
-export const analysisSettings = (parameters: FactorAnalysisParameters): FactorAnalysisSettings => ({
-  stockPool: stockPoolCode(parameters),
-  priceField: returnPriceField(parameters),
-  marketValueField: parameters.market_value_column === "total_mv" ? "total_mv" : "circ_mv",
-  industryField: parameters.industry_column,
-  nGroups: parameters.n_groups,
-  nSelect: parameters.n_select,
-  maxLags: Math.max(1, parameters.return_columns.filter((column) => /^ret\d+$/.test(column)).length || 10)
-});
+export const analysisSettings = (parameters: FactorAnalysisParameters): FactorAnalysisSettings => {
+  const priceField = standardReturnPriceField(parameters);
+  return {
+    stockPool: stockPoolCode(parameters),
+    priceField,
+    returnType: priceField === null ? null : priceField === "open" || priceField === "open_hfq" ? "next_open" : "close",
+    marketValueField: parameters.market_value_column === "total_mv" ? "total_mv" : "circ_mv",
+    industryField: parameters.industry_column,
+    nGroups: parameters.n_groups,
+    nSelect: parameters.n_select,
+    maxLags: Math.max(1, parameters.return_columns.filter((column) => /^ret\d+$/.test(column)).length || 10)
+  };
+};
 
 export const analysisDsl = (parameters: FactorAnalysisParameters): DslDocument => ({
   factors: parameters.dataset_query.factors.filter((factor) => !analysisManagedFactors.includes(factor) && !stockPools.some((pool) => pool.factor === factor)),
@@ -372,6 +380,14 @@ export const setAnalysisReturns = (parameters: FactorAnalysisParameters, priceFi
     return_columns: returnColumns,
     return_specs: oneDayLogReturnSpecs(returnColumns)
   };
+};
+
+export const setAnalysisReturnType = (parameters: FactorAnalysisParameters, returnType: FactorReturnType, maxLags: number): FactorAnalysisParameters => {
+  const field = returnType === "next_open" ? "open" : "close";
+  const previousField = returnPriceField(parameters);
+  // An explicit standard-type selection uses adjusted prices unless the source is unadjusted.
+  const priceField: PriceField = previousField === "open" || previousField === "close" ? field : `${field}_hfq`;
+  return setAnalysisReturns(parameters, priceField, maxLags);
 };
 
 export const setAnalysisDsl = (parameters: FactorAnalysisParameters, dsl: DslDocument, source: DslSource): FactorAnalysisParameters => {
@@ -425,7 +441,7 @@ export const defaultAnalysisParameters = (): FactorAnalysisParameters => {
       factors: [...dsl.factors],
       derivatives: {
         ...dsl.derivatives,
-        ...forwardReturnDerivatives("close_hfq", 10)
+        ...forwardReturnDerivatives("open_hfq", 10)
       },
       filters: [...dsl.filters],
       dsl_source: initialDslSource(dsl)
@@ -498,6 +514,8 @@ export function factorReportParameterIssues(value: unknown): string[] {
 }
 
 function forwardReturnDerivatives(priceField: PriceField, maxLags: number): Record<string, DerivativeNode> {
+  // Open-to-open returns start on the next trading day, after the factor date.
+  const startOffset = priceField === "open" || priceField === "open_hfq" ? 1 : 0;
   return Object.fromEntries(analysisReturnColumns(maxLags).map((name, lag) => [name, {
     type: "DIRECT",
     op: "unary.log",
@@ -505,7 +523,7 @@ function forwardReturnDerivatives(priceField: PriceField, maxLags: number): Reco
       col: {
         type: "DIRECT",
         op: "binary.div",
-        fields: { left: shift(priceField, -lag - 1), right: shift(priceField, -lag) },
+        fields: { left: shift(priceField, -lag - startOffset - 1), right: shift(priceField, -lag - startOffset) },
         params: {}
       }
     },
@@ -517,11 +535,39 @@ function shift(column: string, periods: number): DerivativeNode {
   return { type: "TS", op: "unary.shift", fields: { col: column }, params: { periods } };
 }
 
-function returnPriceField(parameters: FactorAnalysisParameters): PriceField {
+function standardReturnPriceField(parameters: FactorAnalysisParameters): PriceField | null {
+  const priceField = returnPriceField(parameters);
+  if (priceField === null || parameters.return_columns.length === 0) return null;
+  const expected = forwardReturnDerivatives(priceField, parameters.return_columns.length);
+  return parameters.return_columns.every((name, index) => {
+    const spec = parameters.return_specs[name];
+    return name === `ret${index}`
+      && spec?.kind === "log"
+      && spec.periods === 1
+      && matchesReturnNode(parameters.dataset_query.derivatives[name], expected[name]);
+  }) ? priceField : null;
+}
+
+function matchesReturnNode(actual: unknown, expected: DerivativeNode): boolean {
+  if (!isRecord(actual) || actual.type !== expected.type || actual.op !== expected.op
+    || (actual.on !== undefined && actual.on !== null && actual.on !== true)
+    || !isRecord(actual.fields) || !isRecord(actual.params)) return false;
+  const fields = actual.fields;
+  const params = actual.params;
+  return Object.keys(fields).length === Object.keys(expected.fields).length
+    && Object.entries(expected.fields).every(([name, value]) => isRecord(value)
+      ? matchesReturnNode(fields[name], value as DerivativeNode)
+      : fields[name] === value)
+    && Object.keys(params).length === Object.keys(expected.params).length
+    && Object.entries(expected.params).every(([name, value]) => params[name] === value);
+}
+
+function returnPriceField(parameters: FactorAnalysisParameters): PriceField | null {
   const returnNode = parameters.dataset_query.derivatives.ret0;
   const division = isRecord(returnNode) && isRecord(returnNode.fields) ? returnNode.fields.col : undefined;
   const shiftedPrice = isRecord(division) && isRecord(division.fields) ? division.fields.left : undefined;
-  return isRecord(shiftedPrice) && isRecord(shiftedPrice.fields) && shiftedPrice.fields.col === "close" ? "close" : "close_hfq";
+  const column = isRecord(shiftedPrice) && isRecord(shiftedPrice.fields) ? shiftedPrice.fields.col : undefined;
+  return priceFields.find((field) => field === column) ?? null;
 }
 
 function isReturnSpecs(value: unknown, returnColumns: string[]): value is Record<string, FactorReturnSpec> {
