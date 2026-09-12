@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { defaultBacktestParameters, setBacktestStockPoolType } from "../src/types/backtest.ts";
+import { defaultBacktestParameters, setBacktestMarketSource, setBacktestStockPoolType } from "../src/types/backtest.ts";
+
+test("market source changes only execution configuration, never source text", () => {
+  const daily = defaultBacktestParameters();
+  assert.equal(daily.market_source, "daily");
+  const before = structuredClone(daily);
+  const snapshot = setBacktestMarketSource(daily, "snapshot");
+  assert.equal(snapshot.adj, null);
+  assert.equal(snapshot.config.syntheticSpread, 0);
+  assert.deepEqual(snapshot.dataset_query, daily.dataset_query);
+  assert.deepEqual(snapshot.codes_query, daily.codes_query);
+  assert.deepEqual(snapshot.callbacks, daily.callbacks);
+  assert.equal(snapshot.utils, daily.utils);
+  assert.deepEqual(daily, before);
+  const restored = setBacktestMarketSource(snapshot, "daily");
+  assert.deepEqual(restored, { ...snapshot, market_source: "daily" });
+});
 
 test("new backtests use the dynamic HS300 stock pool by default", () => {
   const parameters = defaultBacktestParameters();

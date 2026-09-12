@@ -56,6 +56,7 @@ function sensitivityMetrics(): SensitivityMetric[] { return [
 ]; }
 
 export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange, open, projectId, projectTitle, version }: SensitivityAnalysisDialogProps) {
+  const creationDisabled = baseParameters.market_source === "snapshot";
   const definitions = useMemo(() => parameterDefinitions(baseParameters.params), [baseParameters.params]);
   const metrics = useMemo(() => sensitivityMetrics(), []);
   const [drafts, setDrafts] = useState<DimensionDraft[]>([]);
@@ -191,7 +192,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
   }
 
   async function submit() {
-    if (version === null || submitting || grid.error || !grid.items.length) return;
+    if (version === null || submitting || grid.error || !grid.items.length || creationDisabled) return;
     setSubmitting(true);
     setError("");
     try {
@@ -246,6 +247,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
     <LargeDialogContent className="flex flex-col overflow-hidden">
       <DialogHeader className="shrink-0 border-b pb-3 pr-8">
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 参数敏感性分析</DialogTitle>
+        {creationDisabled && <p className="text-sm text-muted-foreground">真实快照暂不支持创建参数敏感性分析，仍可查看已有报告。</p>}
         <DialogDescription>{batch ? `研究 #${batch.id} 使用一个工作流复用回测数据，依次计算 ${batch.requested_count} 个参数组合。` : "选择一个或两个参数，输入取值生成参数网格；全部组合在同一个 Runtime 工作流中完成。"}</DialogDescription>
       </DialogHeader>
       {!batch && <div className="grid min-h-0 flex-1 gap-4 pt-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
@@ -259,7 +261,7 @@ export default function SensitivityAnalysisDialog({ baseParameters, onOpenChange
             {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的版本。</div> : null}
             {error ? <div className="rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div> : null}
           </div>
-          <DialogFooter className="shrink-0 border-t px-4 py-3"><Button variant="outline" onClick={() => resetForClose(false)} disabled={submitting}>取消</Button><Button onClick={() => { submit().catch(() => undefined); }} disabled={submitting || version === null || Boolean(grid.error) || grid.items.length === 0}>{submitting ? <Loader2 className="animate-spin" /> : <SlidersHorizontal />}提交敏感性分析</Button></DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-4 py-3"><Button variant="outline" onClick={() => resetForClose(false)} disabled={submitting}>取消</Button><Button onClick={() => { submit().catch(() => undefined); }} disabled={submitting || version === null || Boolean(grid.error) || grid.items.length === 0 || creationDisabled}>{submitting ? <Loader2 className="animate-spin" /> : <SlidersHorizontal />}提交敏感性分析</Button></DialogFooter>
         </section>
         <AnalysisHistoryPanel count={history.length} emptyMessage="当前版本还没有参数敏感性分析" title="历史分析">
           {history.map((item) => <AnalysisHistoryItem deleteDisabled={!canDeleteBacktestAnalysis(item.state)} deleteLabel={`删除参数敏感性分析 ${item.id}`} description={`${item.description ? `${item.description} · ` : ""}${item.requested_count} 个组合`} key={item.id} loading={loadingHistoryResearchId === item.id} onDelete={() => { setDeleteError(""); setDeleteTarget(item); }} onOpen={() => openHistory(item.id)} state={item.state} title={`研究 #${item.id}`} />)}

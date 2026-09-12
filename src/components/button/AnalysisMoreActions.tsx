@@ -10,6 +10,7 @@ type AnalysisMoreActionsProps = {
   queueCount?: number;
   queueDisabled?: boolean;
   sensitivityDisabled?: boolean;
+  researchDisabledReason?: string;
   onFeeAnalysis?: () => void;
   onOptimization?: () => void;
   onCandidateReport?: () => void;
@@ -21,7 +22,7 @@ type AnalysisMoreActionsProps = {
   workflowInstanceId: number | null;
 };
 
-export default function AnalysisMoreActions({ candidateReportDisabled = false, feeAnalysisDisabled = false, optimizationDisabled = false, onCandidateReport, onFeeAnalysis, onOptimization, onSensitivity, queueCount = 0, queueDisabled = false, sensitivityDisabled = false, onLogs, onOpenQueue, onQueue, onShowParameters, workflowInstanceId }: AnalysisMoreActionsProps) {
+export default function AnalysisMoreActions({ candidateReportDisabled = false, feeAnalysisDisabled = false, optimizationDisabled = false, onCandidateReport, onFeeAnalysis, onOptimization, onSensitivity, queueCount = 0, queueDisabled = false, sensitivityDisabled = false, researchDisabledReason, onLogs, onOpenQueue, onQueue, onShowParameters, workflowInstanceId }: AnalysisMoreActionsProps) {
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button aria-label="更多操作" size="icon" variant="outline"><Ellipsis /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
@@ -33,6 +34,7 @@ export default function AnalysisMoreActions({ candidateReportDisabled = false, f
       {onFeeAnalysis ? <DropdownMenuItem disabled={feeAnalysisDisabled} onSelect={onFeeAnalysis}><Percent />手续费分析</DropdownMenuItem> : null}
       {onSensitivity ? <DropdownMenuItem disabled={sensitivityDisabled} onSelect={onSensitivity}><SlidersHorizontal />参数敏感性</DropdownMenuItem> : null}
       {onOptimization ? <DropdownMenuItem disabled={optimizationDisabled} onSelect={onOptimization}><Gauge />参数调优</DropdownMenuItem> : null}
+      {researchDisabledReason && <p className="max-w-64 px-2 py-1.5 text-xs leading-5 text-muted-foreground">{researchDisabledReason}</p>}
     </DropdownMenuContent>
   </DropdownMenu>;
 }

@@ -9,7 +9,7 @@ import EChart from "@/components/chart/EChart";
 import DeleteConfirmationDialog from "@/components/modal/DeleteConfirmationDialog";
 import { AnalysisHistoryItem, AnalysisHistoryPanel } from "@/components/panel/AnalysisHistoryPanel";
 import SchedulerState from "@/components/status/SchedulerState";
-import type { BatchResearchListItem, BatchResearchResponse } from "@/types/backtest";
+import { snapshotResearchUnavailable, type BatchResearchListItem, type BatchResearchResponse } from "@/types/backtest";
 import { terminalStates } from "@/types/workflow";
 import { Button } from "@/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, LargeDialogContent } from "@/ui/dialog";
@@ -22,12 +22,13 @@ type FeeAnalysisDialogProps = {
   projectId: number;
   projectTitle: string;
   version: number | null;
+  creationDisabled?: boolean;
 };
 
 const successStates = new Set(["SUCCESS"]);
 const defaultRateText = "0, 0.01, 0.03, 0.05, 0.1";
 
-export default function FeeAnalysisDialog({ onOpenChange, open, projectId, projectTitle, version }: FeeAnalysisDialogProps) {
+export default function FeeAnalysisDialog({ onOpenChange, open, projectId, projectTitle, version, creationDisabled = false }: FeeAnalysisDialogProps) {
   const [rateText, setRateText] = useState(defaultRateText);
   const [research, setResearch] = useState<BatchResearchResponse | null>(null);
   const [history, setHistory] = useState<BatchResearchListItem[]>([]);
@@ -126,7 +127,7 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
   useEffect(() => () => { analytics.current?.close(); }, []);
 
   async function submit() {
-    if (version === null || submitting) return;
+    if (version === null || submitting || creationDisabled) return;
     const parsed = parseRateText(rateText);
     if (parsed.error !== null) {
       setError(parsed.error);
@@ -189,6 +190,7 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
     <LargeDialogContent className={research ? "flex flex-col overflow-hidden" : "flex !h-[34rem] max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden sm:!max-w-5xl xl:!w-[min(64rem,calc(100vw-6rem))]"}>
       <DialogHeader className="shrink-0 border-b pb-3 pr-8">
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 手续费分析</DialogTitle>
+        {creationDisabled && <p className="text-sm text-muted-foreground">{snapshotResearchUnavailable}</p>}
         <DialogDescription>{research ? `研究 #${research.id} 使用一个工作流复用回测数据，依次计算 ${research.requested_count} 个手续费率。` : "选择一系列手续费率，在同一个 Runtime 工作流中复用查询数据和消息表完成全部回测。费率按百分比填写。"}</DialogDescription>
       </DialogHeader>
       {!research
@@ -201,7 +203,7 @@ export default function FeeAnalysisDialog({ onOpenChange, open, projectId, proje
               {version === null ? <div className="text-sm text-destructive">请先选择一个已保存的回测版本。</div> : null}
               {error ? <ErrorMessage message={error} /> : null}
             </div>
-            <DialogFooter className="shrink-0 border-t px-4 py-3"><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>取消</Button><Button onClick={submit} disabled={submitting || version === null}>{submitting ? <Loader2 className="animate-spin" /> : <BarChart3 />}开始分析</Button></DialogFooter>
+            <DialogFooter className="shrink-0 border-t px-4 py-3"><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>取消</Button><Button onClick={submit} disabled={submitting || version === null || creationDisabled}>{submitting ? <Loader2 className="animate-spin" /> : <BarChart3 />}开始分析</Button></DialogFooter>
           </section>
           <AnalysisHistoryPanel count={history.length} emptyMessage="当前版本还没有手续费分析" title="历史分析">
             {history.map((item) => <AnalysisHistoryItem deleteDisabled={!canDeleteBacktestAnalysis(item.state)} deleteLabel={`删除手续费分析 ${item.id}`} description={`${item.requested_count} 个费率`} key={item.id} loading={loadingHistoryResearchId === item.id} onDelete={() => { setDeleteError(""); setDeleteTarget(item); }} onOpen={() => openHistory(item.id)} state={item.state} title={`研究 #${item.id}`} />)}

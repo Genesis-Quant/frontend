@@ -125,12 +125,14 @@ function topLevelDefault(mask: string, start: number, end: number) {
 
 export function validBacktestParameters(parameters: BacktestParameters) {
   return parameters.dataset_query.start_date.length > 0
+    && (parameters.market_source !== "snapshot" || parameters.adj === null && (parameters.config.syntheticSpread ?? 0) === 0 && !("stockDividend" in parameters.config))
     && parameters.dataset_query.end_date.length > 0
     && (parameters.codes_query !== null || parameters.dataset_query.codes.length > 0)
     && validCallbacks(parameters.callbacks);
 }
 
 const BACKTEST_PARAMETER_NAMES = new Set([
+  "market_source",
   "config",
   "params",
   "codes_query",
@@ -150,6 +152,7 @@ export function isBacktestParameters(value: unknown): value is BacktestParameter
   const config = value.config;
   if (!isRecord(config)) return false;
   return [
+    value.market_source === undefined || value.market_source === "daily" || value.market_source === "snapshot",
     positiveFiniteNumber(config.cash),
     nonNegativeFiniteNumber(config.commission),
     nonNegativeFiniteNumber(config.tax),

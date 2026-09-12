@@ -32,6 +32,7 @@ const successStates = new Set(["SUCCESS"]);
 const historyPageSize = 20;
 
 export default function ParameterOptimizationDialog({ baseParameters, onOpenChange, open, projectId, projectTitle, version }: ParameterOptimizationDialogProps) {
+  const creationDisabled = baseParameters.market_source === "snapshot";
   const numericParameters = useMemo(() => Object.entries(baseParameters.params).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])), [baseParameters.params]);
   const [selectedParameters, setSelectedParameters] = useState<string[]>([]);
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
@@ -163,7 +164,7 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
   }
 
   async function submit() {
-    if (version === null || submitting) return;
+    if (version === null || submitting || creationDisabled) return;
     const parsed = buildSettings();
     if (typeof parsed === "string") { setError(parsed); return; }
     setSubmitting(true);
@@ -248,6 +249,7 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
     <LargeDialogContent className="flex flex-col overflow-hidden">
       <DialogHeader className="shrink-0 border-b pb-3 pr-8">
         <DialogTitle>{projectTitle} · v{version ?? "—"} · 参数调优</DialogTitle>
+        {creationDisabled && <p className="text-sm text-muted-foreground">真实快照暂不支持创建参数调优，仍可查看已有报告。</p>}
         <DialogDescription>在滚动训练窗口内选择参数，再用紧随其后的持有窗口形成严格样本外净值路径。</DialogDescription>
       </DialogHeader>
       {report
@@ -272,7 +274,7 @@ export default function ParameterOptimizationDialog({ baseParameters, onOpenChan
               <Card className="h-full gap-3 rounded-md py-3"><CardHeader className="px-3.5"><CardTitle className="flex items-center justify-between text-sm font-medium"><span>调优算法</span><span className="text-xs font-normal tabular-nums text-muted-foreground">已选 {algorithms.length} / {optimizationAlgorithms.length}</span></CardTitle></CardHeader><CardContent className="grid flex-1 auto-rows-fr gap-2 px-3.5 sm:grid-cols-2 xl:grid-cols-3">{optimizationAlgorithms.map((algorithm) => <Label className="cursor-pointer rounded-md border bg-background px-2.5 py-2 transition-colors hover:bg-muted/50" htmlFor={`optimization-algorithm-${algorithm}`} key={algorithm}><Checkbox checked={algorithms.includes(algorithm)} id={`optimization-algorithm-${algorithm}`} onCheckedChange={(next) => toggleAlgorithm(algorithm, next === true)} /><span className="text-xs leading-4">{optimizationAlgorithmLabels[algorithm]}</span></Label>)}</CardContent></Card>
             </div>
             </div>
-            <div className="mt-3 shrink-0 space-y-3 border-t pt-3">{error ? <ErrorMessage message={error} /> : null}<DialogFooter><Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={submitting || version === null || !numericParameters.length} onClick={submit}>{submitting ? <Loader2 className="animate-spin" /> : <Play />}提交参数调优</Button></DialogFooter></div>
+            <div className="mt-3 shrink-0 space-y-3 border-t pt-3">{error ? <ErrorMessage message={error} /> : null}<DialogFooter><Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={submitting || version === null || !numericParameters.length || creationDisabled} onClick={submit}>{submitting ? <Loader2 className="animate-spin" /> : <Play />}提交参数调优</Button></DialogFooter></div>
           </div>
           <AnalysisHistoryPanel count={historyTotal} emptyMessage="当前版本还没有参数调优报告" footer={historyPages > 1 ? <AppPagination page={historyPage} pageSize={historyPageSize} pageSizeOptions={[historyPageSize]} totalPages={historyPages} onPageChange={setHistoryPage} onPageSizeChange={() => undefined} /> : undefined} loading={loadingHistory} title="历史报告">
             {history.map((item) => <AnalysisHistoryItem deleteDisabled={!canDeleteBacktestAnalysis(item.state)} deleteLabel={`删除参数调优报告 ${item.id}`} description={`${item.parameters.start_date} → ${item.parameters.end_date} · ${item.parameters.repetitions} 次`} icon={Gauge} key={item.id} onDelete={() => { setDeleteError(""); setDeleteTarget(item); }} onOpen={() => { setReport(item); setError(""); }} state={item.state} title={`报告 #${item.id} · ${item.parameters.algorithms.length} 种算法`} />)}

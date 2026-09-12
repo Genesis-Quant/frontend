@@ -5,13 +5,16 @@ import CodeEditor from "@/components/editor/CodeEditor";
 import { NumberField, SelectField, SwitchField } from "@/components/field/FormFields";
 import BacktestCodeModal, { type BacktestCodePanel } from "@/components/modal/BacktestCodeModal";
 import { Button } from "@/ui/button";
-import { setBacktestStockPoolType, type BacktestCatalog, type BacktestParameters, type StrategyParameters } from "@/types/backtest";
+import { setBacktestMarketSource, setBacktestStockPoolType, type BacktestCatalog, type BacktestParameters, type StrategyParameters } from "@/types/backtest";
 import { stockPools } from "@/types/factor";
 
 export default function BacktestEditor({ catalog, editorScope, onChange, onValidityChange, parameters, projectId, readOnly = false }: { catalog: BacktestCatalog; editorScope: string; onChange: (parameters: BacktestParameters) => void; onValidityChange: (valid: boolean) => void; parameters: BacktestParameters; projectId: number; readOnly?: boolean }) {
   const [codePanel, setCodePanel] = useState<BacktestCodePanel | null>(null);
   const [codeValid, setCodeValid] = useState(true);
   const [strategyParametersValid, setStrategyParametersValid] = useState(true);
+  const snapshot = parameters.market_source === "snapshot";
+  const marketError = snapshot && (parameters.adj !== null || (parameters.config.syntheticSpread ?? 0) !== 0 || "stockDividend" in parameters.config)
+    ? "真实快照要求 adj=null、syntheticSpread=0，且不能配置 stockDividend。请修正配置后运行。" : null;
   const selectedBenchmark = optionalStringConfig(parameters, "benchmark") ?? "none";
   const benchmarkCodes = selectedBenchmark === "none" || catalog.benchmark_codes.includes(selectedBenchmark)
     ? catalog.benchmark_codes
@@ -24,16 +27,19 @@ export default function BacktestEditor({ catalog, editorScope, onChange, onValid
     }))
   ];
 
-  useEffect(() => onValidityChange(codeValid && strategyParametersValid), [codeValid, onValidityChange, strategyParametersValid]);
+  useEffect(() => onValidityChange(codeValid && strategyParametersValid && !marketError), [codeValid, onValidityChange, strategyParametersValid, marketError]);
 
   return <div className="space-y-5">
     <div className="grid grid-cols-2 gap-3">
-      <SelectField label="复权方式" value={parameters.adj ?? "none"} options={[{ label: "不复权", value: "none" }, { label: "后复权", value: "hfq" }, { label: "前复权", value: "qfq" }]} disabled={readOnly} onChange={(value) => onChange({ ...parameters, adj: value === "none" ? null : value as "hfq" | "qfq" })} />
+      <SelectField label="行情来源" value={parameters.market_source ?? "daily"} options={[{ label: "日线合成快照", value: "daily" }, { label: "真实五档快照", value: "snapshot" }]} disabled={readOnly} onChange={(value) => onChange(setBacktestMarketSource(parameters, value as "daily" | "snapshot"))} />
+      <SelectField label="复权方式" value={parameters.adj ?? "none"} options={[{ label: "不复权", value: "none" }, { label: "后复权", value: "hfq" }, { label: "前复权", value: "qfq" }]} disabled={readOnly || snapshot} onChange={(value) => onChange({ ...parameters, adj: value === "none" ? null : value as "hfq" | "qfq" })} />
+      {marketError && <p role="alert" className="col-span-2 text-xs text-destructive">{marketError}</p>}
       <NumberField label="初始资金" min={1} value={numberConfig(parameters, "cash")} disabled={readOnly} onChange={(cash) => onChange(updateConfig(parameters, "cash", cash))} />
       <NumberField label="年化交易日" min={1} value={parameters.annual_trading_days} disabled={readOnly} onChange={(annualTradingDays) => onChange({ ...parameters, annual_trading_days: annualTradingDays })} />
       <NumberField label="无风险利率" min={0} step={0.001} value={parameters.risk_free_rate} disabled={readOnly} onChange={(riskFreeRate) => onChange({ ...parameters, risk_free_rate: riskFreeRate })} />
       <NumberField label="手续费率" min={0} step={0.0001} value={numberConfig(parameters, "commission")} disabled={readOnly} onChange={(commission) => onChange(updateConfig(parameters, "commission", commission))} />
       <NumberField label="印花税率" min={0} step={0.0001} value={numberConfig(parameters, "tax")} disabled={readOnly} onChange={(tax) => onChange(updateConfig(parameters, "tax", tax))} />
+      <NumberField label="合成买卖价差" min={0} step={0.0001} value={parameters.config.syntheticSpread === undefined ? 0 : numberConfig(parameters, "syntheticSpread")} disabled={readOnly || snapshot} onChange={(spread) => onChange(updateConfig(parameters, "syntheticSpread", spread))} />
       <SwitchField checked={booleanConfig(parameters, "enableMinimumPerTransactionFee")} checkedText="5元" disabled={readOnly} label="最低手续费" uncheckedText="无" onChange={(enabled) => onChange(updateConfig(parameters, "enableMinimumPerTransactionFee", enabled))} />
       <SwitchField checked={parameters.codes_query !== null} checkedText="动态" disabled={readOnly} label="股票池类型" uncheckedText="静态" onChange={(dynamic) => onChange(setBacktestStockPoolType(parameters, dynamic))} />
       <SelectField className="col-span-2 space-y-2" label="基准指数" value={selectedBenchmark} options={benchmarkOptions} disabled={readOnly} onChange={(benchmark) => onChange(benchmark === "none" ? removeConfig(parameters, "benchmark") : updateConfig(parameters, "benchmark", benchmark))} />

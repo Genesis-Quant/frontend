@@ -16,12 +16,20 @@ export const callbackParameters: Record<CallbackName, string> = {
   finalize: "mutable context"
 };
 export type BacktestSummary = Record<string, number | null>;
+export const snapshotResearchUnavailable = "真实快照暂不支持创建手续费分析、参数敏感性或参数调优，仍可查看已有报告。";
+
+export function setBacktestMarketSource(parameters: BacktestParameters, source: "daily" | "snapshot"): BacktestParameters {
+  return source === "snapshot"
+    ? { ...parameters, market_source: source, adj: null, config: { ...parameters.config, syntheticSpread: 0 } }
+    : { ...parameters, market_source: source };
+}
 
 export type BacktestCatalog = DslCatalog & {
   benchmark_codes: string[];
 };
 
 export type BacktestParameters = {
+  market_source?: "daily" | "snapshot";
   config: Record<string, unknown>;
   params: StrategyParameters;
   codes_query: FactorQuery | null;
@@ -245,6 +253,7 @@ export function setBacktestStockPoolType(parameters: BacktestParameters, dynamic
 }
 
 export const defaultBacktestParameters = (): BacktestParameters => ({
+  market_source: "daily",
   config: { cash: 1_000_000, commission: 0.0003, tax: 0.001, syntheticSpread: 0.001, enableMinimumPerTransactionFee: true },
   params: {
     riskParityCapitalRatio: 0.98,
